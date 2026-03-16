@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square, Trash2 } from "lucide-react";
+import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square, Trash2, X } from "lucide-react"; // ★ Xを追加
 
 interface RightPanelProps {
   activeTab: "todo" | "time";
@@ -20,6 +20,8 @@ interface RightPanelProps {
   formatTime: (seconds: number) => string;
   toggleTracking: () => void;
   handleDeleteTask: (taskId: number, e: React.MouseEvent) => void;
+  isRightPanelOpen: boolean; // ★ 追加
+  setIsRightPanelOpen: (isOpen: boolean) => void; // ★ 追加
 }
 
 export default function RightPanel({
@@ -40,20 +42,32 @@ export default function RightPanel({
   trackedSeconds,
   formatTime,
   toggleTracking,
-  handleDeleteTask
+  handleDeleteTask,
+  isRightPanelOpen, // ★ 追加
+  setIsRightPanelOpen // ★ 追加
 }: RightPanelProps) {
   return (
-    <aside className="w-80 border-l border-gray-200 bg-white flex flex-col z-10">
-      <div className="flex border-b border-gray-200">
-        <button onClick={() => setActiveTab("todo")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "todo" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
-          <CheckSquare className="w-4 h-4 mr-2" />
-          ToDoリスト
+    <aside 
+      // ★ PCは普通に表示、スマホは absolute で右外からスライドイン
+      className={`fixed md:relative z-40 inset-y-0 right-0 bg-white border-l border-gray-200 w-80 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isRightPanelOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}`}
+    >
+      <div className="flex items-center justify-between border-b border-gray-200 md:block">
+        {/* スマホ時のみ表示する閉じるボタンを先頭に */}
+        <button onClick={() => setIsRightPanelOpen(false)} className="md:hidden p-4 text-gray-500 hover:bg-gray-100">
+          <X className="w-5 h-5" />
         </button>
-        <button onClick={() => setActiveTab("time")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "time" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
-          <Clock className="w-4 h-4 mr-2" />
-          トラッキング
-          {isTracking && <span className="ml-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-        </button>
+        
+        <div className="flex flex-1">
+          <button onClick={() => setActiveTab("todo")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "todo" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
+            <CheckSquare className="w-4 h-4 mr-2 hidden sm:block" />
+            ToDo
+          </button>
+          <button onClick={() => setActiveTab("time")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "time" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
+            <Clock className="w-4 h-4 mr-2 hidden sm:block" />
+            タイマー
+            {isTracking && <span className="ml-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+          </button>
+        </div>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto bg-gray-50 relative">
@@ -79,11 +93,11 @@ export default function RightPanel({
                 key={todo.id} 
                 draggable={true} 
                 onDragStart={(e) => {
-                  e.currentTarget.style.opacity = '0.5'; // ★ ドラッグ中は半透明に
+                  e.currentTarget.style.opacity = '0.5';
                   handleDragStart(e, todo.id);
                 }} 
                 onDragEnd={(e) => {
-                  e.currentTarget.style.opacity = '1'; // ★ 元に戻す
+                  e.currentTarget.style.opacity = '1';
                 }}
                 className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
               >

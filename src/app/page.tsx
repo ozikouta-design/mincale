@@ -44,6 +44,10 @@ export default function CalendarDashboard() {
 
   const [currentViewDate, setCurrentViewDate] = useState(new Date());
 
+  // ★ スマホ用のサイドパネル開閉ステートを追加
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
+
   const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
     const dayOfWeek = currentViewDate.getDay();
     const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -163,6 +167,7 @@ export default function CalendarDashboard() {
 
   useEffect(() => {
     if (status === "authenticated" && session) syncGoogleData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, currentViewDate]);
 
   const handlePrevWeek = () => {
@@ -245,17 +250,14 @@ export default function CalendarDashboard() {
 
       if (isGoogle) {
         const token = (session as any)?.accessToken;
-        
-        // ISO日時の正確な計算
         const startDt = new Date(currentViewDate);
         const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
         startDt.setDate(startDt.getDate() + diff + dayIndex);
         startDt.setHours(9 + startHour, 0, 0, 0);
         const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000);
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; // 端末のタイムゾーンを自動取得
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
 
         try {
-          // ★ PATCHメソッドで時間だけを安全に更新
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
             method: 'PATCH',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -269,8 +271,6 @@ export default function CalendarDashboard() {
             const errBody = await res.json();
             throw new Error(errBody.error?.message || "原因不明のエラー");
           }
-          
-          // 成功したら画面の表示を更新
           setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
         } catch (error: any) {
           console.error("Google移動エラー:", error);
@@ -399,18 +399,33 @@ export default function CalendarDashboard() {
 
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
+      
+      {/* ★ スマホ用：メニューが開いている時のオーバーレイ（背景を暗くしてタップで閉じる） */}
+      {(isSidebarOpen || isRightPanelOpen) && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300"
+          onClick={() => { setIsSidebarOpen(false); setIsRightPanelOpen(false); }}
+        />
+      )}
+
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration}
         editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent}
       />
+      
       <Sidebar 
         currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId}
+        isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} // ★ Props追加
       />
+      
       <CalendarMain
         currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart}
+        setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen} // ★ Props追加
       />
+      
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask}
+        isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} // ★ Props追加
       />
     </div>
   );

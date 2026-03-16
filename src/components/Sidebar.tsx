@@ -8,8 +8,9 @@ import {
   ChevronRight,
   Check,
   LogOut,
-  RefreshCw
-} from "lucide-react";
+  RefreshCw,
+  X
+} from "lucide-react"; // ★ Xを追加
 
 interface SidebarProps {
   currentMonthYear: string;
@@ -32,7 +33,9 @@ interface SidebarProps {
   signOut: () => void;
   handlePrevWeek: () => void;
   handleNextWeek: () => void;
-  setEditingEventId: (id: any) => void; // ★ 変更: anyにする
+  setEditingEventId: (id: any) => void;
+  isSidebarOpen: boolean; // ★ 追加
+  setIsSidebarOpen: (isOpen: boolean) => void; // ★ 追加
 }
 
 export default function Sidebar({
@@ -56,13 +59,24 @@ export default function Sidebar({
   signOut,
   handlePrevWeek,
   handleNextWeek,
-  setEditingEventId
+  setEditingEventId,
+  isSidebarOpen, // ★ 追加
+  setIsSidebarOpen // ★ 追加
 }: SidebarProps) {
   return (
-    <aside className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
-      <div className="h-16 flex items-center px-4 border-b border-gray-200">
-        <CalendarIcon className="w-6 h-6 text-orange-500 mr-2" />
-        <h1 className="text-lg font-bold text-gray-800 tracking-tight">みんカレ</h1>
+    <aside 
+      // ★ PC(md)以上は普通に表示、スマホ以下は absolute にして画面外からスライドイン
+      className={`fixed md:relative z-40 inset-y-0 left-0 bg-gray-50 border-r border-gray-200 w-64 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
+    >
+      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
+        <div className="flex items-center">
+          <CalendarIcon className="w-6 h-6 text-orange-500 mr-2" />
+          <h1 className="text-lg font-bold text-gray-800 tracking-tight">みんカレ</h1>
+        </div>
+        {/* スマホ時のみ表示する閉じるボタン */}
+        <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 text-gray-500 hover:bg-gray-200 rounded-full">
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
@@ -73,6 +87,7 @@ export default function Sidebar({
             setNewEventDayIndex(0);
             setNewEventStartHour(0);
             setNewEventDuration(1);
+            setIsSidebarOpen(false); // ★ 開いたらサイドバーを閉じる
             setIsCreateEventModalOpen(true);
           }}
           className="w-full flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white py-2.5 px-4 rounded-lg font-medium transition-colors shadow-sm mb-6"
