@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import RightPanel from "@/components/RightPanel";
 import Sidebar from "@/components/Sidebar";
 import CalendarMain from "@/components/CalendarMain";
-import Modals from "@/components/Modals"; // ★ 切り出したモーダルをインポート
+import Modals from "@/components/Modals";
 
 export default function CalendarDashboard() {
   const { data: session, status } = useSession();
@@ -40,14 +40,16 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  // === 日付の自動計算 ===
+  // ★ 新規追加：現在表示している週の基準日
+  const [currentViewDate, setCurrentViewDate] = useState(new Date());
+
+  // === 日付の自動計算（表示中の週に合わせて動的に変化） ===
   const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
+    const dayOfWeek = currentViewDate.getDay();
     const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + diffToMonday);
+    const monday = new Date(currentViewDate);
+    monday.setDate(currentViewDate.getDate() + diffToMonday);
 
     const weekDays = [];
     const dayNames = ["月", "火", "水", "木", "金"];
@@ -58,12 +60,16 @@ export default function CalendarDashboard() {
       weekDays.push(`${dayNames[i]} ${currentDate.getDate()}`);
     }
     
+    // 今週を見ている時だけ「今日」をハイライトするための判定
+    const actualToday = new Date();
+    const isCurrentWeek = monday.getMonth() === actualToday.getMonth() && monday.getFullYear() === actualToday.getFullYear();
+    
     return {
        currentWeekDays: weekDays,
        currentMonthYear: `${monday.getFullYear()}年 ${monday.getMonth() + 1}月`,
-       todayDate: today.getDate()
+       todayDate: isCurrentWeek ? actualToday.getDate() : -1
     };
-  }, []);
+  }, [currentViewDate]);
 
   const days = currentWeekDays;
   const hours = [
@@ -139,11 +145,11 @@ export default function CalendarDashboard() {
         }
       }
 
-      const today = new Date();
-      const dayOfWeek = today.getDay();
+      // ★ 表示中の週に合わせてGoogleから取得する期間を変更
+      const dayOfWeek = currentViewDate.getDay();
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monday = new Date(today);
-      monday.setDate(today.getDate() + diffToMonday);
+      const monday = new Date(currentViewDate);
+      monday.setDate(currentViewDate.getDate() + diffToMonday);
       monday.setHours(0, 0, 0, 0);
 
       const saturday = new Date(monday);
@@ -168,7 +174,7 @@ export default function CalendarDashboard() {
             if (!item.start?.dateTime || !item.end?.dateTime) return null;
             const start = new Date(item.start.dateTime);
             const end = new Date(item.end.dateTime);
-            const dayIndex = start.getDay() - 1; 
+            const evDayIndex = start.getDay() - 1; 
             const startHour = start.getHours() - 9;
             const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
@@ -176,7 +182,7 @@ export default function CalendarDashboard() {
               id: item.id,
               memberId: member.id,
               title: `📅 ${item.summary || "予定あり"}`,
-              dayIndex,
+              dayIndex: evDayIndex,
               startHour,
               duration,
               isGoogle: true
@@ -198,15 +204,52 @@ export default function CalendarDashboard() {
     }
   };
 
+  // 表示している週（currentViewDate）が変わるたびにGoogleデータを同期する
   useEffect(() => {
     if (status === "authenticated" && session) {
       syncGoogleData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, currentViewDate]);
 
 
   // === 操作関数 ===
+
+  // ★ 新規追加：週の切り替え関数
+  const handlePrevWeek = () => {
+    const newDate = new Date(currentViewDate);
+    newDate.setDate(currentViewDate.getDate() - 7);
+    setCurrentViewDate(newDate);
+  };
+
+  const handleNextWeek = () => {
+    const newDate = new Date(currentViewDate);
+    newDate.setDate(currentViewDate.getDate() + 7);
+    setCurrentViewDate(newDate);
+  };
+
+  // ★ 新規追加：タスクの削除機能
+  const handleDeleteTask = async (taskId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // ドラッグ等を誤作動させない
+    const { error } = await supabase.from('todos').delete().eq('id', taskId);
+    if (error) { alert("削除に失敗しました"); return; }
+    setTodos(todos.filter(t => t.id !== taskId));
+  };
+
+  // ★ 新規追加：予定の削除機能
+  const handleDeleteEvent = async (eventId: number, isGoogle: boolean, e: React.MouseEvent) => {
+    e.stopPropagation(); // タイマー開始を誤作動させない
+    if (isGoogle) {
+      alert("Googleカレンダーの予定は、Googleカレンダーアプリ側で削除してください。");
+      return;
+    }
+    if (!confirm("この予定を削除しますか？")) return;
+
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    if (error) { alert("削除に失敗しました"); return; }
+    setEvents(events.filter(ev => ev.id !== eventId));
+  };
+
   const toggleMember = (id: string) => {
     setSelectedMemberIds((prev) =>
       prev.includes(id) ? prev.filter((memberId) => memberId !== id) : [...prev, id]
@@ -347,24 +390,23 @@ export default function CalendarDashboard() {
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
       
-      {/* ★ Modalsコンポーネント */}
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration}
       />
 
-      {/* ★ Sidebarコンポーネント */}
       <Sidebar 
         currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut}
+        handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} // ★追加
       />
 
-      {/* ★ CalendarMainコンポーネント */}
       <CalendarMain
         currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} startTrackingFromEvent={startTrackingFromEvent} setIsScheduleModalOpen={setIsScheduleModalOpen}
+        handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleDeleteEvent={handleDeleteEvent} // ★追加
       />
 
-      {/* ★ RightPanelコンポーネント */}
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking}
+        handleDeleteTask={handleDeleteTask} // ★追加
       />
 
     </div>

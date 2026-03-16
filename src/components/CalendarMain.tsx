@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Link as LinkIcon } from "lucide-react";
+import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, X } from "lucide-react"; // ChevronとXを追加
 
 interface CalendarMainProps {
   currentMonthYear: string;
@@ -14,6 +14,9 @@ interface CalendarMainProps {
   handleEmptySlotClick: (dayIndex: number, startHour: number) => void;
   startTrackingFromEvent: (eventTitle: string) => void;
   setIsScheduleModalOpen: (isOpen: boolean) => void;
+  handlePrevWeek: () => void; // ★追加
+  handleNextWeek: () => void; // ★追加
+  handleDeleteEvent: (eventId: number, isGoogle: boolean, e: React.MouseEvent) => void; // ★追加
 }
 
 export default function CalendarMain({
@@ -28,14 +31,22 @@ export default function CalendarMain({
   handleDrop,
   handleEmptySlotClick,
   startTrackingFromEvent,
-  setIsScheduleModalOpen
+  setIsScheduleModalOpen,
+  handlePrevWeek,
+  handleNextWeek,
+  handleDeleteEvent
 }: CalendarMainProps) {
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative">
       <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-white">
         <div className="flex items-center space-x-4">
           <button className="text-xl font-bold text-gray-800">{currentMonthYear}</button>
-          <div className="flex items-center space-x-2 bg-gray-100 rounded-md p-1">
+          {/* ★ 週移動ボタンをアクティブ化 */}
+          <div className="flex items-center space-x-1 ml-2">
+            <button onClick={handlePrevWeek} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
+            <button onClick={handleNextWeek} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+          </div>
+          <div className="flex items-center space-x-2 bg-gray-100 rounded-md p-1 ml-4">
             <button className="px-3 py-1 text-sm bg-white rounded shadow-sm font-medium">週</button>
             <button className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 font-medium">月</button>
           </div>
@@ -83,9 +94,20 @@ export default function CalendarMain({
                       const heightPct = event.duration * 100;
                       const bgColor = member?.colorHex || "#f97316"; 
                       return (
-                        <div key={event.id} onClick={(e) => { e.stopPropagation(); startTrackingFromEvent(event.title); }} className={`absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10`} style={{ top: '2%', height: `calc(${heightPct}% - 4%)`, backgroundColor: bgColor }} title="クリックでタイマーを開始">
-                          <div className="font-semibold truncate">{event.title}</div>
+                        <div key={event.id} onClick={(e) => { e.stopPropagation(); startTrackingFromEvent(event.title); }} className={`absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10 group/event`} style={{ top: '2%', height: `calc(${heightPct}% - 4%)`, backgroundColor: bgColor }} title="クリックでタイマーを開始">
+                          <div className="font-semibold truncate pr-4">{event.title}</div>
                           <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}</div>
+                          
+                          {/* ★ 削除ボタン（ホバー時のみ右上に表示） */}
+                          {!event.isGoogle && (
+                            <button
+                              onClick={(e) => handleDeleteEvent(event.id, event.isGoogle, e)}
+                              className="absolute top-1 right-1 opacity-0 group-hover/event:opacity-100 p-0.5 bg-black/20 hover:bg-black/40 rounded text-white transition-opacity"
+                              title="予定を削除"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       );
                     })}

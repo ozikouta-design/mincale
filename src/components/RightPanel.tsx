@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square } from "lucide-react";
+import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square, Trash2 } from "lucide-react"; // Trash2を追加
 
 interface RightPanelProps {
   activeTab: "todo" | "time";
@@ -19,6 +19,7 @@ interface RightPanelProps {
   trackedSeconds: number;
   formatTime: (seconds: number) => string;
   toggleTracking: () => void;
+  handleDeleteTask: (taskId: number, e: React.MouseEvent) => void; // ★追加
 }
 
 export default function RightPanel({
@@ -38,7 +39,8 @@ export default function RightPanel({
   activeTaskName,
   trackedSeconds,
   formatTime,
-  toggleTracking
+  toggleTracking,
+  handleDeleteTask // ★追加
 }: RightPanelProps) {
   return (
     <aside className="w-80 border-l border-gray-200 bg-white flex flex-col z-10">
@@ -76,7 +78,13 @@ export default function RightPanel({
               <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo.id)} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group">
                 <div className="flex justify-between items-start mb-2 pointer-events-none">
                   <h3 className="text-sm font-semibold text-gray-800 leading-tight group-hover:text-orange-700 transition-colors">{todo.title}</h3>
-                  <MoreHorizontal className="w-4 h-4 text-gray-400 group-hover:text-orange-500" />
+                  {/* ★ ゴミ箱アイコンを追加（ホバー時のみ表示） */}
+                  <div className="flex items-center space-x-2 pointer-events-auto">
+                    <button onClick={(e) => handleDeleteTask(todo.id, e)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <MoreHorizontal className="w-4 h-4 text-gray-400 group-hover:text-orange-500 pointer-events-none" />
+                  </div>
                 </div>
                 <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-600 rounded pointer-events-none">
                   {todo.project || "一般タスク"}
@@ -84,24 +92,10 @@ export default function RightPanel({
               </div>
             ))}
             
-            {/* タスク追加機能のUI切り替え */}
             {isAddingTask ? (
               <form onSubmit={handleAddTask} className="bg-white p-3 rounded-lg border border-orange-400 shadow-sm mt-4 animate-in fade-in slide-in-from-top-2">
-                <input
-                  type="text"
-                  autoFocus
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  placeholder="タスク名を入力..."
-                  className="w-full text-sm border-none focus:ring-0 p-0 mb-2 outline-none text-gray-800"
-                />
-                <input
-                  type="text"
-                  value={newTaskProject}
-                  onChange={(e) => setNewTaskProject(e.target.value)}
-                  placeholder="プロジェクト名 (任意)"
-                  className="w-full text-xs text-gray-500 border-none focus:ring-0 p-0 mb-3 outline-none"
-                />
+                <input type="text" autoFocus value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="タスク名を入力..." className="w-full text-sm border-none focus:ring-0 p-0 mb-2 outline-none text-gray-800" />
+                <input type="text" value={newTaskProject} onChange={(e) => setNewTaskProject(e.target.value)} placeholder="プロジェクト名 (任意)" className="w-full text-xs text-gray-500 border-none focus:ring-0 p-0 mb-3 outline-none" />
                 <div className="flex justify-end space-x-2">
                   <button type="button" onClick={() => setIsAddingTask(false)} className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors px-2 py-1">キャンセル</button>
                   <button type="submit" className="text-xs font-medium bg-orange-500 text-white px-3 py-1.5 rounded hover:bg-orange-600 transition-colors shadow-sm">保存する</button>
