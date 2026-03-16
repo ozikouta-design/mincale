@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square, Trash2 } from "lucide-react"; // Trash2を追加
+import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square, Trash2 } from "lucide-react";
 
 interface RightPanelProps {
   activeTab: "todo" | "time";
@@ -19,7 +19,7 @@ interface RightPanelProps {
   trackedSeconds: number;
   formatTime: (seconds: number) => string;
   toggleTracking: () => void;
-  handleDeleteTask: (taskId: number, e: React.MouseEvent) => void; // ★追加
+  handleDeleteTask: (taskId: number, e: React.MouseEvent) => void;
 }
 
 export default function RightPanel({
@@ -40,7 +40,7 @@ export default function RightPanel({
   trackedSeconds,
   formatTime,
   toggleTracking,
-  handleDeleteTask // ★追加
+  handleDeleteTask
 }: RightPanelProps) {
   return (
     <aside className="w-80 border-l border-gray-200 bg-white flex flex-col z-10">
@@ -75,10 +75,14 @@ export default function RightPanel({
             )}
 
             {todos.map((todo) => (
-              <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo.id)} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group">
+              <div 
+                key={todo.id} 
+                draggable={true} 
+                onDragStart={(e) => handleDragStart(e, todo.id)} // ここで "todo" がセットされるようになりました
+                className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
+              >
                 <div className="flex justify-between items-start mb-2 pointer-events-none">
                   <h3 className="text-sm font-semibold text-gray-800 leading-tight group-hover:text-orange-700 transition-colors">{todo.title}</h3>
-                  {/* ★ ゴミ箱アイコンを追加（ホバー時のみ表示） */}
                   <div className="flex items-center space-x-2 pointer-events-auto">
                     <button onClick={(e) => handleDeleteTask(todo.id, e)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
                       <Trash2 className="w-4 h-4" />

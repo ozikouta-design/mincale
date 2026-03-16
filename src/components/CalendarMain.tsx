@@ -16,6 +16,7 @@ interface CalendarMainProps {
   handlePrevWeek: () => void;
   handleNextWeek: () => void;
   handleEventClick: (event: any, e: React.MouseEvent) => void; 
+  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void; // ★ 追加
 }
 
 export default function CalendarMain({
@@ -32,7 +33,8 @@ export default function CalendarMain({
   setIsScheduleModalOpen,
   handlePrevWeek,
   handleNextWeek,
-  handleEventClick
+  handleEventClick,
+  handleEventDragStart // ★ 追加
 }: CalendarMainProps) {
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative">
@@ -93,10 +95,13 @@ export default function CalendarMain({
                       return (
                         <div 
                           key={event.id} 
+                          draggable={true} // ★ ドラッグ可能に！
+                          onDragStart={(e) => handleEventDragStart(e, event.id, event.isGoogle, event.memberId)} // ★ ドラッグ開始処理
                           onClick={(e) => handleEventClick(event, e)}
-                          className="absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10" 
+                          // ★ 超リッチなAppleライクホバーアニメーション！
+                          className="absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 active:shadow-sm cursor-grab active:cursor-grabbing z-10 hover:z-20" 
                           style={{ top: '2%', height: `calc(${heightPct}% - 4%)`, backgroundColor: bgColor }} 
-                          title="クリックして詳細を表示"
+                          title="ドラッグで移動、クリックで詳細を表示"
                         >
                           <div className="font-semibold truncate">{event.title}</div>
                           <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}</div>

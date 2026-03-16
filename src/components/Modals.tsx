@@ -66,8 +66,8 @@ export default function Modals({
     <>
       {/* ========== モーダル：日程調整リンク発行 ========== */}
       {isScheduleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
+          <div className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <div className="flex items-center">
                 <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mr-3">
@@ -103,10 +103,10 @@ export default function Modals({
 
       {/* ========== モーダル：Appleライクな 予定作成 ＆ 編集 ========== */}
       {isCreateEventModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity">
-          <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
+          {/* ★ アニメーションをApple風に（slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out） */}
+          <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
             
-            {/* Apple風 ヘッダー */}
             <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
               <button onClick={closeEventModal} className="text-orange-500 text-base font-medium">
                 キャンセル
@@ -114,16 +114,13 @@ export default function Modals({
               <h2 className="text-base font-semibold text-gray-900">
                 {editingEventId ? "詳細" : "新規イベント"}
               </h2>
-              {/* ★ 変更：Googleの予定でも「完了（更新）」ボタンを表示 */}
               <button onClick={handleCreateEvent} className="text-orange-500 text-base font-semibold">
                 {editingEventId ? "完了" : "追加"}
               </button>
             </div>
             
-            {/* Apple風 フォームボディ（グレー背景） */}
             <div className="p-4 space-y-6 overflow-y-auto max-h-[80vh]">
               
-              {/* タイトル入力（白角丸） */}
               <div className="bg-white rounded-xl overflow-hidden shadow-sm">
                 <input 
                   type="text" 
@@ -135,7 +132,6 @@ export default function Modals({
                 />
               </div>
 
-              {/* 時間設定（白角丸のリスト） */}
               <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
                   <span className="text-gray-900">日付</span>
@@ -171,7 +167,6 @@ export default function Modals({
                 </div>
               </div>
 
-              {/* カレンダー選択（白角丸） */}
               <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="text-gray-900">カレンダー</span>
@@ -185,7 +180,6 @@ export default function Modals({
                 </div>
               </div>
 
-              {/* Apple風 削除ボタン（Googleの予定でも表示！） */}
               {editingEventId && (
                 <button 
                   onClick={() => handleDeleteEvent(editingEventId, editingEventIsGoogle, newEventMemberId)} 

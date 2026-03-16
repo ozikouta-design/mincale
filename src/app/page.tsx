@@ -23,7 +23,6 @@ export default function CalendarDashboard() {
   const [trackedSeconds, setTrackedSeconds] = useState(0);
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
 
-  // ★ 変更：GoogleのIDは文字列(String)なので any に変更
   const [editingEventId, setEditingEventId] = useState<any>(null);
   const [editingEventIsGoogle, setEditingEventIsGoogle] = useState<boolean>(false);
 
@@ -183,21 +182,15 @@ export default function CalendarDashboard() {
     if (!error) setTodos(todos.filter(t => t.id !== taskId));
   };
 
-  // ★ 変更：Google APIを通じて予定を削除する
   const handleDeleteEvent = async (eventId: any, isGoogle: boolean, calendarId: string) => {
     if (!confirm("この予定を削除しますか？\n(Googleカレンダーからも削除されます)")) return;
-
     if (isGoogle) {
       const token = (session as any)?.accessToken;
       try {
-        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error("Google削除エラー");
         setEvents(events.filter(ev => ev.id !== eventId));
       } catch (e) {
-        console.error(e);
         alert("権限エラー：ログアウトして再度Googleでログインし直してください。");
       }
     } else {
@@ -210,21 +203,73 @@ export default function CalendarDashboard() {
 
   const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
   const selectAllMembers = () => setSelectedMemberIds(members.map(m => m.id));
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => e.dataTransfer.setData("todoId", todoId.toString());
+  
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => {
+    e.dataTransfer.setData("type", "todo");
+    e.dataTransfer.setData("todoId", todoId.toString());
+  };
+
+  // ★ 新規追加：予定（イベント）をつまんだ時の処理
+  const handleEventDragStart = (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => {
+    e.dataTransfer.setData("type", "event");
+    e.dataTransfer.setData("eventId", eventId.toString());
+    e.dataTransfer.setData("isGoogle", isGoogle.toString());
+    e.dataTransfer.setData("memberId", memberId);
+  };
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
   
+  // ★ 変更：タスク追加と予定移動（時間変更）の分岐処理
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => {
     e.preventDefault();
-    const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10);
-    const targetTodo = todos.find((t) => t.id === draggedTodoId);
-    const targetCalendarId = newEventMemberId || members[0]?.id || "";
-    if (targetTodo && targetCalendarId) {
-      const { data: insertedEvent, error: insertError } = await supabase.from('events').insert({ member_id: targetCalendarId, title: targetTodo.title, day_index: dayIndex, start_hour: startHour, duration: 1 }).select().single();
-      if (!insertError) {
-        await supabase.from('todos').delete().eq('id', draggedTodoId);
-        setEvents((prev) => [...prev, { id: insertedEvent.id, memberId: insertedEvent.member_id, title: insertedEvent.title, dayIndex: insertedEvent.day_index, startHour: insertedEvent.start_hour, duration: insertedEvent.duration, isGoogle: false }]);
-        setTodos((prev) => prev.filter((t) => t.id !== draggedTodoId));
-        if (!selectedMemberIds.includes(targetCalendarId)) setSelectedMemberIds((prev) => [...prev, targetCalendarId]);
+    const dragType = e.dataTransfer.getData("type");
+
+    if (dragType === "todo") {
+      const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10);
+      const targetTodo = todos.find((t) => t.id === draggedTodoId);
+      const targetCalendarId = newEventMemberId || members[0]?.id || "";
+      if (targetTodo && targetCalendarId) {
+        const { data: insertedEvent, error: insertError } = await supabase.from('events').insert({ member_id: targetCalendarId, title: targetTodo.title, day_index: dayIndex, start_hour: startHour, duration: 1 }).select().single();
+        if (!insertError) {
+          await supabase.from('todos').delete().eq('id', draggedTodoId);
+          setEvents((prev) => [...prev, { id: insertedEvent.id, memberId: insertedEvent.member_id, title: insertedEvent.title, dayIndex: insertedEvent.day_index, startHour: insertedEvent.start_hour, duration: insertedEvent.duration, isGoogle: false }]);
+          setTodos((prev) => prev.filter((t) => t.id !== draggedTodoId));
+          if (!selectedMemberIds.includes(targetCalendarId)) setSelectedMemberIds((prev) => [...prev, targetCalendarId]);
+        }
+      }
+    } else if (dragType === "event") {
+      // 予定（イベント）のドラッグ＆ドロップ移動
+      const eventId = e.dataTransfer.getData("eventId");
+      const isGoogle = e.dataTransfer.getData("isGoogle") === "true";
+      const memberId = e.dataTransfer.getData("memberId");
+
+      const targetEvent = events.find(ev => ev.id == eventId);
+      if (!targetEvent) return;
+
+      if (isGoogle) {
+        const token = (session as any)?.accessToken;
+        const startDt = new Date(currentViewDate);
+        const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
+        startDt.setDate(startDt.getDate() + diff + dayIndex);
+        startDt.setHours(9 + startHour, 0, 0, 0);
+        const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000);
+
+        try {
+          // ★ PATCHメソッドで時間だけを安全に更新（他の情報は保持される）
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start: { dateTime: startDt.toISOString() }, end: { dateTime: endDt.toISOString() } })
+          });
+          if (!res.ok) throw new Error("Google更新エラー");
+          setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
+        } catch (e) {
+          alert("Googleの予定の移動に失敗しました。");
+        }
+      } else {
+        const { error } = await supabase.from('events').update({ day_index: dayIndex, start_hour: startHour }).eq('id', eventId);
+        if (error) { alert("予定の移動に失敗しました。"); return; }
+        setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
       }
     }
   };
@@ -262,11 +307,9 @@ export default function CalendarDashboard() {
     setIsCreateEventModalOpen(true);
   };
 
-  // ★ 変更：Google APIを通じて予定を更新する
   const handleCreateEvent = async () => {
     if (!newEventTitle || !newEventMemberId) return;
 
-    // ISO日時の計算
     const startDt = new Date(currentViewDate);
     const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
     startDt.setDate(startDt.getDate() + diff + newEventDayIndex);
@@ -278,14 +321,13 @@ export default function CalendarDashboard() {
         const token = (session as any)?.accessToken;
         try {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, {
-            method: 'PUT',
+            method: 'PATCH',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString() }, end: { dateTime: endDt.toISOString() } })
           });
           if (!res.ok) throw new Error("更新失敗");
           setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: `📅 ${newEventTitle}`, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration } : ev));
         } catch (e) {
-          console.error(e);
           alert("権限エラー：ログアウトして再度Googleでログインし直してください。");
         }
       } else {
@@ -351,6 +393,7 @@ export default function CalendarDashboard() {
       />
       <CalendarMain
         currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick}
+        handleEventDragStart={handleEventDragStart} // ★追加
       />
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask}
