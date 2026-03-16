@@ -8,6 +8,12 @@ import Sidebar from "@/components/Sidebar";
 import CalendarMain from "@/components/CalendarMain";
 import Modals from "@/components/Modals";
 
+const GOOGLE_COLORS: Record<string, string> = {
+  "1": "#a4bdfc", "2": "#7ae7bf", "3": "#dbadff", "4": "#ff887c",
+  "5": "#fbd75b", "6": "#ffb878", "7": "#46d6db", "8": "#e1e1e1",
+  "9": "#5484ed", "10": "#51b749", "11": "#dc2127"
+};
+
 export default function CalendarDashboard() {
   const { data: session, status } = useSession();
 
@@ -47,11 +53,15 @@ export default function CalendarDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
-  // ★ グループ管理のステート
   const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
+
+  const [isTaskEditModalOpen, setIsTaskEditModalOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState("");
+  const [editTaskProject, setEditTaskProject] = useState("");
 
   const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
     const dayOfWeek = currentViewDate.getDay();
@@ -91,7 +101,6 @@ export default function CalendarDashboard() {
       const { data: todosData } = await supabase.from('todos').select('*').order('id', { ascending: true });
       if (todosData) setTodos(todosData);
 
-      // ★ 追加：初期ロード時にSupabaseから「グループ一覧」を取得する
       const { data: groupsData } = await supabase.from('groups').select('*').order('id', { ascending: true });
       if (groupsData) {
         setGroups(groupsData.map(g => ({ id: g.id.toString(), name: g.name, memberIds: g.member_ids })));
@@ -156,10 +165,16 @@ export default function CalendarDashboard() {
             const start = new Date(item.start.dateTime);
             const end = new Date(item.end.dateTime);
             const evDayIndex = start.getDay() - 1; 
-            const startHour = start.getHours() - 9;
+            
+            // ★ 修正：Googleの予定が「10:15」などの場合、小数（1.25）として正しく取得する
+            const startHour = (start.getHours() - 9) + (start.getMinutes() / 60);
             const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
-            return { id: item.id, memberId: member.id, title: `📅 ${item.summary || "予定あり"}`, dayIndex: evDayIndex, startHour, duration, isGoogle: true };
+            return { 
+              id: item.id, memberId: member.id, title: `📅 ${item.summary || "予定あり"}`, 
+              dayIndex: evDayIndex, startHour, duration, isGoogle: true,
+              colorHex: item.colorId ? GOOGLE_COLORS[item.colorId] : null
+            };
           }).filter((e: any) => e !== null && e.dayIndex >= 0 && e.dayIndex <= 4 && e.startHour >= 0 && e.startHour <= 9);
         });
 
@@ -182,7 +197,6 @@ export default function CalendarDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, currentViewDate]);
 
-  // ★ 改善：週移動時に古いGoogle予定を一瞬で消す（ラグ解消）
   const handlePrevWeek = () => {
     setEvents(prev => prev.filter(e => !e.isGoogle));
     const newDate = new Date(currentViewDate);
@@ -194,6 +208,19 @@ export default function CalendarDashboard() {
     const newDate = new Date(currentViewDate);
     newDate.setDate(currentViewDate.getDate() + 7);
     setCurrentViewDate(newDate);
+  };
+
+  const openTaskEditModal = (todo: any) => {
+    setEditingTaskId(todo.id); setEditTaskTitle(todo.title); setEditTaskProject(todo.project); setIsTaskEditModalOpen(true);
+  };
+
+  const handleUpdateTask = async () => {
+    if (!editingTaskId || !editTaskTitle.trim()) return;
+    const { data, error } = await supabase.from('todos').update({ title: editTaskTitle, project: editTaskProject || "一般タスク" }).eq('id', editingTaskId).select().single();
+    if (!error && data) {
+      setTodos(todos.map(t => t.id === editingTaskId ? data : t));
+      setIsTaskEditModalOpen(false); setEditingTaskId(null);
+    }
   };
 
   const handleDeleteTask = async (taskId: number, e: React.MouseEvent) => {
@@ -210,65 +237,36 @@ export default function CalendarDashboard() {
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error("Google削除エラー");
         setEvents(events.filter(ev => ev.id !== eventId));
-      } catch (e) {
-        alert("権限エラー：ログアウトして再度Googleでログインし直してください。");
-      }
+      } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
     } else {
       const { error } = await supabase.from('events').delete().eq('id', eventId);
       if (!error) setEvents(events.filter(ev => ev.id !== eventId));
     }
-    setIsCreateEventModalOpen(false);
-    setEditingEventId(null);
+    setIsCreateEventModalOpen(false); setEditingEventId(null);
   };
 
   const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
   const selectAllMembers = () => setSelectedMemberIds(members.map(m => m.id));
   
-  // ★ 変更：グループを「Supabaseのデータベース」に保存する
   const handleSaveGroup = async () => {
     if (!newGroupName.trim() || newGroupMemberIds.length === 0) return;
-    
-    // DBにインサート
-    const { data, error } = await supabase.from('groups').insert({ 
-      name: newGroupName, 
-      member_ids: newGroupMemberIds 
-    }).select().single();
-
-    if (!error && data) {
-      setGroups([...groups, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]);
-    } else {
-      alert("グループの保存に失敗しました。");
-    }
-    
-    setIsGroupModalOpen(false);
-    setNewGroupName("");
-    setNewGroupMemberIds([]);
+    const { data, error } = await supabase.from('groups').insert({ name: newGroupName, member_ids: newGroupMemberIds }).select().single();
+    if (!error && data) { setGroups([...groups, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]); } 
+    setIsGroupModalOpen(false); setNewGroupName(""); setNewGroupMemberIds([]);
   };
 
-  // ★ 変更：グループを「Supabaseのデータベース」から完全に削除する
   const handleDeleteGroup = async (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    // DBからデリート
     const { error } = await supabase.from('groups').delete().eq('id', parseInt(groupId, 10));
-    
-    if (!error) {
-      setGroups(groups.filter(g => g.id !== groupId));
-    } else {
-      alert("グループの削除に失敗しました。");
-    }
+    if (!error) { setGroups(groups.filter(g => g.id !== groupId)); }
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => {
-    e.dataTransfer.setData("type", "todo");
-    e.dataTransfer.setData("todoId", todoId.toString());
+    e.dataTransfer.setData("type", "todo"); e.dataTransfer.setData("todoId", todoId.toString());
   };
 
   const handleEventDragStart = (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => {
-    e.dataTransfer.setData("type", "event");
-    e.dataTransfer.setData("eventId", eventId.toString());
-    e.dataTransfer.setData("isGoogle", isGoogle.toString());
-    e.dataTransfer.setData("memberId", memberId);
+    e.dataTransfer.setData("type", "event"); e.dataTransfer.setData("eventId", eventId.toString()); e.dataTransfer.setData("isGoogle", isGoogle.toString()); e.dataTransfer.setData("memberId", memberId);
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
@@ -291,45 +289,32 @@ export default function CalendarDashboard() {
         }
       }
     } else if (dragType === "event") {
-      const eventId = e.dataTransfer.getData("eventId");
-      const isGoogle = e.dataTransfer.getData("isGoogle") === "true";
-      const memberId = e.dataTransfer.getData("memberId");
-
+      const eventId = e.dataTransfer.getData("eventId"); const isGoogle = e.dataTransfer.getData("isGoogle") === "true"; const memberId = e.dataTransfer.getData("memberId");
       const targetEvent = events.find(ev => ev.id == eventId);
       if (!targetEvent) return;
 
+      // ★ ドロップ時も小数点（分）を正確に計算する
+      const h = Math.floor(startHour);
+      const m = Math.round((startHour % 1) * 60);
+
       if (isGoogle) {
         const token = (session as any)?.accessToken;
-        const startDt = new Date(currentViewDate);
-        const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
-        startDt.setDate(startDt.getDate() + diff + dayIndex);
-        startDt.setHours(9 + startHour, 0, 0, 0);
-        const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000);
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
+        const startDt = new Date(currentViewDate); const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
+        startDt.setDate(startDt.getDate() + diff + dayIndex); 
+        startDt.setHours(9 + h, m, 0, 0); // 分をセット
+        const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000); const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
 
         try {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
-            method: 'PATCH',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              start: { dateTime: startDt.toISOString(), timeZone }, 
-              end: { dateTime: endDt.toISOString(), timeZone } 
-            })
+            method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
           });
-          
-          if (!res.ok) {
-            const errBody = await res.json();
-            throw new Error(errBody.error?.message || "原因不明のエラー");
-          }
+          if (!res.ok) throw new Error("Google更新エラー");
           setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
-        } catch (error: any) {
-          console.error("Google移動エラー:", error);
-          alert(`Googleの予定の移動に失敗しました。\n詳細: ${error.message}`);
-        }
+        } catch (error: any) { alert("Googleの予定の移動に失敗しました。"); }
       } else {
         const { error } = await supabase.from('events').update({ day_index: dayIndex, start_hour: startHour }).eq('id', eventId);
-        if (error) { alert("予定の移動に失敗しました。"); return; }
-        setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
+        if (!error) setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
       }
     }
   };
@@ -339,42 +324,38 @@ export default function CalendarDashboard() {
     setIsTracking(!isTracking);
   };
   const formatTime = (totalSeconds: number) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
+    const hrs = Math.floor(totalSeconds / 3600); const mins = Math.floor((totalSeconds % 3600) / 60); const secs = totalSeconds % 60;
     return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleEmptySlotClick = (dayIndex: number, startHour: number) => {
+  const handleRangeSelect = (dayIndex: number, startHour: number, duration: number) => {
     setEditingEventId(null); 
     setEditingEventIsGoogle(false);
     setNewEventTitle("");
     setNewEventDayIndex(dayIndex);
     setNewEventStartHour(startHour);
-    setNewEventDuration(1);
+    setNewEventDuration(duration);
     setIsCreateEventModalOpen(true);
   };
 
   const handleEventClick = (event: any, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingEventId(event.id);
-    setEditingEventIsGoogle(event.isGoogle);
-    setNewEventTitle(event.title.replace("📅 ", ""));
-    setNewEventMemberId(event.memberId);
-    setNewEventDayIndex(event.dayIndex);
-    setNewEventStartHour(event.startHour);
-    setNewEventDuration(event.duration);
+    e.stopPropagation(); setEditingEventId(event.id); setEditingEventIsGoogle(event.isGoogle);
+    setNewEventTitle(event.title.replace("📅 ", "")); setNewEventMemberId(event.memberId);
+    setNewEventDayIndex(event.dayIndex); setNewEventStartHour(event.startHour); setNewEventDuration(event.duration);
     setIsCreateEventModalOpen(true);
   };
 
   const handleCreateEvent = async () => {
     if (!newEventTitle || !newEventMemberId) return;
-
-    const startDt = new Date(currentViewDate);
-    const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
-    startDt.setDate(startDt.getDate() + diff + newEventDayIndex);
-    startDt.setHours(9 + newEventStartHour, 0, 0, 0);
-    const endDt = new Date(startDt.getTime() + newEventDuration * 60 * 60 * 1000);
+    const startDt = new Date(currentViewDate); const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
+    startDt.setDate(startDt.getDate() + diff + newEventDayIndex); 
+    
+    // ★ 修正：開始時間を15分単位の小数から、正確な「時・分」に変換してセットする
+    const h = Math.floor(newEventStartHour);
+    const m = Math.round((newEventStartHour % 1) * 60);
+    startDt.setHours(9 + h, m, 0, 0);
+    
+    const endDt = new Date(startDt.getTime() + newEventDuration * 60 * 60 * 1000); 
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     if (editingEventId) {
@@ -382,19 +363,12 @@ export default function CalendarDashboard() {
         const token = (session as any)?.accessToken;
         try {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, {
-            method: 'PATCH',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              summary: newEventTitle, 
-              start: { dateTime: startDt.toISOString(), timeZone }, 
-              end: { dateTime: endDt.toISOString(), timeZone } 
-            })
+            method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
           });
           if (!res.ok) throw new Error("更新失敗");
           setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: `📅 ${newEventTitle}`, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration } : ev));
-        } catch (e) {
-          alert("権限エラー：ログアウトして再度Googleでログインし直してください。");
-        }
+        } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
       } else {
         const { data, error } = await supabase.from('events').update({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration }).eq('id', editingEventId).select().single();
         if (!error) setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: data.member_id, title: data.title, dayIndex: data.day_index, startHour: data.start_hour, duration: Number(data.duration) } : ev));
@@ -403,16 +377,12 @@ export default function CalendarDashboard() {
       const { data, error } = await supabase.from('events').insert({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration }).select().single();
       if (!error) setEvents((prevEvents) => [...prevEvents, { id: data.id, memberId: data.member_id, title: data.title, dayIndex: data.day_index, startHour: data.start_hour, duration: Number(data.duration), isGoogle: false }]);
     }
-
-    setIsCreateEventModalOpen(false);
-    setEditingEventId(null);
-    setNewEventTitle("");
+    setIsCreateEventModalOpen(false); setEditingEventId(null); setNewEventTitle("");
     if (!selectedMemberIds.includes(newEventMemberId)) setSelectedMemberIds((prev) => [...prev, newEventMemberId]);
   };
 
   const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle.trim()) return;
+    e.preventDefault(); if (!newTaskTitle.trim()) return;
     const { data, error } = await supabase.from('todos').insert({ title: newTaskTitle, project: newTaskProject || "一般タスク" }).select().single();
     if (!error) setTodos([...todos, data]);
     setNewTaskTitle(""); setNewTaskProject(""); setIsAddingTask(false);
@@ -438,8 +408,7 @@ export default function CalendarDashboard() {
         }
       }
       if (blockStart !== -1) {
-        const [dow, date] = days[d].split(" ");
-        freeSlots.push(`・${currentMonthYear.replace("年 ", "年")}${date}日(${dow}) ${hours[blockStart]}〜19:00`);
+        const [dow, date] = days[d].split(" "); freeSlots.push(`・${currentMonthYear.replace("年 ", "年")}${date}日(${dow}) ${hours[blockStart]}〜19:00`);
       }
     }
     return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.slice(0, 5).join("\n")}\n\n▼ こちらのリンクからもそのままカレンダーへの登録（日程確定）が可能です：\nhttps://mincale.app/t/req-schedule-xyz\n\nご検討のほど、よろしくお願いいたします。`;
@@ -449,34 +418,21 @@ export default function CalendarDashboard() {
 
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
-      
       {(isSidebarOpen || isRightPanelOpen) && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300"
-          onClick={() => { setIsSidebarOpen(false); setIsRightPanelOpen(false); }}
-        />
+        <div className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300" onClick={() => { setIsSidebarOpen(false); setIsRightPanelOpen(false); }} />
       )}
-
       <Modals 
-        isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration}
-        editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent}
-        isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup}
+        isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration} editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent} isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup}
+        isTaskEditModalOpen={isTaskEditModalOpen} setIsTaskEditModalOpen={setIsTaskEditModalOpen} editTaskTitle={editTaskTitle} setEditTaskTitle={setEditTaskTitle} editTaskProject={editTaskProject} setEditTaskProject={setEditTaskProject} handleUpdateTask={handleUpdateTask}
       />
-      
       <Sidebar 
-        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId}
-        isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
-        groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
+        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
       />
-      
       <CalendarMain
-        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart}
-        setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
+        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleRangeSelect={handleRangeSelect} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart} setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
       />
-      
       <RightPanel 
-        activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask}
-        isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen}
+        activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask} isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} openTaskEditModal={openTaskEditModal} 
       />
     </div>
   );

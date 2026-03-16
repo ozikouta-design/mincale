@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckSquare, Clock, Plus, MoreHorizontal, Play, Square, Trash2, X } from "lucide-react"; // ★ Xを追加
+import { CheckSquare, Clock, Plus, Play, Square, Trash2, X, Pencil } from "lucide-react"; // ★ Pencilを追加し、使っていないアイコンを整理
 
 interface RightPanelProps {
   activeTab: "todo" | "time";
@@ -20,8 +20,9 @@ interface RightPanelProps {
   formatTime: (seconds: number) => string;
   toggleTracking: () => void;
   handleDeleteTask: (taskId: number, e: React.MouseEvent) => void;
-  isRightPanelOpen: boolean; // ★ 追加
-  setIsRightPanelOpen: (isOpen: boolean) => void; // ★ 追加
+  isRightPanelOpen: boolean; 
+  setIsRightPanelOpen: (isOpen: boolean) => void; 
+  openTaskEditModal: (todo: any) => void;
 }
 
 export default function RightPanel({
@@ -43,16 +44,13 @@ export default function RightPanel({
   formatTime,
   toggleTracking,
   handleDeleteTask,
-  isRightPanelOpen, // ★ 追加
-  setIsRightPanelOpen // ★ 追加
+  isRightPanelOpen,
+  setIsRightPanelOpen,
+  openTaskEditModal
 }: RightPanelProps) {
   return (
-    <aside 
-      // ★ PCは普通に表示、スマホは absolute で右外からスライドイン
-      className={`fixed md:relative z-40 inset-y-0 right-0 bg-white border-l border-gray-200 w-80 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isRightPanelOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}`}
-    >
+    <aside className={`fixed md:relative z-40 inset-y-0 right-0 bg-white border-l border-gray-200 w-80 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isRightPanelOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}`}>
       <div className="flex items-center justify-between border-b border-gray-200 md:block">
-        {/* スマホ時のみ表示する閉じるボタンを先頭に */}
         <button onClick={() => setIsRightPanelOpen(false)} className="md:hidden p-4 text-gray-500 hover:bg-gray-100">
           <X className="w-5 h-5" />
         </button>
@@ -70,15 +68,15 @@ export default function RightPanel({
         </div>
       </div>
 
-      <div className="p-4 flex-1 overflow-y-auto bg-gray-50 relative">
+      <div className="p-4 flex-1 overflow-y-auto bg-[#f5f5f7] relative">
         {isLoadingData && (
-           <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-50/80 backdrop-blur-sm">
+           <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#f5f5f7]/80 backdrop-blur-sm">
              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
            </div>
         )}
         {activeTab === "todo" ? (
           <div className="space-y-3">
-            <p className="text-xs text-gray-500 mb-4 bg-white p-2 rounded border border-gray-200 shadow-sm border-l-4 border-l-orange-400">
+            <p className="text-xs text-gray-500 mb-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-400">
               💡 タスクをカレンダーにドラッグして予定化できます
             </p>
             
@@ -92,41 +90,52 @@ export default function RightPanel({
               <div 
                 key={todo.id} 
                 draggable={true} 
-                onDragStart={(e) => {
-                  e.currentTarget.style.opacity = '0.5';
-                  handleDragStart(e, todo.id);
-                }} 
-                onDragEnd={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                }}
-                className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
+                onDragStart={(e) => { e.currentTarget.style.opacity = '0.5'; handleDragStart(e, todo.id); }} 
+                onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; }}
+                // ★ Macライクな少し丸みを帯びたカードデザインに変更
+                className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
               >
-                <div className="flex justify-between items-start mb-2 pointer-events-none">
-                  <h3 className="text-sm font-semibold text-gray-800 leading-tight group-hover:text-orange-700 transition-colors">{todo.title}</h3>
-                  <div className="flex items-center space-x-2 pointer-events-auto">
-                    <button onClick={(e) => handleDeleteTask(todo.id, e)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
-                      <Trash2 className="w-4 h-4" />
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-sm font-medium text-gray-800 leading-tight flex-1 pr-2">
+                    {todo.title}
+                  </h3>
+                  
+                  {/* ★ 変更：ホバー時にスッと現れる、Mac風の洗練されたアイコン群 */}
+                  <div className="flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); openTaskEditModal(todo); }} 
+                      className="text-gray-400 hover:text-blue-500 p-1.5 rounded-md hover:bg-blue-50 transition-colors"
+                      title="編集"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <MoreHorizontal className="w-4 h-4 text-gray-400 group-hover:text-orange-500 pointer-events-none" />
+                    <button 
+                      onClick={(e) => handleDeleteTask(todo.id, e)} 
+                      className="text-gray-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors"
+                      title="削除"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-                <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-600 rounded pointer-events-none">
+                
+                <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md pointer-events-none">
                   {todo.project || "一般タスク"}
                 </span>
               </div>
             ))}
             
             {isAddingTask ? (
-              <form onSubmit={handleAddTask} className="bg-white p-3 rounded-lg border border-orange-400 shadow-sm mt-4 animate-in fade-in slide-in-from-top-2">
+              <form onSubmit={handleAddTask} className="bg-white p-3 rounded-xl border border-orange-400 shadow-sm mt-4 animate-in fade-in slide-in-from-top-2">
                 <input type="text" autoFocus value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="タスク名を入力..." className="w-full text-sm border-none focus:ring-0 p-0 mb-2 outline-none text-gray-800" />
                 <input type="text" value={newTaskProject} onChange={(e) => setNewTaskProject(e.target.value)} placeholder="プロジェクト名 (任意)" className="w-full text-xs text-gray-500 border-none focus:ring-0 p-0 mb-3 outline-none" />
                 <div className="flex justify-end space-x-2">
-                  <button type="button" onClick={() => setIsAddingTask(false)} className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors px-2 py-1">キャンセル</button>
-                  <button type="submit" className="text-xs font-medium bg-orange-500 text-white px-3 py-1.5 rounded hover:bg-orange-600 transition-colors shadow-sm">保存する</button>
+                  <button type="button" onClick={() => setIsAddingTask(false)} className="text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors px-2 py-1">キャンセル</button>
+                  <button type="submit" className="text-xs font-medium bg-orange-500 text-white px-3 py-1.5 rounded-md hover:bg-orange-600 transition-colors shadow-sm">保存する</button>
                 </div>
               </form>
             ) : (
-              <button onClick={() => setIsAddingTask(true)} className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-colors flex items-center justify-center mt-4 font-medium">
+              <button onClick={() => setIsAddingTask(true)} className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-colors flex items-center justify-center mt-4 font-medium">
                 <Plus className="w-4 h-4 mr-1" />
                 タスクを追加
               </button>
@@ -138,19 +147,10 @@ export default function RightPanel({
               <Clock className={`w-10 h-10 ${isTracking ? 'text-red-500 animate-pulse' : 'text-orange-500'}`} />
             </div>
             
-            <h3 className="text-sm font-medium text-gray-500 mb-1">
-              {activeTaskName || "タスクを選択、または開始"}
-            </h3>
-            
-            <div className="text-4xl font-mono font-light text-gray-800 mb-8 tracking-wider">
-              {formatTime(trackedSeconds)}
-            </div>
-
-            <p className="text-xs text-gray-500 mb-6 bg-white p-2 rounded border border-gray-200 w-full">
-              カレンダーの予定ブロックをクリックすると、自動的にタイマーが開始します。
-            </p>
-
-            <button onClick={toggleTracking} className={`flex items-center justify-center w-full py-3 rounded-lg text-sm font-bold transition-all shadow-md ${isTracking ? "bg-red-500 hover:bg-red-600 text-white" : "bg-gray-900 hover:bg-black text-white"}`}>
+            <h3 className="text-sm font-medium text-gray-500 mb-1">{activeTaskName || "タスクを選択、または開始"}</h3>
+            <div className="text-4xl font-mono font-light text-gray-800 mb-8 tracking-wider">{formatTime(trackedSeconds)}</div>
+            <p className="text-xs text-gray-500 mb-6 bg-white p-2 rounded-xl border border-gray-200 w-full shadow-sm">カレンダーの予定ブロックをクリックすると、自動的にタイマーが開始します。</p>
+            <button onClick={toggleTracking} className={`flex items-center justify-center w-full py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${isTracking ? "bg-red-500 hover:bg-red-600 text-white" : "bg-gray-800 hover:bg-gray-900 text-white"}`}>
               {isTracking ? <><Square className="w-4 h-4 mr-2 fill-current" />タイマーを停止</> : <><Play className="w-4 h-4 mr-2 fill-current" />タイマーを開始</>}
             </button>
           </div>
