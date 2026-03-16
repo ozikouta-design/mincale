@@ -9,7 +9,7 @@ interface ModalsProps {
   isCopied: boolean;
   isCreateEventModalOpen: boolean;
   setIsCreateEventModalOpen: (isOpen: boolean) => void;
-  handleCreateEvent: (e: React.FormEvent) => void;
+  handleCreateEvent: () => void;
   newEventTitle: string;
   setNewEventTitle: (title: string) => void;
   newEventMemberId: string;
@@ -23,8 +23,10 @@ interface ModalsProps {
   hours: string[];
   newEventDuration: number;
   setNewEventDuration: (duration: number) => void;
-  editingEventId: number | null; // ★ 追加
-  setEditingEventId: (id: number | null) => void; // ★ 追加
+  editingEventId: number | null;
+  setEditingEventId: (id: number | null) => void;
+  editingEventIsGoogle: boolean; // ★ 追加
+  handleDeleteEvent: (eventId: number, isGoogle: boolean) => void; // ★ 追加
 }
 
 export default function Modals({
@@ -49,11 +51,12 @@ export default function Modals({
   hours,
   newEventDuration,
   setNewEventDuration,
-  editingEventId, // ★ 追加
-  setEditingEventId // ★ 追加
+  editingEventId,
+  setEditingEventId,
+  editingEventIsGoogle,
+  handleDeleteEvent
 }: ModalsProps) {
 
-  // ★ 追加：モーダルを閉じる時に編集状態もリセットする
   const closeEventModal = () => {
     setIsCreateEventModalOpen(false);
     setEditingEventId(null);
@@ -98,69 +101,116 @@ export default function Modals({
         </div>
       )}
 
-      {/* ========== モーダル：手動予定作成 ＆ 編集 ========== */}
+      {/* ========== モーダル：Appleライクな 予定作成 ＆ 編集 ========== */}
       {isCreateEventModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-              <h2 className="text-base font-bold text-gray-800">
-                {editingEventId ? "予定の編集" : "新しい予定を作成"} {/* ★ 文言切り替え */}
-              </h2>
-              <button onClick={closeEventModal} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
-                <X className="w-5 h-5" />
+          <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Apple風 ヘッダー */}
+            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+              <button onClick={closeEventModal} className="text-orange-500 text-base font-medium">
+                キャンセル
               </button>
+              <h2 className="text-base font-semibold text-gray-900">
+                {editingEventId ? "詳細" : "新規イベント"}
+              </h2>
+              {editingEventIsGoogle ? (
+                <div className="w-16"></div> /* Googleの場合は完了ボタンを非表示 */
+              ) : (
+                <button onClick={handleCreateEvent} className="text-orange-500 text-base font-semibold">
+                  {editingEventId ? "完了" : "追加"}
+                </button>
+              )}
             </div>
             
-            <form onSubmit={handleCreateEvent} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">タイトル</label>
-                <input type="text" required value={newEventTitle} onChange={(e) => setNewEventTitle(e.target.value)} placeholder="例：チームミーティング" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent" />
-              </div>
+            {/* Apple風 フォームボディ（グレー背景） */}
+            <div className="p-4 space-y-6 overflow-y-auto max-h-[80vh]">
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">保存先カレンダー</label>
-                <select value={newEventMemberId} onChange={(e) => setNewEventMemberId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
-                  {members.map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
+              {/* タイトル入力（白角丸） */}
+              <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+                <input 
+                  type="text" 
+                  required 
+                  disabled={editingEventIsGoogle}
+                  value={newEventTitle} 
+                  onChange={(e) => setNewEventTitle(e.target.value)} 
+                  placeholder="タイトル" 
+                  className="w-full px-4 py-3 text-lg outline-none text-gray-900 placeholder-gray-400 disabled:bg-white disabled:text-gray-500" 
+                />
               </div>
 
-              <div className="flex space-x-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">日付</label>
-                  <select value={newEventDayIndex} onChange={(e) => setNewEventDayIndex(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
+              {/* 時間設定（白角丸のリスト） */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
+                <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+                  <span className="text-gray-900">日付</span>
+                  <select 
+                    disabled={editingEventIsGoogle}
+                    value={newEventDayIndex} 
+                    onChange={(e) => setNewEventDayIndex(Number(e.target.value))} 
+                    className="bg-transparent text-gray-500 outline-none text-right appearance-none disabled:opacity-80"
+                  >
                     {days.map((day, idx) => <option key={idx} value={idx}>{day}</option>)}
                   </select>
                 </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
-                  <select value={newEventStartHour} onChange={(e) => setNewEventStartHour(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
+                <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+                  <span className="text-gray-900">開始</span>
+                  <select 
+                    disabled={editingEventIsGoogle}
+                    value={newEventStartHour} 
+                    onChange={(e) => setNewEventStartHour(Number(e.target.value))} 
+                    className="bg-transparent text-gray-500 outline-none text-right appearance-none disabled:opacity-80"
+                  >
                     {hours.map((hour, idx) => <option key={idx} value={idx}>{hour}</option>)}
+                  </select>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-gray-900">所要時間</span>
+                  <select 
+                    disabled={editingEventIsGoogle}
+                    value={newEventDuration} 
+                    onChange={(e) => setNewEventDuration(Number(e.target.value))} 
+                    className="bg-transparent text-gray-500 outline-none text-right appearance-none disabled:opacity-80"
+                  >
+                    <option value={0.5}>30分</option><option value={1}>1時間</option>
+                    <option value={1.5}>1時間30分</option><option value={2}>2時間</option>
+                    <option value={3}>3時間</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">所要時間</label>
-                <select value={newEventDuration} onChange={(e) => setNewEventDuration(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
-                  <option value={0.5}>30分</option>
-                  <option value={1}>1時間</option>
-                  <option value={1.5}>1時間30分</option>
-                  <option value={2}>2時間</option>
-                  <option value={3}>3時間</option>
-                </select>
+              {/* カレンダー選択（白角丸） */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-gray-900">カレンダー</span>
+                  <select 
+                    disabled={editingEventIsGoogle}
+                    value={newEventMemberId} 
+                    onChange={(e) => setNewEventMemberId(e.target.value)} 
+                    className="w-32 bg-transparent text-gray-500 outline-none text-right truncate appearance-none disabled:opacity-80"
+                  >
+                    {members.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
+                  </select>
+                </div>
               </div>
 
-              <div className="pt-4 flex justify-end space-x-3">
-                <button type="button" onClick={closeEventModal} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
-                  キャンセル
+              {/* Apple風 削除ボタン（編集時のみ、かつGoogle以外） */}
+              {editingEventId && !editingEventIsGoogle && (
+                <button 
+                  onClick={() => handleDeleteEvent(editingEventId, false)} 
+                  className="w-full bg-white rounded-xl py-3 text-red-500 font-semibold shadow-sm text-center"
+                >
+                  予定を削除
                 </button>
-                <button type="submit" className="px-5 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors shadow-sm">
-                  {editingEventId ? "更新する" : "保存する"} {/* ★ 文言切り替え */}
-                </button>
-              </div>
-            </form>
+              )}
+
+              {/* Google予定の注意書き */}
+              {editingEventId && editingEventIsGoogle && (
+                <p className="text-xs text-center text-gray-400 mt-4 px-4">
+                  Googleカレンダーの予定は、Googleカレンダーアプリ側で編集・削除してください。
+                </p>
+              )}
+
+            </div>
           </div>
         </div>
       )}

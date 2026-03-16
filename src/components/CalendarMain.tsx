@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, Link as LinkIcon, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface CalendarMainProps {
   currentMonthYear: string;
@@ -15,8 +15,7 @@ interface CalendarMainProps {
   setIsScheduleModalOpen: (isOpen: boolean) => void;
   handlePrevWeek: () => void;
   handleNextWeek: () => void;
-  handleDeleteEvent: (eventId: number, isGoogle: boolean, e: React.MouseEvent) => void;
-  handleEventClick: (event: any, e: React.MouseEvent) => void; // ★ 追加
+  handleEventClick: (event: any, e: React.MouseEvent) => void; 
 }
 
 export default function CalendarMain({
@@ -33,8 +32,7 @@ export default function CalendarMain({
   setIsScheduleModalOpen,
   handlePrevWeek,
   handleNextWeek,
-  handleDeleteEvent,
-  handleEventClick // ★ 追加
+  handleEventClick
 }: CalendarMainProps) {
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative">
@@ -95,23 +93,13 @@ export default function CalendarMain({
                       return (
                         <div 
                           key={event.id} 
-                          onClick={(e) => handleEventClick(event, e)} // ★ 変更：トラッキングから「編集」へ
-                          className={`absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10 group/event`} 
+                          onClick={(e) => handleEventClick(event, e)}
+                          className="absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10" 
                           style={{ top: '2%', height: `calc(${heightPct}% - 4%)`, backgroundColor: bgColor }} 
-                          title="クリックで予定を編集"
+                          title="クリックして詳細を表示"
                         >
-                          <div className="font-semibold truncate pr-4">{event.title}</div>
+                          <div className="font-semibold truncate">{event.title}</div>
                           <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}</div>
-                          
-                          {!event.isGoogle && (
-                            <button
-                              onClick={(e) => handleDeleteEvent(event.id, event.isGoogle, e)}
-                              className="absolute top-1 right-1 opacity-0 group-hover/event:opacity-100 p-0.5 bg-black/20 hover:bg-black/40 rounded text-white transition-opacity"
-                              title="予定を削除"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
                         </div>
                       );
                     })}
