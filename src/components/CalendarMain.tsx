@@ -2,10 +2,16 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, Menu, ListTodo } from "lucide-react";
+import { getDayIndex } from "@/app/page";
 
 interface CalendarMainProps {
   currentMonthYear: string;
-  days: string[];
+  setCurrentMonthYear: (month: string) => void;
+  currentViewDate: Date;
+  viewMode: "day" | "week" | "month";
+  setViewMode: (mode: "day" | "week" | "month") => void;
+  scrollTrigger: any;
+  days: any[];
   hours: string[];
   isLoadingData: boolean;
   events: any[];
@@ -24,75 +30,86 @@ interface CalendarMainProps {
 }
 
 export default function CalendarMain({
-  currentMonthYear, days, hours, isLoadingData, events, selectedMemberIds, members,
+  currentMonthYear, setCurrentMonthYear, currentViewDate, viewMode, setViewMode, scrollTrigger, days, hours, isLoadingData, events, selectedMemberIds, members,
   handleDragOver, handleDrop, handleRangeSelect,
   setIsScheduleModalOpen, handlePrevWeek, handleNextWeek, handleEventClick, handleEventDragStart, setIsSidebarOpen, setIsRightPanelOpen
 }: CalendarMainProps) {
   
   const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number, startHour: number } | null>(null);
-
   const gridRef = useRef<HTMLDivElement>(null);
-  const [selection, setSelection] = useState<{ dayIndex: number; startHour: number; currentHour: number } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = useState<{ dayIndex: number; colIndex: number; startHour: number; currentHour: number } | null>(null);
 
-  // ★ 超重要：予定が被っている（オーバーラップしている）グループを計算し、横幅と位置を自動分割するエンジン
+  // ★ 初期マウント時やビュー切り替え時にスクロール位置を調整
+  useEffect(() => {
+    if (viewMode === 'week' && scrollContainerRef.current) {
+      const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(new Date()));
+      if (targetColIndex !== -1) {
+        const targetScroll = Math.max(0, targetColIndex * 192 - 192);
+        scrollContainerRef.current.scrollTo({ left: targetScroll, behavior: 'auto' });
+      }
+    }
+  }, [viewMode]);
+
+  // ★ 週ビューの前へ・次へスクロール
+  useEffect(() => {
+    if (viewMode === 'week' && scrollTrigger && scrollContainerRef.current) {
+      const amount = scrollTrigger.direction === 'next' ? 192 * 7 : -192 * 7;
+      scrollContainerRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+  }, [scrollTrigger, viewMode]);
+
+  const handleScroll = () => {
+    if (viewMode !== 'week' || !scrollContainerRef.current) return;
+    const scrollLeft = scrollContainerRef.current.scrollLeft;
+    const visibleColIndex = Math.max(0, Math.floor(scrollLeft / 192));
+    if (days[visibleColIndex]) {
+      const d = days[visibleColIndex].date;
+      setCurrentMonthYear(`${d.getFullYear()}年 ${d.getMonth() + 1}月`);
+    }
+  };
+
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number, totalColumns: number }> = {};
     const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
 
-    for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
-      const dayEvents = visibleEvents.filter(e => e.dayIndex === dayIndex);
-      // 開始時間順、終了時間が遅い順にソート
+    days.forEach(day => {
+      const dayEvents = visibleEvents.filter(e => e.dayIndex === day.dayIndex);
       dayEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
 
       let clusters: any[][] = [];
       let currentCluster: any[] = [];
       let clusterEnd = 0;
 
-      // 1. 被っている予定を「クラスター（塊）」にグループ化する
       dayEvents.forEach(ev => {
         if (currentCluster.length === 0) {
-          currentCluster.push(ev);
-          clusterEnd = ev.startHour + ev.duration;
+          currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
         } else if (ev.startHour < clusterEnd) {
-          currentCluster.push(ev);
-          clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
+          currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
         } else {
-          clusters.push(currentCluster);
-          currentCluster = [ev];
-          clusterEnd = ev.startHour + ev.duration;
+          clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
         }
       });
       if (currentCluster.length > 0) clusters.push(currentCluster);
 
-      // 2. クラスター内で「何列に分けるか（totalColumns）」と「自分が何列目か（column）」を計算する
       clusters.forEach(cluster => {
         let columns: any[][] = [];
         cluster.forEach(ev => {
           let placed = false;
           for (let i = 0; i < columns.length; i++) {
             let lastEv = columns[i][columns[i].length - 1];
-            // 0.001の遊びを持たせて、ピッタリ接している予定は被りと判定しない
             if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
-              columns[i].push(ev);
-              layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 };
-              placed = true;
-              break;
+              columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
             }
           }
-          if (!placed) {
-            columns.push([ev]);
-            layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 };
-          }
+          if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
         });
-
         const totalCols = columns.length;
-        cluster.forEach(ev => {
-          layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols;
-        });
+        cluster.forEach(ev => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols; });
       });
-    }
+    });
     return layouts;
-  }, [events, selectedMemberIds, days.length]);
+  }, [events, selectedMemberIds, days]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -103,46 +120,243 @@ export default function CalendarMain({
         setSelection(prev => prev ? { ...prev, currentHour: clampedY / 64 } : null);
       }
     };
-
     const handleMouseUp = () => {
       if (selection) {
         const start = Math.min(selection.startHour, selection.currentHour);
         const end = Math.max(selection.startHour, selection.currentHour);
-        const duration = end - start;
-        
-        const roundedStart = Math.round(start * 4) / 4;
-        let roundedDuration = Math.round(duration * 4) / 4;
-        
-        if (roundedDuration < 0.25) {
-          roundedDuration = 1;
-        }
+        let roundedDuration = Math.round((end - start) * 4) / 4;
+        if (roundedDuration < 0.25) roundedDuration = 1;
 
-        handleRangeSelect(selection.dayIndex, roundedStart, roundedDuration);
+        handleRangeSelect(selection.dayIndex, Math.round(start * 4) / 4, roundedDuration);
         setSelection(null);
       }
     };
-
-    if (selection) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
+    if (selection) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [selection, handleRangeSelect]);
+
+  // ==============================
+  // ▼ 1. 単日（デイリー）ビューの描画
+  // ==============================
+  const renderDayView = () => {
+    const targetDayIndex = getDayIndex(currentViewDate);
+    const targetDay = days.find(d => d.dayIndex === targetDayIndex) || days[0];
+
+    return (
+      <div className="flex-1 overflow-y-auto flex flex-col bg-white relative">
+        <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
+          <div className="w-16 flex-shrink-0 border-r border-gray-100"></div>
+          <div className="flex-1 py-3 text-center">
+            <span className={`text-sm font-medium ${targetDay.isToday ? 'text-orange-600 bg-orange-100 px-3 py-1 rounded-full' : 'text-gray-600'}`}>{targetDay.label}</span>
+          </div>
+        </div>
+
+        <div className="flex-1 relative" ref={gridRef}>
+          {selection && selection.dayIndex === targetDayIndex && (
+            <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
+                 style={{ left: `calc(4rem + 4px)`, width: `calc(100% - 4rem - 8px)`, top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` }}>
+              <div className="font-bold tracking-wide">新規予定</div>
+            </div>
+          )}
+
+          {hours.map((hour, hourIndex) => (
+            <div key={hourIndex} className="flex h-16 border-b border-gray-100">
+              <div className="w-16 flex-shrink-0 text-right pr-2 py-2 text-xs text-gray-400 border-r border-gray-100">{hour}</div>
+              <div 
+                className="flex-1 relative group cursor-crosshair hover:bg-gray-50/50"
+                onMouseDown={(e) => {
+                  if (!gridRef.current) return;
+                  setSelection({ dayIndex: targetDayIndex, colIndex: 0, startHour: (e.clientY - gridRef.current.getBoundingClientRect().top) / 64, currentHour: (e.clientY - gridRef.current.getBoundingClientRect().top) / 64 });
+                }}
+                onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: targetDayIndex, startHour: hourIndex }); }}
+                onDragLeave={() => setDragOverSlot(null)}
+                onDrop={(e) => { setDragOverSlot(null); handleDrop(e, targetDayIndex, hourIndex); }}
+              >
+                {events
+                  .filter((event) => event.dayIndex === targetDayIndex && Math.floor(event.startHour) === hourIndex)
+                  .filter((event) => selectedMemberIds.includes(event.memberId))
+                  .map((event, idx) => {
+                    const member = members.find((m) => m.id === event.memberId);
+                    const layout = eventLayouts[`${event.id}-${event.memberId}`] || { column: 0, totalColumns: 1 };
+                    return (
+                      <div 
+                        key={event.id} draggable={true} 
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
+                        onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
+                        onClick={(e) => handleEventClick(event, e)}
+                        className="absolute rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
+                        style={{ top: `calc(${(event.startHour % 1) * 100}% + 2px)`, height: `calc(${event.duration * 100}% - 4px)`, left: `calc(${(layout.column * (100 / layout.totalColumns))}% + 2px)`, width: `calc(${100 / layout.totalColumns}% - 4px)`, backgroundColor: event.colorHex || member?.colorHex || "#f97316" }} 
+                      >
+                        <div className="font-semibold truncate">{event.title}</div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // ==============================
+  // ▼ 2. 週（ウィークリー）ビューの描画
+  // ==============================
+  const renderWeekView = () => (
+    <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative" ref={scrollContainerRef} onScroll={handleScroll}>
+      <div className="flex flex-col min-w-max">
+        <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
+          <div className="w-16 flex-shrink-0 sticky left-0 bg-white z-50 border-r border-gray-100"></div>
+          {days.map((day) => (
+            <div key={day.dayIndex} className={`w-48 flex-shrink-0 py-3 text-center border-r border-gray-100 ${day.isToday ? 'bg-orange-50/30' : ''}`}>
+              <span className={`text-sm font-medium ${day.isToday ? 'text-orange-600 bg-orange-100 px-3 py-1 rounded-full' : 'text-gray-600'}`}>{day.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 relative" ref={gridRef}>
+          {selection && (
+            <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
+                 style={{ left: `calc(4rem + ${selection.colIndex * 192}px + 4px)`, width: `calc(192px - 8px)`, top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` }}>
+              <div className="font-bold tracking-wide">新規予定</div>
+            </div>
+          )}
+
+          {hours.map((hour, hourIndex) => (
+            <div key={hourIndex} className="flex h-16 border-b border-gray-100">
+              <div className="w-16 flex-shrink-0 sticky left-0 bg-white z-30 text-right pr-2 py-2 text-xs text-gray-400 border-r border-gray-100">{hour}</div>
+              {days.map((day, colIndex) => (
+                <div 
+                  key={day.dayIndex} 
+                  className={`w-48 flex-shrink-0 border-r border-gray-100 relative group transition-all duration-150 cursor-crosshair ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === hourIndex ? 'bg-orange-100/60 ring-2 ring-orange-500 ring-inset z-20 shadow-inner' : 'hover:bg-gray-50/50'} ${day.isToday ? 'bg-orange-50/10' : ''}`}
+                  onMouseDown={(e) => {
+                    if (!gridRef.current) return;
+                    const exactHour = (e.clientY - gridRef.current.getBoundingClientRect().top) / 64; 
+                    setSelection({ dayIndex: day.dayIndex, colIndex, startHour: exactHour, currentHour: exactHour });
+                  }}
+                  onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: hourIndex }); }}
+                  onDragLeave={() => setDragOverSlot(null)}
+                  onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, hourIndex); }}
+                >
+                  {events
+                    .filter((event) => event.dayIndex === day.dayIndex && Math.floor(event.startHour) === hourIndex)
+                    .filter((event) => selectedMemberIds.includes(event.memberId))
+                    .map((event, idx) => {
+                      const member = members.find((m) => m.id === event.memberId);
+                      const layout = eventLayouts[`${event.id}-${event.memberId}`] || { column: 0, totalColumns: 1 };
+                      return (
+                        <div 
+                          key={`${event.id}-${event.memberId}-${idx}`} draggable={true} 
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
+                          onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
+                          onClick={(e) => handleEventClick(event, e)}
+                          className="absolute rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
+                          style={{ top: `calc(${(event.startHour % 1) * 100}% + 2px)`, height: `calc(${event.duration * 100}% - 4px)`, left: `calc(${(layout.column * (100 / layout.totalColumns))}% + 2px)`, width: `calc(${100 / layout.totalColumns}% - 4px)`, backgroundColor: event.colorHex || member?.colorHex || "#f97316" }} 
+                        >
+                          <div className="font-semibold truncate">{event.title}</div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ==============================
+  // ▼ 3. 月（マンスリー）ビューの描画
+  // ==============================
+  const renderMonthView = () => {
+    const year = currentViewDate.getFullYear();
+    const month = currentViewDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - startDate.getDay()); // 日曜始まりのグリッドを計算
+
+    const calendarDays = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      calendarDays.push(d);
+    }
+
+    return (
+      <div className="flex-1 flex flex-col bg-white overflow-hidden">
+        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 shrink-0">
+          {['日', '月', '火', '水', '木', '金', '土'].map(w => (
+            <div key={w} className="py-2 text-center text-xs font-medium text-gray-500 border-r border-gray-100 last:border-0">{w}</div>
+          ))}
+        </div>
+        <div className="flex-1 grid grid-cols-7 grid-rows-6">
+          {calendarDays.map((d, i) => {
+            const isCurrentMonth = d.getMonth() === month;
+            const dayIdx = getDayIndex(d);
+            const isToday = dayIdx === getDayIndex(new Date());
+            const dayEvents = events.filter(e => e.dayIndex === dayIdx && selectedMemberIds.includes(e.memberId));
+
+            return (
+              <div 
+                key={i} 
+                className={`border-b border-r border-gray-100 p-1 flex flex-col cursor-pointer hover:bg-gray-50/80 transition-colors ${isCurrentMonth ? 'bg-white' : 'bg-gray-50/30'}`}
+                onClick={() => handleRangeSelect(dayIdx, 0, 1)} // 月ビューではクリックで朝9時の枠として作成
+                onDragOver={(e) => handleDragOver(e)}
+                onDrop={(e) => handleDrop(e, dayIdx, 0)}
+              >
+                <div className={`text-xs text-center mb-1 w-6 h-6 mx-auto rounded-full flex items-center justify-center ${isToday ? 'bg-orange-500 text-white font-bold shadow-sm' : isCurrentMonth ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
+                  {d.getDate()}
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-1 no-scrollbar">
+                  {dayEvents.map((e, evIdx) => {
+                    const member = members.find(m => m.id === e.memberId);
+                    const bgColor = e.colorHex || member?.colorHex || "#f97316";
+                    return (
+                      <div 
+                        key={evIdx} 
+                        className="text-[10px] text-white px-1.5 py-0.5 rounded truncate shadow-sm hover:brightness-110 active:scale-95 transition-all"
+                        style={{ backgroundColor: bgColor }}
+                        onClick={(evt) => handleEventClick(e, evt)}
+                      >
+                        {/* 小数の時間を XX:XX に戻して表示 */}
+                        {e.startHour ? `${Math.floor(e.startHour + 9)}:${Math.round((e.startHour % 1) * 60).toString().padStart(2, '0')} ` : ''}{e.title}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ★ ヘッダーの年月表示をビューに合わせて賢く切り替え
+  const displayMonthYear = viewMode === 'week' ? currentMonthYear : `${currentViewDate.getFullYear()}年 ${currentViewDate.getMonth() + 1}月`;
 
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative w-full select-none">
       <header className="h-16 flex items-center justify-between px-4 md:px-6 border-b border-gray-200 bg-white">
         <div className="flex items-center space-x-2 md:space-x-4">
           <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"><Menu className="w-5 h-5 text-gray-700" /></button>
-          <button className="text-lg md:text-xl font-bold text-gray-800">{currentMonthYear}</button>
+          
+          <button className="text-lg md:text-xl font-bold text-gray-800 w-32 text-left">{displayMonthYear}</button>
+          
           <div className="flex items-center space-x-1 md:ml-2">
             <button onClick={handlePrevWeek} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
             <button onClick={handleNextWeek} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
           </div>
-          <div className="hidden md:flex items-center space-x-2 bg-gray-100 rounded-md p-1 ml-4"><button className="px-3 py-1 text-sm bg-white rounded shadow-sm font-medium">週</button><button className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 font-medium">月</button></div>
+          
+          {/* ★ 新規追加：日・週・月の切り替えトグルボタン */}
+          <div className="hidden md:flex items-center space-x-1 bg-gray-100 rounded-md p-1 ml-4 shadow-inner">
+            <button onClick={() => setViewMode('day')} className={`px-3 py-1 text-sm rounded shadow-sm font-medium transition-colors ${viewMode === 'day' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 shadow-none'}`}>日</button>
+            <button onClick={() => setViewMode('week')} className={`px-3 py-1 text-sm rounded shadow-sm font-medium transition-colors ${viewMode === 'week' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 shadow-none'}`}>週</button>
+            <button onClick={() => setViewMode('month')} className={`px-3 py-1 text-sm rounded shadow-sm font-medium transition-colors ${viewMode === 'month' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 shadow-none'}`}>月</button>
+          </div>
         </div>
         <div className="flex items-center space-x-2 md:space-x-4">
           <div className="hidden md:block relative"><Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" /><input type="text" placeholder="予定を検索..." className="pl-9 pr-4 py-2 w-48 lg:w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all" /></div>
@@ -151,110 +365,9 @@ export default function CalendarMain({
         </div>
       </header>
 
-      <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white">
-        <div className="min-w-[700px] flex-1 flex flex-col">
-          <div className="flex border-b border-gray-200 sticky top-0 bg-white z-20">
-            <div className="w-16 flex-shrink-0"></div>
-            {days.map((day, index) => <div key={index} className="flex-1 py-3 text-center border-l border-gray-200"><span className="text-sm font-medium text-gray-600">{day}</span></div>)}
-          </div>
-
-          <div className="flex-1 relative" ref={gridRef}>
-            {isLoadingData && <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/50 backdrop-blur-sm"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div></div>}
-            
-            {selection && (
-              <div 
-                className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
-                style={{
-                  left: `calc(4rem + ${selection.dayIndex} * (100% - 4rem) / 5 + 4px)`,
-                  width: `calc((100% - 4rem) / 5 - 8px)`,
-                  top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`,
-                  height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px`,
-                }}
-              >
-                <div className="font-bold tracking-wide">新規予定</div>
-                <div className="text-[11px] opacity-90 mt-0.5">
-                  {(() => {
-                    const totalMinutes = Math.round(Math.min(selection.startHour, selection.currentHour) * 60) + 9 * 60;
-                    const h = Math.floor(totalMinutes / 60);
-                    const m = totalMinutes % 60;
-                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-                  })()} から作成
-                </div>
-              </div>
-            )}
-
-            {hours.map((hour, hourIndex) => (
-              <div key={hourIndex} className="flex border-b border-gray-100 h-16">
-                <div className="w-16 flex-shrink-0 text-right pr-2 py-2 text-xs text-gray-400">{hour}</div>
-                
-                {days.map((_, dayIndex) => (
-                  <div 
-                    key={dayIndex} 
-                    className={`flex-1 border-l border-gray-100 relative group transition-all duration-150 cursor-crosshair
-                      ${dragOverSlot?.dayIndex === dayIndex && dragOverSlot?.startHour === hourIndex ? 'bg-orange-100/60 ring-2 ring-orange-500 ring-inset z-20 shadow-inner' : 'hover:bg-gray-50/50'}`}
-                    
-                    onMouseDown={(e) => {
-                      if (!gridRef.current) return;
-                      const rect = gridRef.current.getBoundingClientRect();
-                      const y = e.clientY - rect.top;
-                      const exactHour = y / 64; 
-                      setSelection({ dayIndex, startHour: exactHour, currentHour: exactHour });
-                    }}
-                    
-                    onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex, startHour: hourIndex }); }}
-                    onDragLeave={() => setDragOverSlot(null)}
-                    onDrop={(e) => { setDragOverSlot(null); handleDrop(e, dayIndex, hourIndex); }}
-                  >
-                    {events
-                      .filter((event) => event.dayIndex === dayIndex && Math.floor(event.startHour) === hourIndex)
-                      .filter((event) => selectedMemberIds.includes(event.memberId))
-                      .map((event, idx) => {
-                        const member = members.find((m) => m.id === event.memberId);
-                        const topPct = (event.startHour % 1) * 100;
-                        const heightPct = event.duration * 100;
-                        const bgColor = event.colorHex || member?.colorHex || "#f97316"; 
-                        
-                        // ★ 重複計算された結果（レイアウト情報）を取得
-                        const layoutKey = `${event.id}-${event.memberId}`;
-                        const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
-                        
-                        // ★ 被っている予定数（totalColumns）に応じて横幅と左からの位置を計算
-                        const widthPct = 92 / layout.totalColumns;
-                        const leftPct = 4 + (layout.column * widthPct);
-                        
-                        return (
-                          <div 
-                            key={`${event.id}-${event.memberId}-${idx}`} 
-                            draggable={true} 
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
-                            onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
-                            onClick={(e) => handleEventClick(event, e)}
-                            // ★ 以前あった className の `left-[4%] w-[92%]` を削除し、style側で動的計算に！
-                            className="absolute rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
-                            style={{ 
-                              top: `calc(${topPct}% + 2px)`, 
-                              height: `calc(${heightPct}% - 4px)`, 
-                              left: `${leftPct}%`, 
-                              width: `calc(${widthPct}% - 2px)`, // 少し隙間を開けるための -2px
-                              backgroundColor: bgColor 
-                            }} 
-                            title="ドラッグで移動、クリックで詳細を表示"
-                          >
-                            <div className="font-semibold truncate">{event.title}</div>
-                            <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center">
-                              <span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* ★ ビューモードに応じてレンダリングを完全に切り替え */}
+      {viewMode === 'month' ? renderMonthView() : viewMode === 'day' ? renderDayView() : renderWeekView()}
+      
     </main>
   );
 }

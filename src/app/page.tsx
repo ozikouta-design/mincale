@@ -14,9 +14,19 @@ const GOOGLE_COLORS: Record<string, string> = {
   "9": "#5484ed", "10": "#51b749", "11": "#dc2127"
 };
 
+export const getDayIndex = (date: Date) => {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  return parseInt(`${y}${m}${d}`, 10);
+};
+
 export default function CalendarDashboard() {
   const { data: session, status } = useSession();
 
+  // ★ 新規追加：ビューモードのステート（day, week, month）
+  const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
+  
   const [activeTab, setActiveTab] = useState<"todo" | "time">("todo");
   const [members, setMembers] = useState<any[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
@@ -48,8 +58,6 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  const [currentViewDate, setCurrentViewDate] = useState(new Date());
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
@@ -63,33 +71,41 @@ export default function CalendarDashboard() {
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskProject, setEditTaskProject] = useState("");
 
-  const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
-    const dayOfWeek = currentViewDate.getDay();
-    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(currentViewDate);
-    monday.setDate(currentViewDate.getDate() + diffToMonday);
+  const [currentViewDate, setCurrentViewDate] = useState(new Date());
+  const [currentMonthYear, setCurrentMonthYear] = useState("");
+  const [scrollTrigger, setScrollTrigger] = useState<{ direction: 'prev' | 'next', timestamp: number } | null>(null);
 
-    const weekDays = [];
-    const dayNames = ["月", "火", "水", "木", "金"];
-    for (let i = 0; i < 5; i++) {
-      const currentDate = new Date(monday);
-      currentDate.setDate(monday.getDate() + i);
-      weekDays.push(`${dayNames[i]} ${currentDate.getDate()}`);
+  // ★ 変更：土日も含めた前後60日（計120日分）を生成し、ビューに応じて使い分ける
+  const { days, timeMin, timeMax, todayDate } = useMemo(() => {
+    const today = new Date();
+    const tempDays: any[] = [];
+    const start = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth(), currentViewDate.getDate() - 60);
+    let minDate = new Date(start);
+    let maxDate = new Date(start);
+
+    for (let i = 0; i < 120; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      tempDays.push({
+        dayIndex: getDayIndex(d),
+        label: `${["日", "月", "火", "水", "木", "金", "土"][d.getDay()]} ${d.getDate()}`,
+        isToday: getDayIndex(d) === getDayIndex(today),
+        date: d
+      });
+      maxDate = d;
     }
-    const actualToday = new Date();
-    const isCurrentWeek = monday.getMonth() === actualToday.getMonth() && monday.getFullYear() === actualToday.getFullYear();
+    minDate.setHours(0, 0, 0, 0);
+    maxDate.setHours(23, 59, 59, 999);
     
-    return {
-       currentWeekDays: weekDays,
-       currentMonthYear: `${monday.getFullYear()}年 ${monday.getMonth() + 1}月`,
-       todayDate: isCurrentWeek ? actualToday.getDate() : -1
-    };
-  }, [currentViewDate]);
+    return { days: tempDays, timeMin: minDate.toISOString(), timeMax: maxDate.toISOString(), todayDate: today.getDate() };
+  }, [currentViewDate]); // currentViewDateが変わるとカレンダーデータが再生成される
 
-  const days = currentWeekDays;
   const hours = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 
   useEffect(() => {
+    const today = new Date();
+    setCurrentMonthYear(`${today.getFullYear()}年 ${today.getMonth() + 1}月`);
+    
     const fetchData = async () => {
       setIsLoadingData(true);
       const { data: eventsData } = await supabase.from('events').select('*');
@@ -140,22 +156,10 @@ export default function CalendarDashboard() {
         }
       }
 
-      const dayOfWeek = currentViewDate.getDay();
-      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monday = new Date(currentViewDate);
-      monday.setDate(currentViewDate.getDate() + diffToMonday);
-      monday.setHours(0, 0, 0, 0);
-      const saturday = new Date(monday);
-      saturday.setDate(monday.getDate() + 5);
-      saturday.setHours(0, 0, 0, 0);
-
-      const timeMin = monday.toISOString();
-      const timeMax = saturday.toISOString();
-
       if (fetchedMembers.length > 0) {
         let allGoogleEvents: any[] = [];
         const eventPromises = fetchedMembers.map(async (member) => {
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(member.id)}/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=50&singleEvents=true&orderBy=startTime`, { headers: { Authorization: `Bearer ${token}` } });
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(member.id)}/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=250&singleEvents=true&orderBy=startTime`, { headers: { Authorization: `Bearer ${token}` } });
           if (!res.ok) return [];
           const data = await res.json();
           if (!data.items) return [];
@@ -164,9 +168,8 @@ export default function CalendarDashboard() {
             if (!item.start?.dateTime || !item.end?.dateTime) return null;
             const start = new Date(item.start.dateTime);
             const end = new Date(item.end.dateTime);
-            const evDayIndex = start.getDay() - 1; 
             
-            // ★ 修正：Googleの予定が「10:15」などの場合、小数（1.25）として正しく取得する
+            const evDayIndex = getDayIndex(start); 
             const startHour = (start.getHours() - 9) + (start.getMinutes() / 60);
             const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
@@ -175,7 +178,7 @@ export default function CalendarDashboard() {
               dayIndex: evDayIndex, startHour, duration, isGoogle: true,
               colorHex: item.colorId ? GOOGLE_COLORS[item.colorId] : null
             };
-          }).filter((e: any) => e !== null && e.dayIndex >= 0 && e.dayIndex <= 4 && e.startHour >= 0 && e.startHour <= 9);
+          }).filter((e: any) => e !== null && e.startHour >= 0 && e.startHour <= 9);
         });
 
         const results = await Promise.all(eventPromises);
@@ -194,20 +197,28 @@ export default function CalendarDashboard() {
 
   useEffect(() => {
     if (status === "authenticated" && session) syncGoogleData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, currentViewDate]);
+  }, [status, timeMin, timeMax]);
 
-  const handlePrevWeek = () => {
-    setEvents(prev => prev.filter(e => !e.isGoogle));
-    const newDate = new Date(currentViewDate);
-    newDate.setDate(currentViewDate.getDate() - 7);
-    setCurrentViewDate(newDate);
+  // ★ 変更：ビューに応じて前へ・次への挙動を賢く分岐
+  const handlePrev = () => {
+    if (viewMode === 'week') {
+      setScrollTrigger({ direction: 'prev', timestamp: Date.now() });
+    } else {
+      const newDate = new Date(currentViewDate);
+      if (viewMode === 'day') newDate.setDate(currentViewDate.getDate() - 1);
+      else if (viewMode === 'month') newDate.setMonth(currentViewDate.getMonth() - 1);
+      setCurrentViewDate(newDate);
+    }
   };
-  const handleNextWeek = () => {
-    setEvents(prev => prev.filter(e => !e.isGoogle));
-    const newDate = new Date(currentViewDate);
-    newDate.setDate(currentViewDate.getDate() + 7);
-    setCurrentViewDate(newDate);
+  const handleNext = () => {
+    if (viewMode === 'week') {
+      setScrollTrigger({ direction: 'next', timestamp: Date.now() });
+    } else {
+      const newDate = new Date(currentViewDate);
+      if (viewMode === 'day') newDate.setDate(currentViewDate.getDate() + 1);
+      else if (viewMode === 'month') newDate.setMonth(currentViewDate.getMonth() + 1);
+      setCurrentViewDate(newDate);
+    }
   };
 
   const openTaskEditModal = (todo: any) => {
@@ -293,16 +304,16 @@ export default function CalendarDashboard() {
       const targetEvent = events.find(ev => ev.id == eventId);
       if (!targetEvent) return;
 
-      // ★ ドロップ時も小数点（分）を正確に計算する
       const h = Math.floor(startHour);
       const m = Math.round((startHour % 1) * 60);
+      const targetDayInfo = days.find(d => d.dayIndex === dayIndex) || { date: new Date() };
 
       if (isGoogle) {
         const token = (session as any)?.accessToken;
-        const startDt = new Date(currentViewDate); const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
-        startDt.setDate(startDt.getDate() + diff + dayIndex); 
-        startDt.setHours(9 + h, m, 0, 0); // 分をセット
-        const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000); const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
+        const startDt = new Date(targetDayInfo.date); 
+        startDt.setHours(9 + h, m, 0, 0); 
+        const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000); 
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
 
         try {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
@@ -347,13 +358,16 @@ export default function CalendarDashboard() {
 
   const handleCreateEvent = async () => {
     if (!newEventTitle || !newEventMemberId) return;
-    const startDt = new Date(currentViewDate); const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
-    startDt.setDate(startDt.getDate() + diff + newEventDayIndex); 
     
-    // ★ 修正：開始時間を15分単位の小数から、正確な「時・分」に変換してセットする
+    // YYYYMMDD の文字列から直接 Date を生成（モーダルから呼ばれた時用）
+    const y = Math.floor(newEventDayIndex / 10000);
+    const m = Math.floor((newEventDayIndex % 10000) / 100) - 1;
+    const d = newEventDayIndex % 100;
+    const startDt = new Date(y, m, d);
+    
     const h = Math.floor(newEventStartHour);
-    const m = Math.round((newEventStartHour % 1) * 60);
-    startDt.setHours(9 + h, m, 0, 0);
+    const min = Math.round((newEventStartHour % 1) * 60);
+    startDt.setHours(9 + h, min, 0, 0);
     
     const endDt = new Date(startDt.getTime() + newEventDuration * 60 * 60 * 1000); 
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -390,25 +404,26 @@ export default function CalendarDashboard() {
 
   const getCommonFreeTimeText = () => {
     const freeSlots: string[] = [];
-    for (let d = 0; d < days.length; d++) {
+    const visibleDays = days.filter(d => d.dayIndex >= getDayIndex(new Date())).slice(0, 10);
+    
+    for (let d = 0; d < visibleDays.length; d++) {
       let blockStart = -1;
       for (let h = 0; h < hours.length; h++) {
         let isOccupied = false;
         for (const event of events) {
-          if (selectedMemberIds.includes(event.memberId) && event.dayIndex === d) {
+          if (selectedMemberIds.includes(event.memberId) && event.dayIndex === visibleDays[d].dayIndex) {
             if (h >= event.startHour && h < event.startHour + event.duration) { isOccupied = true; break; }
           }
         }
         if (!isOccupied) { if (blockStart === -1) blockStart = h; } else {
           if (blockStart !== -1) {
-            const [dow, date] = days[d].split(" ");
-            freeSlots.push(`・${currentMonthYear.replace("年 ", "年")}${date}日(${dow}) ${hours[blockStart]}〜${hours[h]}`);
+            freeSlots.push(`・${visibleDays[d].label} ${hours[blockStart]}〜${hours[h]}`);
             blockStart = -1;
           }
         }
       }
       if (blockStart !== -1) {
-        const [dow, date] = days[d].split(" "); freeSlots.push(`・${currentMonthYear.replace("年 ", "年")}${date}日(${dow}) ${hours[blockStart]}〜19:00`);
+        freeSlots.push(`・${visibleDays[d].label} ${hours[blockStart]}〜19:00`);
       }
     }
     return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.slice(0, 5).join("\n")}\n\n▼ こちらのリンクからもそのままカレンダーへの登録（日程確定）が可能です：\nhttps://mincale.app/t/req-schedule-xyz\n\nご検討のほど、よろしくお願いいたします。`;
@@ -426,10 +441,10 @@ export default function CalendarDashboard() {
         isTaskEditModalOpen={isTaskEditModalOpen} setIsTaskEditModalOpen={setIsTaskEditModalOpen} editTaskTitle={editTaskTitle} setEditTaskTitle={setEditTaskTitle} editTaskProject={editTaskProject} setEditTaskProject={setEditTaskProject} handleUpdateTask={handleUpdateTask}
       />
       <Sidebar 
-        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
+        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrev} handleNextWeek={handleNext} setEditingEventId={setEditingEventId} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
       />
       <CalendarMain
-        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleRangeSelect={handleRangeSelect} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart} setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
+        currentMonthYear={currentMonthYear} setCurrentMonthYear={setCurrentMonthYear} currentViewDate={currentViewDate} viewMode={viewMode} setViewMode={setViewMode} scrollTrigger={scrollTrigger} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleRangeSelect={handleRangeSelect} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrev} handleNextWeek={handleNext} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart} setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
       />
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask} isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} openTaskEditModal={openTaskEditModal} 

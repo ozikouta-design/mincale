@@ -8,7 +8,8 @@ interface ModalsProps {
   newEventTitle: string; setNewEventTitle: (title: string) => void;
   newEventMemberId: string; setNewEventMemberId: (id: string) => void;
   members: any[];
-  newEventDayIndex: number; setNewEventDayIndex: (index: number) => void; days: string[];
+  newEventDayIndex: number; setNewEventDayIndex: (index: number) => void; 
+  days: any[]; // ★ 変更: DayInfoの配列を受け取る
   newEventStartHour: number; setNewEventStartHour: (hour: number) => void; hours: string[];
   newEventDuration: number; setNewEventDuration: (duration: number) => void;
   editingEventId: any; setEditingEventId: (id: any) => void;
@@ -35,24 +36,18 @@ export default function Modals({
 
   const closeEventModal = () => { setIsCreateEventModalOpen(false); setEditingEventId(null); };
 
-  // ★ 15分刻み（0.25単位）の開始時間の選択肢を自動生成 (9:00〜19:00)
   const timeOptions = [];
   for (let i = 0; i <= 10; i += 0.25) {
     const totalMinutes = Math.round(i * 60) + 9 * 60;
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    const label = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    timeOptions.push({ value: i, label });
+    const h = Math.floor(totalMinutes / 60); const m = totalMinutes % 60;
+    timeOptions.push({ value: i, label: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}` });
   }
 
-  // ★ 15分刻み（0.25単位）の所要時間（長さ）の選択肢を自動生成
   const durationOptions = [];
   for (let i = 0.25; i <= 10; i += 0.25) {
-    const h = Math.floor(i);
-    const m = Math.round((i % 1) * 60);
+    const h = Math.floor(i); const m = Math.round((i % 1) * 60);
     let label = "";
-    if (h > 0) label += `${h}時間`;
-    if (m > 0) label += `${m}分`;
+    if (h > 0) label += `${h}時間`; if (m > 0) label += `${m}分`;
     durationOptions.push({ value: i, label });
   }
 
@@ -76,7 +71,6 @@ export default function Modals({
         </div>
       )}
 
-      {/* 予定作成 ＆ 編集（ダークポップオーバー風） */}
       {isCreateEventModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent backdrop-blur-sm transition-opacity duration-300" onMouseDown={closeEventModal}>
           <div className="bg-[#282828]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-[380px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-[0.95] duration-200 ease-out" onMouseDown={(e) => e.stopPropagation()}>
@@ -86,26 +80,21 @@ export default function Modals({
               <div className="space-y-3">
                 <div className="flex items-center text-sm text-gray-300">
                   <CalendarIcon className="w-4 h-4 mr-3 text-gray-400" />
+                  {/* ★ 変更：日時の選択を120日分の本格的なデータから取得 */}
                   <select value={newEventDayIndex} onChange={(e) => setNewEventDayIndex(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none">
-                    {days.map((day, idx) => <option key={idx} value={idx} className="bg-gray-800">{day}</option>)}
+                    {days.map((day) => <option key={day.dayIndex} value={day.dayIndex} className="bg-gray-800">{day.label}</option>)}
                   </select>
                 </div>
                 <div className="flex items-center text-sm text-gray-300">
                   <Clock className="w-4 h-4 mr-3 text-gray-400" />
                   <div className="flex items-center space-x-2">
-                    
-                    {/* ★ ここに15分刻みの開始時間の選択肢を流し込む */}
                     <select value={newEventStartHour} onChange={(e) => setNewEventStartHour(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none">
                       {timeOptions.map(opt => <option key={opt.value} value={opt.value} className="bg-gray-800">{opt.label}</option>)}
                     </select>
-                    
                     <span>から</span>
-                    
-                    {/* ★ ここにドラッグした長さが 15分(0.25)刻みでそのまま入る！ */}
                     <select value={newEventDuration} onChange={(e) => setNewEventDuration(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none text-blue-400 font-medium">
                       {durationOptions.map(opt => <option key={opt.value} value={opt.value} className="bg-gray-800">{opt.label}</option>)}
                     </select>
-                    
                   </div>
                 </div>
                 <div className="flex items-center text-sm text-gray-300">

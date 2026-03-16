@@ -31,7 +31,7 @@ interface SidebarProps {
   isSyncing: boolean;
   signIn: (provider: string) => void;
   signOut: () => void;
-  handlePrevWeek: () => void;
+  handlePrevWeek: () => void; // ★ Propsとしてはそのまま受け取る
   handleNextWeek: () => void;
   setEditingEventId: (id: any) => void;
   isSidebarOpen: boolean; 
