@@ -44,9 +44,14 @@ export default function CalendarDashboard() {
 
   const [currentViewDate, setCurrentViewDate] = useState(new Date());
 
-  // ★ スマホ用のサイドパネル開閉ステートを追加
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
+
+  // ★ 新規追加：グループ管理のステート
+  const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
 
   const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
     const dayOfWeek = currentViewDate.getDay();
@@ -88,6 +93,12 @@ export default function CalendarDashboard() {
       setIsLoadingData(false);
     };
     fetchData();
+
+    // ★ 初期ロード時にローカルストレージからグループ情報を復元
+    const savedGroups = localStorage.getItem("mincale_groups");
+    if (savedGroups) {
+      try { setGroups(JSON.parse(savedGroups)); } catch (e) {}
+    }
   }, []);
 
   useEffect(() => {
@@ -170,12 +181,15 @@ export default function CalendarDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, currentViewDate]);
 
+  // ★ 改善：週移動時に「古いGoogleの予定」を一瞬で消して、ラグ表示を防ぐ！
   const handlePrevWeek = () => {
+    setEvents(prev => prev.filter(e => !e.isGoogle)); 
     const newDate = new Date(currentViewDate);
     newDate.setDate(currentViewDate.getDate() - 7);
     setCurrentViewDate(newDate);
   };
   const handleNextWeek = () => {
+    setEvents(prev => prev.filter(e => !e.isGoogle));
     const newDate = new Date(currentViewDate);
     newDate.setDate(currentViewDate.getDate() + 7);
     setCurrentViewDate(newDate);
@@ -209,6 +223,26 @@ export default function CalendarDashboard() {
   const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
   const selectAllMembers = () => setSelectedMemberIds(members.map(m => m.id));
   
+  // ★ 新規追加：グループの保存ロジック
+  const handleSaveGroup = () => {
+    if (!newGroupName.trim() || newGroupMemberIds.length === 0) return;
+    const newGroup = { id: Date.now().toString(), name: newGroupName, memberIds: newGroupMemberIds };
+    const updatedGroups = [...groups, newGroup];
+    setGroups(updatedGroups);
+    localStorage.setItem("mincale_groups", JSON.stringify(updatedGroups)); // ブラウザに保存
+    setIsGroupModalOpen(false);
+    setNewGroupName("");
+    setNewGroupMemberIds([]);
+  };
+
+  // ★ 新規追加：グループの削除ロジック
+  const handleDeleteGroup = (groupId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedGroups = groups.filter(g => g.id !== groupId);
+    setGroups(updatedGroups);
+    localStorage.setItem("mincale_groups", JSON.stringify(updatedGroups));
+  };
+
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => {
     e.dataTransfer.setData("type", "todo");
     e.dataTransfer.setData("todoId", todoId.toString());
@@ -400,7 +434,6 @@ export default function CalendarDashboard() {
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
       
-      {/* ★ スマホ用：メニューが開いている時のオーバーレイ（背景を暗くしてタップで閉じる） */}
       {(isSidebarOpen || isRightPanelOpen) && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300"
@@ -411,21 +444,23 @@ export default function CalendarDashboard() {
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration}
         editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent}
+        isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup} // ★ 追加
       />
       
       <Sidebar 
         currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId}
-        isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} // ★ Props追加
+        isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
+        groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} // ★ 追加
       />
       
       <CalendarMain
         currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart}
-        setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen} // ★ Props追加
+        setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
       />
       
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask}
-        isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} // ★ Props追加
+        isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen}
       />
     </div>
   );

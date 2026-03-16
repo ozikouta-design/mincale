@@ -27,6 +27,15 @@ interface ModalsProps {
   setEditingEventId: (id: any) => void;
   editingEventIsGoogle: boolean;
   handleDeleteEvent: (eventId: any, isGoogle: boolean, calendarId: string) => void;
+  
+  // ★ 新規追加：グループ作成用Props
+  isGroupModalOpen?: boolean;
+  setIsGroupModalOpen?: (isOpen: boolean) => void;
+  newGroupName?: string;
+  setNewGroupName?: (name: string) => void;
+  newGroupMemberIds?: string[];
+  setNewGroupMemberIds?: (ids: string[]) => void;
+  handleSaveGroup?: () => void;
 }
 
 export default function Modals({
@@ -54,7 +63,8 @@ export default function Modals({
   editingEventId,
   setEditingEventId,
   editingEventIsGoogle,
-  handleDeleteEvent
+  handleDeleteEvent,
+  isGroupModalOpen, setIsGroupModalOpen, newGroupName, setNewGroupName, newGroupMemberIds, setNewGroupMemberIds, handleSaveGroup // ★
 }: ModalsProps) {
 
   const closeEventModal = () => {
@@ -101,68 +111,38 @@ export default function Modals({
         </div>
       )}
 
-      {/* ========== モーダル：Appleライクな 予定作成 ＆ 編集 ========== */}
+      {/* ========== モーダル：予定作成 ＆ 編集 ========== */}
       {isCreateEventModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
-          {/* ★ アニメーションをApple風に（slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out） */}
           <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
-            
             <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-              <button onClick={closeEventModal} className="text-orange-500 text-base font-medium">
-                キャンセル
-              </button>
-              <h2 className="text-base font-semibold text-gray-900">
-                {editingEventId ? "詳細" : "新規イベント"}
-              </h2>
-              <button onClick={handleCreateEvent} className="text-orange-500 text-base font-semibold">
-                {editingEventId ? "完了" : "追加"}
-              </button>
+              <button onClick={closeEventModal} className="text-orange-500 text-base font-medium">キャンセル</button>
+              <h2 className="text-base font-semibold text-gray-900">{editingEventId ? "詳細" : "新規イベント"}</h2>
+              <button onClick={handleCreateEvent} className="text-orange-500 text-base font-semibold">{editingEventId ? "完了" : "追加"}</button>
             </div>
             
             <div className="p-4 space-y-6 overflow-y-auto max-h-[80vh]">
-              
               <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-                <input 
-                  type="text" 
-                  required 
-                  value={newEventTitle} 
-                  onChange={(e) => setNewEventTitle(e.target.value)} 
-                  placeholder="タイトル" 
-                  className="w-full px-4 py-3 text-lg outline-none text-gray-900 placeholder-gray-400" 
-                />
+                <input type="text" required value={newEventTitle} onChange={(e) => setNewEventTitle(e.target.value)} placeholder="タイトル" className="w-full px-4 py-3 text-lg outline-none text-gray-900 placeholder-gray-400" />
               </div>
 
               <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
                   <span className="text-gray-900">日付</span>
-                  <select 
-                    value={newEventDayIndex} 
-                    onChange={(e) => setNewEventDayIndex(Number(e.target.value))} 
-                    className="bg-transparent text-gray-500 outline-none text-right appearance-none"
-                  >
+                  <select value={newEventDayIndex} onChange={(e) => setNewEventDayIndex(Number(e.target.value))} className="bg-transparent text-gray-500 outline-none text-right appearance-none">
                     {days.map((day, idx) => <option key={idx} value={idx}>{day}</option>)}
                   </select>
                 </div>
                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
                   <span className="text-gray-900">開始</span>
-                  <select 
-                    value={newEventStartHour} 
-                    onChange={(e) => setNewEventStartHour(Number(e.target.value))} 
-                    className="bg-transparent text-gray-500 outline-none text-right appearance-none"
-                  >
+                  <select value={newEventStartHour} onChange={(e) => setNewEventStartHour(Number(e.target.value))} className="bg-transparent text-gray-500 outline-none text-right appearance-none">
                     {hours.map((hour, idx) => <option key={idx} value={idx}>{hour}</option>)}
                   </select>
                 </div>
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="text-gray-900">所要時間</span>
-                  <select 
-                    value={newEventDuration} 
-                    onChange={(e) => setNewEventDuration(Number(e.target.value))} 
-                    className="bg-transparent text-gray-500 outline-none text-right appearance-none"
-                  >
-                    <option value={0.5}>30分</option><option value={1}>1時間</option>
-                    <option value={1.5}>1時間30分</option><option value={2}>2時間</option>
-                    <option value={3}>3時間</option>
+                  <select value={newEventDuration} onChange={(e) => setNewEventDuration(Number(e.target.value))} className="bg-transparent text-gray-500 outline-none text-right appearance-none">
+                    <option value={0.5}>30分</option><option value={1}>1時間</option><option value={1.5}>1時間30分</option><option value={2}>2時間</option><option value={3}>3時間</option>
                   </select>
                 </div>
               </div>
@@ -170,25 +150,66 @@ export default function Modals({
               <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="text-gray-900">カレンダー</span>
-                  <select 
-                    value={newEventMemberId} 
-                    onChange={(e) => setNewEventMemberId(e.target.value)} 
-                    className="w-32 bg-transparent text-gray-500 outline-none text-right truncate appearance-none"
-                  >
+                  <select value={newEventMemberId} onChange={(e) => setNewEventMemberId(e.target.value)} className="w-32 bg-transparent text-gray-500 outline-none text-right truncate appearance-none">
                     {members.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
                   </select>
                 </div>
               </div>
 
               {editingEventId && (
-                <button 
-                  onClick={() => handleDeleteEvent(editingEventId, editingEventIsGoogle, newEventMemberId)} 
-                  className="w-full bg-white rounded-xl py-3 text-red-500 font-semibold shadow-sm text-center"
-                >
+                <button onClick={() => handleDeleteEvent(editingEventId, editingEventIsGoogle, newEventMemberId)} className="w-full bg-white rounded-xl py-3 text-red-500 font-semibold shadow-sm text-center">
                   予定を削除
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* ========== ★ 新規追加：グループ作成モーダル ========== */}
+      {isGroupModalOpen && setIsGroupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
+          <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[400px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
+            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+              <button onClick={() => setIsGroupModalOpen(false)} className="text-orange-500 text-base font-medium">キャンセル</button>
+              <h2 className="text-base font-semibold text-gray-900">グループ作成</h2>
+              <button onClick={handleSaveGroup} className="text-orange-500 text-base font-semibold" disabled={!newGroupName || newGroupMemberIds?.length === 0}>保存</button>
+            </div>
+            
+            <div className="p-4 space-y-6 overflow-y-auto max-h-[80vh]">
+              <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+                <input 
+                  type="text" 
+                  value={newGroupName} 
+                  onChange={(e) => setNewGroupName && setNewGroupName(e.target.value)} 
+                  placeholder="グループ名 (例: 開発チーム)" 
+                  className="w-full px-4 py-3 text-base outline-none text-gray-900 placeholder-gray-400" 
+                />
+              </div>
+
+              <div>
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 pl-2">表示するメンバー</h3>
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
+                  {members.map((m, idx) => (
+                    <label key={m.id} className={`flex items-center justify-between px-4 py-3 cursor-pointer ${idx !== members.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                      <div className="flex items-center">
+                        <div className="w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] mr-3" style={{ backgroundColor: m.colorHex }}>{m.initials}</div>
+                        <span className="text-gray-900">{m.name}</span>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={newGroupMemberIds?.includes(m.id)}
+                        onChange={(e) => {
+                          if (!setNewGroupMemberIds || !newGroupMemberIds) return;
+                          if (e.target.checked) setNewGroupMemberIds([...newGroupMemberIds, m.id]);
+                          else setNewGroupMemberIds(newGroupMemberIds.filter(id => id !== m.id));
+                        }}
+                        className="w-5 h-5 accent-orange-500"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

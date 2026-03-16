@@ -9,8 +9,9 @@ import {
   Check,
   LogOut,
   RefreshCw,
-  X
-} from "lucide-react"; // ★ Xを追加
+  X,
+  Trash2 // ★ 追加
+} from "lucide-react"; 
 
 interface SidebarProps {
   currentMonthYear: string;
@@ -34,8 +35,12 @@ interface SidebarProps {
   handlePrevWeek: () => void;
   handleNextWeek: () => void;
   setEditingEventId: (id: any) => void;
-  isSidebarOpen: boolean; // ★ 追加
-  setIsSidebarOpen: (isOpen: boolean) => void; // ★ 追加
+  isSidebarOpen: boolean; 
+  setIsSidebarOpen: (isOpen: boolean) => void; 
+  groups: any[]; // ★ 追加
+  setIsGroupModalOpen: (isOpen: boolean) => void; // ★ 追加
+  setSelectedMemberIds: (ids: string[]) => void; // ★ 追加
+  handleDeleteGroup: (groupId: string, e: React.MouseEvent) => void; // ★ 追加
 }
 
 export default function Sidebar({
@@ -60,20 +65,20 @@ export default function Sidebar({
   handlePrevWeek,
   handleNextWeek,
   setEditingEventId,
-  isSidebarOpen, // ★ 追加
-  setIsSidebarOpen // ★ 追加
+  isSidebarOpen, 
+  setIsSidebarOpen,
+  groups, // ★ 追加
+  setIsGroupModalOpen, // ★ 追加
+  setSelectedMemberIds, // ★ 追加
+  handleDeleteGroup // ★ 追加
 }: SidebarProps) {
   return (
-    <aside 
-      // ★ PC(md)以上は普通に表示、スマホ以下は absolute にして画面外からスライドイン
-      className={`fixed md:relative z-40 inset-y-0 left-0 bg-gray-50 border-r border-gray-200 w-64 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
-    >
+    <aside className={`fixed md:relative z-40 inset-y-0 left-0 bg-gray-50 border-r border-gray-200 w-64 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}>
       <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
         <div className="flex items-center">
           <CalendarIcon className="w-6 h-6 text-orange-500 mr-2" />
           <h1 className="text-lg font-bold text-gray-800 tracking-tight">みんカレ</h1>
         </div>
-        {/* スマホ時のみ表示する閉じるボタン */}
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 text-gray-500 hover:bg-gray-200 rounded-full">
           <X className="w-5 h-5" />
         </button>
@@ -87,7 +92,7 @@ export default function Sidebar({
             setNewEventDayIndex(0);
             setNewEventStartHour(0);
             setNewEventDuration(1);
-            setIsSidebarOpen(false); // ★ 開いたらサイドバーを閉じる
+            setIsSidebarOpen(false); 
             setIsCreateEventModalOpen(true);
           }}
           className="w-full flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white py-2.5 px-4 rounded-lg font-medium transition-colors shadow-sm mb-6"
@@ -128,11 +133,27 @@ export default function Sidebar({
               <Users className="w-4 h-4 mr-2" />
               クイック表示
             </div>
+            {/* ★ グループ追加ボタン */}
+            <Plus onClick={() => setIsGroupModalOpen(true)} className="w-4 h-4 text-gray-400 cursor-pointer hover:text-orange-500 transition-colors" />
           </div>
           <ul className="space-y-1">
             <li onClick={selectAllMembers} className="text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors">
               すべてのカレンダーを表示
             </li>
+            
+            {/* ★ 作成したグループ一覧 */}
+            {groups.map(group => (
+              <li 
+                key={group.id} 
+                onClick={() => { setSelectedMemberIds(group.memberIds); setIsSidebarOpen(false); }} 
+                className="flex items-center justify-between text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors group"
+              >
+                <span className="truncate">{group.name}</span>
+                <button onClick={(e) => handleDeleteGroup(group.id, e)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity p-0.5">
+                  <X className="w-3 h-3" />
+                </button>
+              </li>
+            ))}
           </ul>
         </div>
 
