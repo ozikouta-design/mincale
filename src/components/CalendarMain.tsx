@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, Menu, ListTodo } from "lucide-react";
 
 interface CalendarMainProps {
@@ -33,6 +33,66 @@ export default function CalendarMain({
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{ dayIndex: number; startHour: number; currentHour: number } | null>(null);
+
+  // ★ 超重要：予定が被っている（オーバーラップしている）グループを計算し、横幅と位置を自動分割するエンジン
+  const eventLayouts = useMemo(() => {
+    const layouts: Record<string, { column: number, totalColumns: number }> = {};
+    const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
+
+    for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+      const dayEvents = visibleEvents.filter(e => e.dayIndex === dayIndex);
+      // 開始時間順、終了時間が遅い順にソート
+      dayEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
+
+      let clusters: any[][] = [];
+      let currentCluster: any[] = [];
+      let clusterEnd = 0;
+
+      // 1. 被っている予定を「クラスター（塊）」にグループ化する
+      dayEvents.forEach(ev => {
+        if (currentCluster.length === 0) {
+          currentCluster.push(ev);
+          clusterEnd = ev.startHour + ev.duration;
+        } else if (ev.startHour < clusterEnd) {
+          currentCluster.push(ev);
+          clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
+        } else {
+          clusters.push(currentCluster);
+          currentCluster = [ev];
+          clusterEnd = ev.startHour + ev.duration;
+        }
+      });
+      if (currentCluster.length > 0) clusters.push(currentCluster);
+
+      // 2. クラスター内で「何列に分けるか（totalColumns）」と「自分が何列目か（column）」を計算する
+      clusters.forEach(cluster => {
+        let columns: any[][] = [];
+        cluster.forEach(ev => {
+          let placed = false;
+          for (let i = 0; i < columns.length; i++) {
+            let lastEv = columns[i][columns[i].length - 1];
+            // 0.001の遊びを持たせて、ピッタリ接している予定は被りと判定しない
+            if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
+              columns[i].push(ev);
+              layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 };
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            columns.push([ev]);
+            layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 };
+          }
+        });
+
+        const totalCols = columns.length;
+        cluster.forEach(ev => {
+          layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols;
+        });
+      });
+    }
+    return layouts;
+  }, [events, selectedMemberIds, days.length]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -146,16 +206,21 @@ export default function CalendarMain({
                     onDrop={(e) => { setDragOverSlot(null); handleDrop(e, dayIndex, hourIndex); }}
                   >
                     {events
-                      // ★ 修正：小数（15分刻み）の予定も、対応する1時間の枠内に正しく描画させるためのフィルタ
                       .filter((event) => event.dayIndex === dayIndex && Math.floor(event.startHour) === hourIndex)
                       .filter((event) => selectedMemberIds.includes(event.memberId))
                       .map((event, idx) => {
                         const member = members.find((m) => m.id === event.memberId);
-                        
-                        // ★ 修正：小数の時間（10:15など）に合わせて、上からの距離(top)を正確にピクセル計算する
                         const topPct = (event.startHour % 1) * 100;
                         const heightPct = event.duration * 100;
                         const bgColor = event.colorHex || member?.colorHex || "#f97316"; 
+                        
+                        // ★ 重複計算された結果（レイアウト情報）を取得
+                        const layoutKey = `${event.id}-${event.memberId}`;
+                        const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
+                        
+                        // ★ 被っている予定数（totalColumns）に応じて横幅と左からの位置を計算
+                        const widthPct = 92 / layout.totalColumns;
+                        const leftPct = 4 + (layout.column * widthPct);
                         
                         return (
                           <div 
@@ -165,8 +230,15 @@ export default function CalendarMain({
                             onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
                             onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
                             onClick={(e) => handleEventClick(event, e)}
-                            className="absolute w-[92%] left-[4%] rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
-                            style={{ top: `calc(${topPct}% + 2px)`, height: `calc(${heightPct}% - 4px)`, backgroundColor: bgColor }} 
+                            // ★ 以前あった className の `left-[4%] w-[92%]` を削除し、style側で動的計算に！
+                            className="absolute rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
+                            style={{ 
+                              top: `calc(${topPct}% + 2px)`, 
+                              height: `calc(${heightPct}% - 4px)`, 
+                              left: `${leftPct}%`, 
+                              width: `calc(${widthPct}% - 2px)`, // 少し隙間を開けるための -2px
+                              backgroundColor: bgColor 
+                            }} 
                             title="ドラッグで移動、クリックで詳細を表示"
                           >
                             <div className="font-semibold truncate">{event.title}</div>
