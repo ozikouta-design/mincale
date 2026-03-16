@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { supabase } from "@/lib/supabase"; // Supabaseをインポート
+import { supabase } from "@/lib/supabase";
 import {
   Calendar as CalendarIcon,
   Users,
@@ -25,82 +25,57 @@ import {
 } from "lucide-react";
 
 export default function CalendarDashboard() {
-  // === 認証状態の取得 ===
   const { data: session, status } = useSession();
 
   // === 状態管理（State） ===
-
-  // タブの切り替え
   const [activeTab, setActiveTab] = useState<"todo" | "time">("todo");
   
-  // 選択されているメンバーID
-  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([1, 2]);
-
-  // モーダルの開閉状態
+  // 動的メンバー（Googleカレンダー一覧）
+  const [members, setMembers] = useState<any[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  
+  // モーダル等
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
-  // タイムトラッキング用
+  // トラッキング
   const [isTracking, setIsTracking] = useState(false);
   const [trackedSeconds, setTrackedSeconds] = useState(0);
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
 
-  // 予定作成フォーム用
+  // 予定作成フォーム
   const [newEventTitle, setNewEventTitle] = useState("");
-  const [newEventMemberId, setNewEventMemberId] = useState(1);
+  const [newEventMemberId, setNewEventMemberId] = useState<string>("");
   const [newEventDayIndex, setNewEventDayIndex] = useState(0);
   const [newEventStartHour, setNewEventStartHour] = useState(0);
   const [newEventDuration, setNewEventDuration] = useState(1);
 
-  // Googleカレンダー同期用
+  // 同期・ローディング状態
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // 現在ログインしているユーザー（仮のID）
-  const currentUser = { id: 1 };
+  // データ
+  const [events, setEvents] = useState<any[]>([]);
+  const [todos, setTodos] = useState<any[]>([]);
 
-  // === マスタデータ ===
-  const members = [
-    { id: 1, name: "田中 太郎", color: "bg-blue-500", initials: "TT" },
-    { id: 2, name: "佐藤 花子", color: "bg-green-500", initials: "SH" },
-    { id: 3, name: "鈴木 一郎", color: "bg-purple-500", initials: "SI" },
-    { id: 4, name: "高橋 メアリー", color: "bg-pink-500", initials: "TM" },
-  ];
-
-  const customViews = [
-    { id: 1, name: "フロントエンドチーム", memberIds: [1, 2] },
-    { id: 2, name: "デザインチーム", memberIds: [2, 4] },
-    { id: 3, name: "役員・マネージャー", memberIds: [3] },
-    { id: 4, name: "プロジェクト全員", memberIds: [1, 2, 3, 4] },
-  ];
-
+  // マスタデータ
   const days = ["月 15", "火 16", "水 17", "木 18", "金 19"];
-  
   const hours = [
     "09:00", "10:00", "11:00", "12:00", "13:00", 
     "14:00", "15:00", "16:00", "17:00", "18:00"
   ];
 
-  // 動的データ（Supabaseから取得するため、初期値は空配列）
-  const [events, setEvents] = useState<any[]>([]);
-  const [todos, setTodos] = useState<any[]>([]);
-  const [isLoadingData, setIsLoadingData] = useState(true);
-
   // === 副作用（Effect）===
 
-  // 初期ロード時にSupabaseからデータを取得する
+  // 初期ロード：Supabaseからデータ取得
   useEffect(() => {
     const fetchData = async () => {
       setIsLoadingData(true);
       
-      // 予定（events）の取得
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select('*');
-        
+      const { data: eventsData, error: eventsError } = await supabase.from('events').select('*');
       if (eventsError) console.error("予定の取得エラー:", eventsError);
       
-      // 取得したデータをフロントエンド用の名前に変換（スネークケース -> キャメルケース）
       const formattedEvents = eventsData ? eventsData.map(e => ({
         id: e.id,
         memberId: e.member_id,
@@ -108,21 +83,14 @@ export default function CalendarDashboard() {
         dayIndex: e.day_index,
         startHour: e.start_hour,
         duration: e.duration,
+        isGoogle: false
       })) : [];
 
       setEvents(formattedEvents);
 
-      // タスク（todos）の取得
-      const { data: todosData, error: todosError } = await supabase
-        .from('todos')
-        .select('*')
-        .order('id', { ascending: true });
-
+      const { data: todosData, error: todosError } = await supabase.from('todos').select('*').order('id', { ascending: true });
       if (todosError) console.error("タスクの取得エラー:", todosError);
-      
-      if (todosData) {
-        setTodos(todosData);
-      }
+      if (todosData) setTodos(todosData);
 
       setIsLoadingData(false);
     };
@@ -130,7 +98,7 @@ export default function CalendarDashboard() {
     fetchData();
   }, []);
 
-  // タイマーのカウントアップ処理
+  // タイマー
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTracking) {
@@ -142,79 +110,104 @@ export default function CalendarDashboard() {
   }, [isTracking]);
 
   // ==========================================
-  // 🔄 Googleカレンダー同期ロジック (API連携)
+  // 🔄 Googleカレンダー同期ロジック (複数カレンダー対応)
   // ==========================================
-  const syncGoogleCalendar = async () => {
-    if (!session || !(session as any).accessToken) {
-      return;
-    }
+  const syncGoogleData = async () => {
+    if (!session || !(session as any).accessToken) return;
 
     setIsSyncing(true);
     try {
-      const timeMin = new Date().toISOString();
-      const timeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      
-      const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=30&singleEvents=true&orderBy=startTime`,
-        {
-          headers: {
-            Authorization: `Bearer ${(session as any).accessToken}`,
-          },
-        }
-      );
+      const token = (session as any).accessToken;
 
-      if (!res.ok) {
-        throw new Error("カレンダーデータの取得に失敗しました。");
+      // 1. ユーザーのGoogleカレンダー「一覧（マイカレンダー＋他のカレンダー）」を取得
+      const calListRes = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!calListRes.ok) throw new Error("カレンダーリストの取得に失敗しました");
+      
+      const calListData = await calListRes.json();
+      let fetchedMembers: any[] = [];
+      let defaultPrimaryId = "";
+
+      if (calListData.items && calListData.items.length > 0) {
+        fetchedMembers = calListData.items.map((cal: any) => {
+          if (cal.primary) defaultPrimaryId = cal.id;
+          return {
+            id: cal.id,
+            name: cal.summaryOverride || cal.summary, // ユーザーが変更した名前を優先
+            colorHex: cal.backgroundColor, // Googleカレンダーの色コード
+            initials: (cal.summaryOverride || cal.summary).substring(0, 2).toUpperCase(),
+            primary: cal.primary || false
+          };
+        });
+
+        setMembers(fetchedMembers);
+
+        // 初回のみ：取得したすべてのカレンダーを選択状態にし、デフォルト作成先をメインカレンダーにする
+        if (selectedMemberIds.length === 0) {
+          setSelectedMemberIds(fetchedMembers.map(m => m.id));
+          setNewEventMemberId(defaultPrimaryId || fetchedMembers[0].id);
+        }
       }
 
-      const data = await res.json();
+      // 2. 取得した全カレンダーの予定を並行して取得する
+      if (fetchedMembers.length > 0) {
+        const timeMin = new Date().toISOString();
+        const timeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        let allGoogleEvents: any[] = [];
 
-      if (data.items && data.items.length > 0) {
-        const fetchedEvents = data.items
-          .map((item: any) => {
-            if (!item.start.dateTime || !item.end.dateTime) return null;
+        // Promise.allで一気に取得して高速化
+        const eventPromises = fetchedMembers.map(async (member) => {
+          const res = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(member.id)}/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=50&singleEvents=true&orderBy=startTime`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (!res.ok) return [];
+          const data = await res.json();
+          if (!data.items) return [];
 
+          return data.items.map((item: any) => {
+            if (!item.start?.dateTime || !item.end?.dateTime) return null;
             const start = new Date(item.start.dateTime);
             const end = new Date(item.end.dateTime);
-            
-            const dayOfWeek = start.getDay(); 
-            const dayIndex = dayOfWeek - 1; 
-
+            const dayIndex = start.getDay() - 1; 
             const startHour = start.getHours() - 9;
             const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
             return {
-              id: item.id, // Googleの文字列ID
-              memberId: currentUser.id,
+              id: item.id,
+              memberId: member.id, // どのカレンダーの予定かを紐付け
               title: `📅 ${item.summary || "予定あり"}`,
-              dayIndex: dayIndex,
-              startHour: startHour,
-              duration: duration,
+              dayIndex,
+              startHour,
+              duration,
+              isGoogle: true
             };
-          })
-          .filter((e: any) => e !== null && e.dayIndex >= 0 && e.dayIndex <= 4 && e.startHour >= 0 && e.startHour <= 9);
-
-        // ※Googleの予定は「都度読み込む」ものなのでDBには保存せず、画面上（State）だけで既存の予定と合体させます
-        setEvents((prevEvents) => {
-          const filteredPrev = prevEvents.filter(p => !fetchedEvents.some((f: any) => f.id === p.id));
-          return [...filteredPrev, ...fetchedEvents];
+          }).filter((e: any) => e !== null && e.dayIndex >= 0 && e.dayIndex <= 4 && e.startHour >= 0 && e.startHour <= 9);
         });
-        
-        if (!selectedMemberIds.includes(currentUser.id)) {
-          setSelectedMemberIds((prev) => [...prev, currentUser.id]);
-        }
+
+        const results = await Promise.all(eventPromises);
+        allGoogleEvents = results.flat();
+
+        // Supabaseの予定（isGoogle: false）と結合
+        setEvents((prevEvents) => {
+          const supabaseEvents = prevEvents.filter(p => !p.isGoogle);
+          return [...supabaseEvents, ...allGoogleEvents];
+        });
       }
+
     } catch (error) {
-      console.error(error);
+      console.error("同期エラー:", error);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // 🚀 自動同期（ページを開いた時・ログイン完了時に自動で同期を走らせる）
+  // ログイン時に自動同期
   useEffect(() => {
     if (status === "authenticated" && session) {
-      syncGoogleCalendar();
+      syncGoogleData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
@@ -222,17 +215,16 @@ export default function CalendarDashboard() {
 
   // === 操作関数 ===
 
-  const toggleMember = (id: number) => {
+  const toggleMember = (id: string) => {
     setSelectedMemberIds((prev) =>
       prev.includes(id) ? prev.filter((memberId) => memberId !== id) : [...prev, id]
     );
   };
 
-  const applyCustomView = (memberIds: number[]) => {
-    setSelectedMemberIds(memberIds);
+  const selectAllMembers = () => {
+    setSelectedMemberIds(members.map(m => m.id));
   };
 
-  // ドラッグ＆ドロップ関連
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => {
     e.dataTransfer.setData("todoId", todoId.toString());
   };
@@ -241,22 +233,21 @@ export default function CalendarDashboard() {
     e.preventDefault();
   };
 
-  // タスクをカレンダーにドロップして予定化（Supabaseと連携）
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => {
     e.preventDefault();
     const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10);
     const targetTodo = todos.find((t) => t.id === draggedTodoId);
+    const targetCalendarId = newEventMemberId || members[0]?.id || "";
 
-    if (targetTodo) {
-      // 1. Supabaseの events テーブルに新しい予定を追加
+    if (targetTodo && targetCalendarId) {
       const { data: insertedEvent, error: insertError } = await supabase
         .from('events')
         .insert({
-          member_id: currentUser.id,
+          member_id: targetCalendarId,
           title: targetTodo.title,
           day_index: dayIndex,
           start_hour: startHour,
-          duration: 1, // デフォルトで1時間
+          duration: 1,
         })
         .select()
         .single();
@@ -266,18 +257,12 @@ export default function CalendarDashboard() {
         return;
       }
 
-      // 2. Supabaseの todos テーブルから元のタスクを削除
-      const { error: deleteError } = await supabase
-        .from('todos')
-        .delete()
-        .eq('id', draggedTodoId);
-
+      const { error: deleteError } = await supabase.from('todos').delete().eq('id', draggedTodoId);
       if (deleteError) {
         console.error("タスクの削除エラー:", deleteError);
         return;
       }
 
-      // 3. 画面のStateを更新
       const newEvent = {
         id: insertedEvent.id,
         memberId: insertedEvent.member_id,
@@ -285,18 +270,18 @@ export default function CalendarDashboard() {
         dayIndex: insertedEvent.day_index,
         startHour: insertedEvent.start_hour,
         duration: insertedEvent.duration,
+        isGoogle: false
       };
 
       setEvents((prevEvents) => [...prevEvents, newEvent]);
       setTodos((prevTodos) => prevTodos.filter((t) => t.id !== draggedTodoId));
 
-      if (!selectedMemberIds.includes(currentUser.id)) {
-        setSelectedMemberIds((prev) => [...prev, currentUser.id]);
+      if (!selectedMemberIds.includes(targetCalendarId)) {
+        setSelectedMemberIds((prev) => [...prev, targetCalendarId]);
       }
     }
   };
 
-  // タイムトラッキング関連
   const toggleTracking = () => {
     if (!isTracking && !activeTaskName) {
       setActiveTaskName("一般作業");
@@ -306,7 +291,7 @@ export default function CalendarDashboard() {
 
   const startTrackingFromEvent = (eventTitle: string) => {
     setActiveTab("time");
-    setActiveTaskName(eventTitle);
+    setActiveTaskName(eventTitle.replace("📅 ", ""));
     setIsTracking(true);
   };
 
@@ -317,22 +302,18 @@ export default function CalendarDashboard() {
     return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // 予定作成（空きマスをクリックした時の処理）
   const handleEmptySlotClick = (dayIndex: number, startHour: number) => {
     setNewEventTitle("");
-    setNewEventMemberId(currentUser.id);
     setNewEventDayIndex(dayIndex);
     setNewEventStartHour(startHour);
     setNewEventDuration(1);
     setIsCreateEventModalOpen(true);
   };
 
-  // 手動で予定作成（Supabaseと連携）
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEventTitle) return;
+    if (!newEventTitle || !newEventMemberId) return;
 
-    // SupabaseにデータをInsert
     const { data, error } = await supabase
       .from('events')
       .insert({
@@ -351,7 +332,6 @@ export default function CalendarDashboard() {
       return;
     }
 
-    // 成功したら画面に反映
     const newEvent = {
       id: data.id,
       memberId: data.member_id,
@@ -359,6 +339,7 @@ export default function CalendarDashboard() {
       dayIndex: data.day_index,
       startHour: data.start_hour,
       duration: Number(data.duration),
+      isGoogle: false
     };
 
     setEvents((prevEvents) => [...prevEvents, newEvent]);
@@ -370,7 +351,6 @@ export default function CalendarDashboard() {
     }
   };
 
-  // 日程調整関連
   const getCommonFreeTimeText = () => {
     const freeSlots: string[] = [];
     
@@ -443,13 +423,10 @@ https://mincale.app/t/req-schedule-xyz
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-gray-800">日程調整リンクの発行</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">選択中メンバーの共通の空き時間を自動抽出しました</p>
+                  <p className="text-xs text-gray-500 mt-0.5">選択中のカレンダーから共通の空き時間を抽出しました</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsScheduleModalOpen(false)}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
-              >
+              <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -461,29 +438,11 @@ https://mincale.app/t/req-schedule-xyz
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3">
-              <button 
-                onClick={() => setIsScheduleModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
-              >
+              <button onClick={() => setIsScheduleModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors">
                 キャンセル
               </button>
-              <button 
-                onClick={handleCopyToClipboard}
-                className={`flex items-center px-5 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm ${
-                  isCopied ? "bg-green-600 hover:bg-green-700" : "bg-orange-500 hover:bg-orange-600"
-                }`}
-              >
-                {isCopied ? (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    コピーしました！
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 mr-2" />
-                    テキストをコピー
-                  </>
-                )}
+              <button onClick={handleCopyToClipboard} className={`flex items-center px-5 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm ${isCopied ? "bg-green-600 hover:bg-green-700" : "bg-orange-500 hover:bg-orange-600"}`}>
+                {isCopied ? <><Check className="w-4 h-4 mr-2" />コピーしました！</> : <><Copy className="w-4 h-4 mr-2" />テキストをコピー</>}
               </button>
             </div>
           </div>
@@ -496,10 +455,7 @@ https://mincale.app/t/req-schedule-xyz
           <div className="bg-white rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <h2 className="text-base font-bold text-gray-800">新しい予定を作成</h2>
-              <button 
-                onClick={() => setIsCreateEventModalOpen(false)}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
-              >
+              <button onClick={() => setIsCreateEventModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -507,23 +463,12 @@ https://mincale.app/t/req-schedule-xyz
             <form onSubmit={handleCreateEvent} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">タイトル</label>
-                <input 
-                  type="text" 
-                  required
-                  value={newEventTitle}
-                  onChange={(e) => setNewEventTitle(e.target.value)}
-                  placeholder="例：チームミーティング"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                />
+                <input type="text" required value={newEventTitle} onChange={(e) => setNewEventTitle(e.target.value)} placeholder="例：チームミーティング" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent" />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">担当メンバー</label>
-                <select 
-                  value={newEventMemberId}
-                  onChange={(e) => setNewEventMemberId(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">保存先カレンダー</label>
+                <select value={newEventMemberId} onChange={(e) => setNewEventMemberId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
                   {members.map(m => (
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
@@ -533,37 +478,21 @@ https://mincale.app/t/req-schedule-xyz
               <div className="flex space-x-4">
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">日付</label>
-                  <select 
-                    value={newEventDayIndex}
-                    onChange={(e) => setNewEventDayIndex(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                  >
-                    {days.map((day, idx) => (
-                      <option key={idx} value={idx}>{day}</option>
-                    ))}
+                  <select value={newEventDayIndex} onChange={(e) => setNewEventDayIndex(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
+                    {days.map((day, idx) => <option key={idx} value={idx}>{day}</option>)}
                   </select>
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
-                  <select 
-                    value={newEventStartHour}
-                    onChange={(e) => setNewEventStartHour(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                  >
-                    {hours.map((hour, idx) => (
-                      <option key={idx} value={idx}>{hour}</option>
-                    ))}
+                  <select value={newEventStartHour} onChange={(e) => setNewEventStartHour(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
+                    {hours.map((hour, idx) => <option key={idx} value={idx}>{hour}</option>)}
                   </select>
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">所要時間</label>
-                <select 
-                  value={newEventDuration}
-                  onChange={(e) => setNewEventDuration(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                >
+                <select value={newEventDuration} onChange={(e) => setNewEventDuration(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white">
                   <option value={0.5}>30分</option>
                   <option value={1}>1時間</option>
                   <option value={1.5}>1時間30分</option>
@@ -573,19 +502,8 @@ https://mincale.app/t/req-schedule-xyz
               </div>
 
               <div className="pt-4 flex justify-end space-x-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsCreateEventModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  キャンセル
-                </button>
-                <button 
-                  type="submit"
-                  className="px-5 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors shadow-sm"
-                >
-                  保存する
-                </button>
+                <button type="button" onClick={() => setIsCreateEventModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">キャンセル</button>
+                <button type="submit" className="px-5 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors shadow-sm">保存する</button>
               </div>
             </form>
           </div>
@@ -600,11 +518,9 @@ https://mincale.app/t/req-schedule-xyz
         </div>
 
         <div className="p-4 flex-1 overflow-y-auto">
-          {/* サイドバーの予定作成ボタン */}
           <button 
             onClick={() => {
               setNewEventTitle("");
-              setNewEventMemberId(currentUser.id);
               setNewEventDayIndex(0);
               setNewEventStartHour(0);
               setNewEventDuration(1);
@@ -616,7 +532,6 @@ https://mincale.app/t/req-schedule-xyz
             予定を作成
           </button>
 
-          {/* ミニカレンダー（実際のUI） */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
               <span className="font-semibold text-sm">2026年 3月</span>
@@ -631,12 +546,7 @@ https://mincale.app/t/req-schedule-xyz
               </div>
               <div className="grid grid-cols-7 gap-1 text-center text-sm">
                 {[...Array(31)].map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${
-                      i + 1 === 15 ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"
-                    }`}
-                  >
+                  <div key={i} className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${i + 1 === 15 ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"}`}>
                     {i + 1}
                   </div>
                 ))}
@@ -648,28 +558,24 @@ https://mincale.app/t/req-schedule-xyz
             <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700">
               <div className="flex items-center">
                 <Users className="w-4 h-4 mr-2" />
-                カスタムビュー
+                クイック表示
               </div>
-              <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-700" />
             </div>
             <ul className="space-y-1">
-              {customViews.map((view) => (
-                <li
-                  key={view.id}
-                  onClick={() => applyCustomView(view.memberIds)}
-                  className="text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors"
-                >
-                  {view.name}
-                </li>
-              ))}
+              <li onClick={selectAllMembers} className="text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors">
+                すべてのカレンダーを表示
+              </li>
             </ul>
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700">
-              <span>チームメンバー</span>
+              <span>マイカレンダー</span>
               <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-700" />
             </div>
+            {members.length === 0 && !isLoadingData && (
+              <div className="text-xs text-gray-400 pl-2">Googleにログインしてください</div>
+            )}
             <ul className="space-y-1">
               {members.map((member) => {
                 const isSelected = selectedMemberIds.includes(member.id);
@@ -678,16 +584,17 @@ https://mincale.app/t/req-schedule-xyz
                     key={member.id}
                     onClick={() => toggleMember(member.id)}
                     className={`flex items-center text-sm cursor-pointer p-1.5 rounded-md transition-all ${
-                      isSelected
-                        ? "bg-orange-50 text-orange-900 font-medium"
-                        : "text-gray-700 hover:bg-gray-200"
+                      isSelected ? "bg-orange-50 text-orange-900 font-medium" : "text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] mr-2 shadow-sm ${member.color} ${!isSelected && "opacity-60"}`}>
+                    <div 
+                      className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] mr-2 shadow-sm ${!isSelected && "opacity-60"}`}
+                      style={{ backgroundColor: member.colorHex }}
+                    >
                       {member.initials}
                     </div>
-                    <span className="flex-1">{member.name}</span>
-                    {isSelected && <Check className="w-4 h-4 text-orange-500" />}
+                    <span className="flex-1 truncate" title={member.name}>{member.name}</span>
+                    {isSelected && <Check className="w-4 h-4" style={{ color: member.colorHex }} />}
                   </li>
                 );
               })}
@@ -698,9 +605,7 @@ https://mincale.app/t/req-schedule-xyz
         {/* ========== ユーザープロファイル＆設定エリア ========== */}
         <div className="p-4 border-t border-gray-200 bg-white flex flex-col space-y-4">
           {status === "loading" ? (
-            <div className="flex items-center justify-center py-2 text-sm text-gray-500 animate-pulse">
-              読み込み中...
-            </div>
+            <div className="flex items-center justify-center py-2 text-sm text-gray-500 animate-pulse">読み込み中...</div>
           ) : session && session.user ? (
             <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
               <div className="flex items-center space-x-3 overflow-hidden">
@@ -717,28 +622,16 @@ https://mincale.app/t/req-schedule-xyz
                 </div>
               </div>
               <div className="flex space-x-1">
-                <button
-                  onClick={syncGoogleCalendar}
-                  disabled={isSyncing}
-                  className="p-1.5 text-orange-500 hover:text-white hover:bg-orange-500 rounded-md transition-colors disabled:opacity-50"
-                  title="Googleカレンダーを同期"
-                >
+                <button onClick={syncGoogleData} disabled={isSyncing} className="p-1.5 text-orange-500 hover:text-white hover:bg-orange-500 rounded-md transition-colors disabled:opacity-50" title="Googleカレンダーを同期">
                   <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
                 </button>
-                <button
-                  onClick={() => signOut()}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                  title="ログアウト"
-                >
+                <button onClick={() => signOut()} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="ログアウト">
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => signIn("google")}
-              className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
-            >
+            <button onClick={() => signIn("google")} className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -770,17 +663,10 @@ https://mincale.app/t/req-schedule-xyz
           <div className="flex items-center space-x-4">
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="予定を検索、または 'Cmd+K'"
-                className="pl-9 pr-4 py-2 w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all"
-              />
+              <input type="text" placeholder="予定を検索、または 'Cmd+K'" className="pl-9 pr-4 py-2 w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all" />
             </div>
             
-            <button 
-              onClick={() => setIsScheduleModalOpen(true)}
-              className="bg-white border border-gray-200 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700 transition-all shadow-sm flex items-center group"
-            >
+            <button onClick={() => setIsScheduleModalOpen(true)} className="bg-white border border-gray-200 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700 transition-all shadow-sm flex items-center group">
               <LinkIcon className="w-4 h-4 mr-2 text-gray-400 group-hover:text-orange-500 transition-colors" />
               日程調整リンク
             </button>
@@ -809,7 +695,6 @@ https://mincale.app/t/req-schedule-xyz
                   {hour}
                 </div>
                 
-                {/* 曜日ごとの空きマス */}
                 {days.map((_, dayIndex) => (
                   <div 
                     key={dayIndex} 
@@ -824,23 +709,23 @@ https://mincale.app/t/req-schedule-xyz
                       .map((event) => {
                         const member = members.find((m) => m.id === event.memberId);
                         const heightPct = event.duration * 100;
+                        const bgColor = member?.colorHex || "#f97316"; // カレンダーの色、なければオレンジ
                         
                         return (
                           <div
                             key={event.id}
                             onClick={(e) => {
-                              // マスのクリックイベントを発火させないように伝播をストップ
                               e.stopPropagation();
                               startTrackingFromEvent(event.title);
                             }}
-                            className={`absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10 ${member?.color}`}
-                            style={{ top: '2%', height: `calc(${heightPct}% - 4%)` }}
+                            className={`absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10`}
+                            style={{ top: '2%', height: `calc(${heightPct}% - 4%)`, backgroundColor: bgColor }}
                             title="クリックでタイマーを開始"
                           >
                             <div className="font-semibold truncate">{event.title}</div>
                             <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center">
                               <span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>
-                              {member?.name}
+                              {member?.name || "カレンダー"}
                             </div>
                           </div>
                         );
@@ -856,26 +741,14 @@ https://mincale.app/t/req-schedule-xyz
       {/* ========== 右サイドパネル ========== */}
       <aside className="w-80 border-l border-gray-200 bg-white flex flex-col z-10">
         <div className="flex border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab("todo")}
-            className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${
-              activeTab === "todo" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-            }`}
-          >
+          <button onClick={() => setActiveTab("todo")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "todo" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
             <CheckSquare className="w-4 h-4 mr-2" />
             ToDoリスト
           </button>
-          <button
-            onClick={() => setActiveTab("time")}
-            className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${
-              activeTab === "time" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-            }`}
-          >
+          <button onClick={() => setActiveTab("time")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "time" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
             <Clock className="w-4 h-4 mr-2" />
             トラッキング
-            {isTracking && (
-              <span className="ml-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-            )}
+            {isTracking && <span className="ml-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
           </button>
         </div>
 
@@ -898,12 +771,7 @@ https://mincale.app/t/req-schedule-xyz
               )}
 
               {todos.map((todo) => (
-                <div 
-                  key={todo.id} 
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, todo.id)}
-                  className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
-                >
+                <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo.id)} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group">
                   <div className="flex justify-between items-start mb-2 pointer-events-none">
                     <h3 className="text-sm font-semibold text-gray-800 leading-tight group-hover:text-orange-700 transition-colors">{todo.title}</h3>
                     <MoreHorizontal className="w-4 h-4 text-gray-400 group-hover:text-orange-500" />
@@ -937,25 +805,8 @@ https://mincale.app/t/req-schedule-xyz
                 カレンダーの予定ブロックをクリックすると、自動的にタイマーが開始します。
               </p>
 
-              <button 
-                onClick={toggleTracking}
-                className={`flex items-center justify-center w-full py-3 rounded-lg text-sm font-bold transition-all shadow-md ${
-                  isTracking 
-                    ? "bg-red-500 hover:bg-red-600 text-white" 
-                    : "bg-gray-900 hover:bg-black text-white"
-                }`}
-              >
-                {isTracking ? (
-                  <>
-                    <Square className="w-4 h-4 mr-2 fill-current" />
-                    タイマーを停止
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2 fill-current" />
-                    タイマーを開始
-                  </>
-                )}
+              <button onClick={toggleTracking} className={`flex items-center justify-center w-full py-3 rounded-lg text-sm font-bold transition-all shadow-md ${isTracking ? "bg-red-500 hover:bg-red-600 text-white" : "bg-gray-900 hover:bg-black text-white"}`}>
+                {isTracking ? <><Square className="w-4 h-4 mr-2 fill-current" />タイマーを停止</> : <><Play className="w-4 h-4 mr-2 fill-current" />タイマーを開始</>}
               </button>
             </div>
           )}
