@@ -1,65 +1,967 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useEffect } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
+import { supabase } from "@/lib/supabase"; // Supabaseをインポート
+import {
+  Calendar as CalendarIcon,
+  Users,
+  CheckSquare,
+  Clock,
+  Search,
+  Plus,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Play,
+  Square,
+  Check,
+  X,
+  Copy,
+  Link as LinkIcon,
+  LogOut,
+  RefreshCw
+} from "lucide-react";
+
+export default function CalendarDashboard() {
+  // === 認証状態の取得 ===
+  const { data: session, status } = useSession();
+
+  // === 状態管理（State） ===
+
+  // タブの切り替え
+  const [activeTab, setActiveTab] = useState<"todo" | "time">("todo");
+  
+  // 選択されているメンバーID
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([1, 2]);
+
+  // モーダルの開閉状態
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+
+  // タイムトラッキング用
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackedSeconds, setTrackedSeconds] = useState(0);
+  const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
+
+  // 予定作成フォーム用
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventMemberId, setNewEventMemberId] = useState(1);
+  const [newEventDayIndex, setNewEventDayIndex] = useState(0);
+  const [newEventStartHour, setNewEventStartHour] = useState(0);
+  const [newEventDuration, setNewEventDuration] = useState(1);
+
+  // Googleカレンダー同期用
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // 現在ログインしているユーザー（仮のID）
+  const currentUser = { id: 1 };
+
+  // === マスタデータ ===
+  const members = [
+    { id: 1, name: "田中 太郎", color: "bg-blue-500", initials: "TT" },
+    { id: 2, name: "佐藤 花子", color: "bg-green-500", initials: "SH" },
+    { id: 3, name: "鈴木 一郎", color: "bg-purple-500", initials: "SI" },
+    { id: 4, name: "高橋 メアリー", color: "bg-pink-500", initials: "TM" },
+  ];
+
+  const customViews = [
+    { id: 1, name: "フロントエンドチーム", memberIds: [1, 2] },
+    { id: 2, name: "デザインチーム", memberIds: [2, 4] },
+    { id: 3, name: "役員・マネージャー", memberIds: [3] },
+    { id: 4, name: "プロジェクト全員", memberIds: [1, 2, 3, 4] },
+  ];
+
+  const days = ["月 15", "火 16", "水 17", "木 18", "金 19"];
+  
+  const hours = [
+    "09:00", "10:00", "11:00", "12:00", "13:00", 
+    "14:00", "15:00", "16:00", "17:00", "18:00"
+  ];
+
+  // 動的データ（Supabaseから取得するため、初期値は空配列）
+  const [events, setEvents] = useState<any[]>([]);
+  const [todos, setTodos] = useState<any[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // === 副作用（Effect）===
+
+  // 初期ロード時にSupabaseからデータを取得する
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoadingData(true);
+      
+      // 予定（events）の取得
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('*');
+        
+      if (eventsError) console.error("予定の取得エラー:", eventsError);
+      
+      // 取得したデータをフロントエンド用の名前に変換（スネークケース -> キャメルケース）
+      const formattedEvents = eventsData ? eventsData.map(e => ({
+        id: e.id,
+        memberId: e.member_id,
+        title: e.title,
+        dayIndex: e.day_index,
+        startHour: e.start_hour,
+        duration: e.duration,
+      })) : [];
+
+      setEvents(formattedEvents);
+
+      // タスク（todos）の取得
+      const { data: todosData, error: todosError } = await supabase
+        .from('todos')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (todosError) console.error("タスクの取得エラー:", todosError);
+      
+      if (todosData) {
+        setTodos(todosData);
+      }
+
+      setIsLoadingData(false);
+    };
+
+    fetchData();
+  }, []);
+
+  // タイマーのカウントアップ処理
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isTracking) {
+      interval = setInterval(() => {
+        setTrackedSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTracking]);
+
+  // ==========================================
+  // 🔄 Googleカレンダー同期ロジック (API連携)
+  // ==========================================
+  const syncGoogleCalendar = async () => {
+    if (!session || !(session as any).accessToken) {
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const timeMin = new Date().toISOString();
+      const timeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=30&singleEvents=true&orderBy=startTime`,
+        {
+          headers: {
+            Authorization: `Bearer ${(session as any).accessToken}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error("カレンダーデータの取得に失敗しました。");
+      }
+
+      const data = await res.json();
+
+      if (data.items && data.items.length > 0) {
+        const fetchedEvents = data.items
+          .map((item: any) => {
+            if (!item.start.dateTime || !item.end.dateTime) return null;
+
+            const start = new Date(item.start.dateTime);
+            const end = new Date(item.end.dateTime);
+            
+            const dayOfWeek = start.getDay(); 
+            const dayIndex = dayOfWeek - 1; 
+
+            const startHour = start.getHours() - 9;
+            const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+            return {
+              id: item.id, // Googleの文字列ID
+              memberId: currentUser.id,
+              title: `📅 ${item.summary || "予定あり"}`,
+              dayIndex: dayIndex,
+              startHour: startHour,
+              duration: duration,
+            };
+          })
+          .filter((e: any) => e !== null && e.dayIndex >= 0 && e.dayIndex <= 4 && e.startHour >= 0 && e.startHour <= 9);
+
+        // ※Googleの予定は「都度読み込む」ものなのでDBには保存せず、画面上（State）だけで既存の予定と合体させます
+        setEvents((prevEvents) => {
+          const filteredPrev = prevEvents.filter(p => !fetchedEvents.some((f: any) => f.id === p.id));
+          return [...filteredPrev, ...fetchedEvents];
+        });
+        
+        if (!selectedMemberIds.includes(currentUser.id)) {
+          setSelectedMemberIds((prev) => [...prev, currentUser.id]);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // 🚀 自動同期（ページを開いた時・ログイン完了時に自動で同期を走らせる）
+  useEffect(() => {
+    if (status === "authenticated" && session) {
+      syncGoogleCalendar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+
+  // === 操作関数 ===
+
+  const toggleMember = (id: number) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(id) ? prev.filter((memberId) => memberId !== id) : [...prev, id]
+    );
+  };
+
+  const applyCustomView = (memberIds: number[]) => {
+    setSelectedMemberIds(memberIds);
+  };
+
+  // ドラッグ＆ドロップ関連
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => {
+    e.dataTransfer.setData("todoId", todoId.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
+  // タスクをカレンダーにドロップして予定化（Supabaseと連携）
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => {
+    e.preventDefault();
+    const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10);
+    const targetTodo = todos.find((t) => t.id === draggedTodoId);
+
+    if (targetTodo) {
+      // 1. Supabaseの events テーブルに新しい予定を追加
+      const { data: insertedEvent, error: insertError } = await supabase
+        .from('events')
+        .insert({
+          member_id: currentUser.id,
+          title: targetTodo.title,
+          day_index: dayIndex,
+          start_hour: startHour,
+          duration: 1, // デフォルトで1時間
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("予定の追加エラー:", insertError);
+        return;
+      }
+
+      // 2. Supabaseの todos テーブルから元のタスクを削除
+      const { error: deleteError } = await supabase
+        .from('todos')
+        .delete()
+        .eq('id', draggedTodoId);
+
+      if (deleteError) {
+        console.error("タスクの削除エラー:", deleteError);
+        return;
+      }
+
+      // 3. 画面のStateを更新
+      const newEvent = {
+        id: insertedEvent.id,
+        memberId: insertedEvent.member_id,
+        title: insertedEvent.title,
+        dayIndex: insertedEvent.day_index,
+        startHour: insertedEvent.start_hour,
+        duration: insertedEvent.duration,
+      };
+
+      setEvents((prevEvents) => [...prevEvents, newEvent]);
+      setTodos((prevTodos) => prevTodos.filter((t) => t.id !== draggedTodoId));
+
+      if (!selectedMemberIds.includes(currentUser.id)) {
+        setSelectedMemberIds((prev) => [...prev, currentUser.id]);
+      }
+    }
+  };
+
+  // タイムトラッキング関連
+  const toggleTracking = () => {
+    if (!isTracking && !activeTaskName) {
+      setActiveTaskName("一般作業");
+    }
+    setIsTracking(!isTracking);
+  };
+
+  const startTrackingFromEvent = (eventTitle: string) => {
+    setActiveTab("time");
+    setActiveTaskName(eventTitle);
+    setIsTracking(true);
+  };
+
+  const formatTime = (totalSeconds: number) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // 予定作成（空きマスをクリックした時の処理）
+  const handleEmptySlotClick = (dayIndex: number, startHour: number) => {
+    setNewEventTitle("");
+    setNewEventMemberId(currentUser.id);
+    setNewEventDayIndex(dayIndex);
+    setNewEventStartHour(startHour);
+    setNewEventDuration(1);
+    setIsCreateEventModalOpen(true);
+  };
+
+  // 手動で予定作成（Supabaseと連携）
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEventTitle) return;
+
+    // SupabaseにデータをInsert
+    const { data, error } = await supabase
+      .from('events')
+      .insert({
+        member_id: newEventMemberId,
+        title: newEventTitle,
+        day_index: newEventDayIndex,
+        start_hour: newEventStartHour,
+        duration: newEventDuration,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("予定作成エラー:", error);
+      alert("予定の作成に失敗しました。");
+      return;
+    }
+
+    // 成功したら画面に反映
+    const newEvent = {
+      id: data.id,
+      memberId: data.member_id,
+      title: data.title,
+      dayIndex: data.day_index,
+      startHour: data.start_hour,
+      duration: Number(data.duration),
+    };
+
+    setEvents((prevEvents) => [...prevEvents, newEvent]);
+    setIsCreateEventModalOpen(false);
+    setNewEventTitle("");
+
+    if (!selectedMemberIds.includes(newEventMemberId)) {
+      setSelectedMemberIds((prev) => [...prev, newEventMemberId]);
+    }
+  };
+
+  // 日程調整関連
+  const getCommonFreeTimeText = () => {
+    const freeSlots: string[] = [];
+    
+    for (let d = 0; d < days.length; d++) {
+      let blockStart = -1;
+
+      for (let h = 0; h < hours.length; h++) {
+        let isOccupied = false;
+        
+        for (const event of events) {
+          if (selectedMemberIds.includes(event.memberId) && event.dayIndex === d) {
+            if (h >= event.startHour && h < event.startHour + event.duration) {
+              isOccupied = true;
+              break;
+            }
+          }
+        }
+
+        if (!isOccupied) {
+          if (blockStart === -1) blockStart = h;
+        } else {
+          if (blockStart !== -1) {
+            const [dow, date] = days[d].split(" ");
+            freeSlots.push(`・3月${date}日(${dow}) ${hours[blockStart]}〜${hours[h]}`);
+            blockStart = -1;
+          }
+        }
+      }
+      if (blockStart !== -1) {
+        const [dow, date] = days[d].split(" ");
+        freeSlots.push(`・3月${date}日(${dow}) ${hours[blockStart]}〜19:00`);
+      }
+    }
+
+    const topSlots = freeSlots.slice(0, 5).join("\n");
+    
+    return `お世話になっております。
+次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？
+
+${topSlots}
+
+▼ こちらのリンクからもそのままカレンダーへの登録（日程確定）が可能です：
+https://mincale.app/t/req-schedule-xyz
+
+ご検討のほど、よろしくお願いいたします。`;
+  };
+
+  const handleCopyToClipboard = async () => {
+    const textToCopy = getCommonFreeTimeText();
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error("コピーに失敗しました", err);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
+      
+      {/* ========== モーダル：日程調整リンク発行 ========== */}
+      {isScheduleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mr-3">
+                  <LinkIcon className="w-4 h-4 text-orange-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-800">日程調整リンクの発行</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">選択中メンバーの共通の空き時間を自動抽出しました</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsScheduleModalOpen(false)}
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 font-mono text-sm text-gray-700 whitespace-pre-wrap leading-relaxed h-[240px] overflow-y-auto">
+                {getCommonFreeTimeText()}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3">
+              <button 
+                onClick={() => setIsScheduleModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                キャンセル
+              </button>
+              <button 
+                onClick={handleCopyToClipboard}
+                className={`flex items-center px-5 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm ${
+                  isCopied ? "bg-green-600 hover:bg-green-700" : "bg-orange-500 hover:bg-orange-600"
+                }`}
+              >
+                {isCopied ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    コピーしました！
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    テキストをコピー
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      )}
+
+      {/* ========== モーダル：手動予定作成 ========== */}
+      {isCreateEventModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-base font-bold text-gray-800">新しい予定を作成</h2>
+              <button 
+                onClick={() => setIsCreateEventModalOpen(false)}
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateEvent} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">タイトル</label>
+                <input 
+                  type="text" 
+                  required
+                  value={newEventTitle}
+                  onChange={(e) => setNewEventTitle(e.target.value)}
+                  placeholder="例：チームミーティング"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">担当メンバー</label>
+                <select 
+                  value={newEventMemberId}
+                  onChange={(e) => setNewEventMemberId(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                >
+                  {members.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex space-x-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">日付</label>
+                  <select 
+                    value={newEventDayIndex}
+                    onChange={(e) => setNewEventDayIndex(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                  >
+                    {days.map((day, idx) => (
+                      <option key={idx} value={idx}>{day}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
+                  <select 
+                    value={newEventStartHour}
+                    onChange={(e) => setNewEventStartHour(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                  >
+                    {hours.map((hour, idx) => (
+                      <option key={idx} value={idx}>{hour}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">所要時間</label>
+                <select 
+                  value={newEventDuration}
+                  onChange={(e) => setNewEventDuration(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                >
+                  <option value={0.5}>30分</option>
+                  <option value={1}>1時間</option>
+                  <option value={1.5}>1時間30分</option>
+                  <option value={2}>2時間</option>
+                  <option value={3}>3時間</option>
+                </select>
+              </div>
+
+              <div className="pt-4 flex justify-end space-x-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsCreateEventModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button 
+                  type="submit"
+                  className="px-5 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors shadow-sm"
+                >
+                  保存する
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========== 左サイドバー ========== */}
+      <aside className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
+        <div className="h-16 flex items-center px-4 border-b border-gray-200">
+          <CalendarIcon className="w-6 h-6 text-orange-500 mr-2" />
+          <h1 className="text-lg font-bold text-gray-800 tracking-tight">みんカレ</h1>
+        </div>
+
+        <div className="p-4 flex-1 overflow-y-auto">
+          {/* サイドバーの予定作成ボタン */}
+          <button 
+            onClick={() => {
+              setNewEventTitle("");
+              setNewEventMemberId(currentUser.id);
+              setNewEventDayIndex(0);
+              setNewEventStartHour(0);
+              setNewEventDuration(1);
+              setIsCreateEventModalOpen(true);
+            }}
+            className="w-full flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white py-2.5 px-4 rounded-lg font-medium transition-colors shadow-sm mb-6"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <Plus className="w-5 h-5 mr-2" />
+            予定を作成
+          </button>
+
+          {/* ミニカレンダー（実際のUI） */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-sm">2026年 3月</span>
+              <div className="flex space-x-1">
+                <ChevronLeft className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800" />
+                <ChevronRight className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800" />
+              </div>
+            </div>
+            <div className="w-full bg-white border border-gray-200 rounded-lg p-2 shadow-sm">
+              <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1">
+                <div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div>
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center text-sm">
+                {[...Array(31)].map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${
+                      i + 1 === 15 ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"
+                    }`}
+                  >
+                    {i + 1}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700">
+              <div className="flex items-center">
+                <Users className="w-4 h-4 mr-2" />
+                カスタムビュー
+              </div>
+              <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-700" />
+            </div>
+            <ul className="space-y-1">
+              {customViews.map((view) => (
+                <li
+                  key={view.id}
+                  onClick={() => applyCustomView(view.memberIds)}
+                  className="text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors"
+                >
+                  {view.name}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700">
+              <span>チームメンバー</span>
+              <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-700" />
+            </div>
+            <ul className="space-y-1">
+              {members.map((member) => {
+                const isSelected = selectedMemberIds.includes(member.id);
+                return (
+                  <li
+                    key={member.id}
+                    onClick={() => toggleMember(member.id)}
+                    className={`flex items-center text-sm cursor-pointer p-1.5 rounded-md transition-all ${
+                      isSelected
+                        ? "bg-orange-50 text-orange-900 font-medium"
+                        : "text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] mr-2 shadow-sm ${member.color} ${!isSelected && "opacity-60"}`}>
+                      {member.initials}
+                    </div>
+                    <span className="flex-1">{member.name}</span>
+                    {isSelected && <Check className="w-4 h-4 text-orange-500" />}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+
+        {/* ========== ユーザープロファイル＆設定エリア ========== */}
+        <div className="p-4 border-t border-gray-200 bg-white flex flex-col space-y-4">
+          {status === "loading" ? (
+            <div className="flex items-center justify-center py-2 text-sm text-gray-500 animate-pulse">
+              読み込み中...
+            </div>
+          ) : session && session.user ? (
+            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
+              <div className="flex items-center space-x-3 overflow-hidden">
+                {session.user.image ? (
+                  <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full shadow-sm" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                    {session.user.name?.charAt(0) || "U"}
+                  </div>
+                )}
+                <div className="flex flex-col truncate">
+                  <span className="text-sm font-semibold text-gray-800 truncate">{session.user.name}</span>
+                  <span className="text-[10px] text-gray-500 truncate">{session.user.email}</span>
+                </div>
+              </div>
+              <div className="flex space-x-1">
+                <button
+                  onClick={syncGoogleCalendar}
+                  disabled={isSyncing}
+                  className="p-1.5 text-orange-500 hover:text-white hover:bg-orange-500 rounded-md transition-colors disabled:opacity-50"
+                  title="Googleカレンダーを同期"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+                </button>
+                <button
+                  onClick={() => signOut()}
+                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                  title="ログアウト"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => signIn("google")}
+              className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              <span>Googleでログイン</span>
+            </button>
+          )}
+
+          <button className="flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            <Settings className="w-4 h-4 mr-2" />
+            設定
+          </button>
+        </div>
+      </aside>
+
+      {/* ========== 中央メインエリア ========== */}
+      <main className="flex-1 flex flex-col min-w-0 z-0 relative">
+        <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-white">
+          <div className="flex items-center space-x-4">
+            <button className="text-xl font-bold text-gray-800">2026年 3月</button>
+            <div className="flex items-center space-x-2 bg-gray-100 rounded-md p-1">
+              <button className="px-3 py-1 text-sm bg-white rounded shadow-sm font-medium">週</button>
+              <button className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 font-medium">月</button>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="予定を検索、または 'Cmd+K'"
+                className="pl-9 pr-4 py-2 w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all"
+              />
+            </div>
+            
+            <button 
+              onClick={() => setIsScheduleModalOpen(true)}
+              className="bg-white border border-gray-200 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700 transition-all shadow-sm flex items-center group"
+            >
+              <LinkIcon className="w-4 h-4 mr-2 text-gray-400 group-hover:text-orange-500 transition-colors" />
+              日程調整リンク
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-auto flex flex-col bg-white">
+          <div className="flex border-b border-gray-200 sticky top-0 bg-white z-20">
+            <div className="w-16 flex-shrink-0"></div>
+            {days.map((day, index) => (
+              <div key={index} className="flex-1 py-3 text-center border-l border-gray-200">
+                <span className="text-sm font-medium text-gray-600">{day}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex-1 relative">
+            {isLoadingData && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
+              </div>
+            )}
+            {hours.map((hour, hourIndex) => (
+              <div key={hourIndex} className="flex border-b border-gray-100 h-16">
+                <div className="w-16 flex-shrink-0 text-right pr-2 py-2 text-xs text-gray-400">
+                  {hour}
+                </div>
+                
+                {/* 曜日ごとの空きマス */}
+                {days.map((_, dayIndex) => (
+                  <div 
+                    key={dayIndex} 
+                    className="flex-1 border-l border-gray-100 relative group hover:bg-orange-50/50 cursor-crosshair transition-colors"
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, dayIndex, hourIndex)}
+                    onClick={() => handleEmptySlotClick(dayIndex, hourIndex)}
+                  >
+                    {events
+                      .filter((event) => event.dayIndex === dayIndex && event.startHour === hourIndex)
+                      .filter((event) => selectedMemberIds.includes(event.memberId))
+                      .map((event) => {
+                        const member = members.find((m) => m.id === event.memberId);
+                        const heightPct = event.duration * 100;
+                        
+                        return (
+                          <div
+                            key={event.id}
+                            onClick={(e) => {
+                              // マスのクリックイベントを発火させないように伝播をストップ
+                              e.stopPropagation();
+                              startTrackingFromEvent(event.title);
+                            }}
+                            className={`absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer z-10 ${member?.color}`}
+                            style={{ top: '2%', height: `calc(${heightPct}% - 4%)` }}
+                            title="クリックでタイマーを開始"
+                          >
+                            <div className="font-semibold truncate">{event.title}</div>
+                            <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>
+                              {member?.name}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </main>
+
+      {/* ========== 右サイドパネル ========== */}
+      <aside className="w-80 border-l border-gray-200 bg-white flex flex-col z-10">
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab("todo")}
+            className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${
+              activeTab === "todo" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            <CheckSquare className="w-4 h-4 mr-2" />
+            ToDoリスト
+          </button>
+          <button
+            onClick={() => setActiveTab("time")}
+            className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${
+              activeTab === "time" ? "text-orange-600 border-b-2 border-orange-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            <Clock className="w-4 h-4 mr-2" />
+            トラッキング
+            {isTracking && (
+              <span className="ml-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+            )}
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-y-auto bg-gray-50 relative">
+          {isLoadingData && (
+             <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-50/80 backdrop-blur-sm">
+               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
+             </div>
+          )}
+          {activeTab === "todo" ? (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500 mb-4 bg-white p-2 rounded border border-gray-200 shadow-sm border-l-4 border-l-orange-400">
+                💡 タスクをカレンダーにドラッグして予定化できます
+              </p>
+              
+              {!isLoadingData && todos.length === 0 && (
+                <div className="text-center py-8 text-sm text-gray-400">
+                  すべてのタスクが予定化されました 🎉
+                </div>
+              )}
+
+              {todos.map((todo) => (
+                <div 
+                  key={todo.id} 
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, todo.id)}
+                  className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
+                >
+                  <div className="flex justify-between items-start mb-2 pointer-events-none">
+                    <h3 className="text-sm font-semibold text-gray-800 leading-tight group-hover:text-orange-700 transition-colors">{todo.title}</h3>
+                    <MoreHorizontal className="w-4 h-4 text-gray-400 group-hover:text-orange-500" />
+                  </div>
+                  <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-600 rounded pointer-events-none">
+                    {todo.project}
+                  </span>
+                </div>
+              ))}
+              
+              <button className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-colors flex items-center justify-center mt-4 font-medium">
+                <Plus className="w-4 h-4 mr-1" />
+                タスクを追加
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-colors shadow-inner border-4 ${isTracking ? 'bg-red-50 border-red-100' : 'bg-orange-50 border-orange-100'}`}>
+                <Clock className={`w-10 h-10 ${isTracking ? 'text-red-500 animate-pulse' : 'text-orange-500'}`} />
+              </div>
+              
+              <h3 className="text-sm font-medium text-gray-500 mb-1">
+                {activeTaskName || "タスクを選択、または開始"}
+              </h3>
+              
+              <div className="text-4xl font-mono font-light text-gray-800 mb-8 tracking-wider">
+                {formatTime(trackedSeconds)}
+              </div>
+
+              <p className="text-xs text-gray-500 mb-6 bg-white p-2 rounded border border-gray-200 w-full">
+                カレンダーの予定ブロックをクリックすると、自動的にタイマーが開始します。
+              </p>
+
+              <button 
+                onClick={toggleTracking}
+                className={`flex items-center justify-center w-full py-3 rounded-lg text-sm font-bold transition-all shadow-md ${
+                  isTracking 
+                    ? "bg-red-500 hover:bg-red-600 text-white" 
+                    : "bg-gray-900 hover:bg-black text-white"
+                }`}
+              >
+                {isTracking ? (
+                  <>
+                    <Square className="w-4 h-4 mr-2 fill-current" />
+                    タイマーを停止
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2 fill-current" />
+                    タイマーを開始
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
     </div>
   );
 }
