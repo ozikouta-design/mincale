@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -51,6 +51,11 @@ export default function CalendarDashboard() {
   const [newEventStartHour, setNewEventStartHour] = useState(0);
   const [newEventDuration, setNewEventDuration] = useState(1);
 
+  // タスク追加フォーム (新規追加)
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskProject, setNewTaskProject] = useState("");
+
   // 同期・ローディング状態
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -59,8 +64,34 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  // マスタデータ
-  const days = ["月 15", "火 16", "水 17", "木 18", "金 19"];
+  // === 日付の自動計算 (新規追加) ===
+  const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0(日)〜6(土)
+    // 月曜日を起点にするための差分を計算
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diffToMonday);
+
+    const weekDays = [];
+    const dayNames = ["月", "火", "水", "木", "金"];
+    
+    // 月曜から金曜までの5日間の日付文字列を作成
+    for (let i = 0; i < 5; i++) {
+      const currentDate = new Date(monday);
+      currentDate.setDate(monday.getDate() + i);
+      weekDays.push(`${dayNames[i]} ${currentDate.getDate()}`);
+    }
+    
+    return {
+       currentWeekDays: weekDays,
+       currentMonthYear: `${monday.getFullYear()}年 ${monday.getMonth() + 1}月`,
+       todayDate: today.getDate()
+    };
+  }, []);
+
+  const days = currentWeekDays;
   const hours = [
     "09:00", "10:00", "11:00", "12:00", "13:00", 
     "14:00", "15:00", "16:00", "17:00", "18:00"
@@ -110,7 +141,7 @@ export default function CalendarDashboard() {
   }, [isTracking]);
 
   // ==========================================
-  // 🔄 Googleカレンダー同期ロジック (複数カレンダー対応)
+  // 🔄 Googleカレンダー同期ロジック
   // ==========================================
   const syncGoogleData = async () => {
     if (!session || !(session as any).accessToken) return;
@@ -119,7 +150,7 @@ export default function CalendarDashboard() {
     try {
       const token = (session as any).accessToken;
 
-      // 1. ユーザーのGoogleカレンダー「一覧（マイカレンダー＋他のカレンダー）」を取得
+      // 1. カレンダー一覧の取得
       const calListRes = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -135,8 +166,8 @@ export default function CalendarDashboard() {
           if (cal.primary) defaultPrimaryId = cal.id;
           return {
             id: cal.id,
-            name: cal.summaryOverride || cal.summary, // ユーザーが変更した名前を優先
-            colorHex: cal.backgroundColor, // Googleカレンダーの色コード
+            name: cal.summaryOverride || cal.summary,
+            colorHex: cal.backgroundColor,
             initials: (cal.summaryOverride || cal.summary).substring(0, 2).toUpperCase(),
             primary: cal.primary || false
           };
@@ -144,20 +175,30 @@ export default function CalendarDashboard() {
 
         setMembers(fetchedMembers);
 
-        // 初回のみ：取得したすべてのカレンダーを選択状態にし、デフォルト作成先をメインカレンダーにする
         if (selectedMemberIds.length === 0) {
           setSelectedMemberIds(fetchedMembers.map(m => m.id));
           setNewEventMemberId(defaultPrimaryId || fetchedMembers[0].id);
         }
       }
 
-      // 2. 取得した全カレンダーの予定を並行して取得する
+      // 2. 現在の週の予定のみを取得するための期間設定
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diffToMonday);
+      monday.setHours(0, 0, 0, 0);
+
+      const saturday = new Date(monday);
+      saturday.setDate(monday.getDate() + 5); // 土曜日の0時まで（金曜の終わりまで）
+      saturday.setHours(0, 0, 0, 0);
+
+      const timeMin = monday.toISOString();
+      const timeMax = saturday.toISOString();
+
       if (fetchedMembers.length > 0) {
-        const timeMin = new Date().toISOString();
-        const timeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         let allGoogleEvents: any[] = [];
 
-        // Promise.allで一気に取得して高速化
         const eventPromises = fetchedMembers.map(async (member) => {
           const res = await fetch(
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(member.id)}/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=50&singleEvents=true&orderBy=startTime`,
@@ -177,7 +218,7 @@ export default function CalendarDashboard() {
 
             return {
               id: item.id,
-              memberId: member.id, // どのカレンダーの予定かを紐付け
+              memberId: member.id,
               title: `📅 ${item.summary || "予定あり"}`,
               dayIndex,
               startHour,
@@ -190,7 +231,6 @@ export default function CalendarDashboard() {
         const results = await Promise.all(eventPromises);
         allGoogleEvents = results.flat();
 
-        // Supabaseの予定（isGoogle: false）と結合
         setEvents((prevEvents) => {
           const supabaseEvents = prevEvents.filter(p => !p.isGoogle);
           return [...supabaseEvents, ...allGoogleEvents];
@@ -204,7 +244,6 @@ export default function CalendarDashboard() {
     }
   };
 
-  // ログイン時に自動同期
   useEffect(() => {
     if (status === "authenticated" && session) {
       syncGoogleData();
@@ -351,6 +390,32 @@ export default function CalendarDashboard() {
     }
   };
 
+  // === タスク追加機能 (新規追加) ===
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+
+    const { data, error } = await supabase
+      .from('todos')
+      .insert({
+        title: newTaskTitle,
+        project: newTaskProject || "一般タスク",
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("タスク追加エラー:", error);
+      alert("タスクの保存に失敗しました。");
+      return;
+    }
+
+    setTodos([...todos, data]);
+    setNewTaskTitle("");
+    setNewTaskProject("");
+    setIsAddingTask(false);
+  };
+
   const getCommonFreeTimeText = () => {
     const freeSlots: string[] = [];
     
@@ -374,14 +439,14 @@ export default function CalendarDashboard() {
         } else {
           if (blockStart !== -1) {
             const [dow, date] = days[d].split(" ");
-            freeSlots.push(`・3月${date}日(${dow}) ${hours[blockStart]}〜${hours[h]}`);
+            freeSlots.push(`・${currentMonthYear.replace("年 ", "年")}${date}日(${dow}) ${hours[blockStart]}〜${hours[h]}`);
             blockStart = -1;
           }
         }
       }
       if (blockStart !== -1) {
         const [dow, date] = days[d].split(" ");
-        freeSlots.push(`・3月${date}日(${dow}) ${hours[blockStart]}〜19:00`);
+        freeSlots.push(`・${currentMonthYear.replace("年 ", "年")}${date}日(${dow}) ${hours[blockStart]}〜19:00`);
       }
     }
 
@@ -534,7 +599,7 @@ https://mincale.app/t/req-schedule-xyz
 
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-sm">2026年 3月</span>
+              <span className="font-semibold text-sm">{currentMonthYear}</span>
               <div className="flex space-x-1">
                 <ChevronLeft className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800" />
                 <ChevronRight className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800" />
@@ -545,11 +610,15 @@ https://mincale.app/t/req-schedule-xyz
                 <div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div>
               </div>
               <div className="grid grid-cols-7 gap-1 text-center text-sm">
-                {[...Array(31)].map((_, i) => (
-                  <div key={i} className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${i + 1 === 15 ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"}`}>
-                    {i + 1}
-                  </div>
-                ))}
+                {[...Array(31)].map((_, i) => {
+                  const dayNum = i + 1;
+                  const isToday = dayNum === todayDate;
+                  return (
+                    <div key={i} className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${isToday ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"}`}>
+                      {dayNum}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -653,7 +722,7 @@ https://mincale.app/t/req-schedule-xyz
       <main className="flex-1 flex flex-col min-w-0 z-0 relative">
         <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-white">
           <div className="flex items-center space-x-4">
-            <button className="text-xl font-bold text-gray-800">2026年 3月</button>
+            <button className="text-xl font-bold text-gray-800">{currentMonthYear}</button>
             <div className="flex items-center space-x-2 bg-gray-100 rounded-md p-1">
               <button className="px-3 py-1 text-sm bg-white rounded shadow-sm font-medium">週</button>
               <button className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 font-medium">月</button>
@@ -777,15 +846,40 @@ https://mincale.app/t/req-schedule-xyz
                     <MoreHorizontal className="w-4 h-4 text-gray-400 group-hover:text-orange-500" />
                   </div>
                   <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-600 rounded pointer-events-none">
-                    {todo.project}
+                    {todo.project || "一般タスク"}
                   </span>
                 </div>
               ))}
               
-              <button className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-colors flex items-center justify-center mt-4 font-medium">
-                <Plus className="w-4 h-4 mr-1" />
-                タスクを追加
-              </button>
+              {/* タスク追加機能のUI切り替え */}
+              {isAddingTask ? (
+                <form onSubmit={handleAddTask} className="bg-white p-3 rounded-lg border border-orange-400 shadow-sm mt-4 animate-in fade-in slide-in-from-top-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    placeholder="タスク名を入力..."
+                    className="w-full text-sm border-none focus:ring-0 p-0 mb-2 outline-none text-gray-800"
+                  />
+                  <input
+                    type="text"
+                    value={newTaskProject}
+                    onChange={(e) => setNewTaskProject(e.target.value)}
+                    placeholder="プロジェクト名 (任意)"
+                    className="w-full text-xs text-gray-500 border-none focus:ring-0 p-0 mb-3 outline-none"
+                  />
+                  <div className="flex justify-end space-x-2">
+                    <button type="button" onClick={() => setIsAddingTask(false)} className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors px-2 py-1">キャンセル</button>
+                    <button type="submit" className="text-xs font-medium bg-orange-500 text-white px-3 py-1.5 rounded hover:bg-orange-600 transition-colors shadow-sm">保存する</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => setIsAddingTask(true)} className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-colors flex items-center justify-center mt-4 font-medium">
+                  <Plus className="w-4 h-4 mr-1" />
+                  タスクを追加
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
