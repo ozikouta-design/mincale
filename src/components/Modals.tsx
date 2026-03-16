@@ -23,10 +23,10 @@ interface ModalsProps {
   hours: string[];
   newEventDuration: number;
   setNewEventDuration: (duration: number) => void;
-  editingEventId: number | null;
-  setEditingEventId: (id: number | null) => void;
-  editingEventIsGoogle: boolean; // ★ 追加
-  handleDeleteEvent: (eventId: number, isGoogle: boolean) => void; // ★ 追加
+  editingEventId: any;
+  setEditingEventId: (id: any) => void;
+  editingEventIsGoogle: boolean;
+  handleDeleteEvent: (eventId: any, isGoogle: boolean, calendarId: string) => void;
 }
 
 export default function Modals({
@@ -114,13 +114,10 @@ export default function Modals({
               <h2 className="text-base font-semibold text-gray-900">
                 {editingEventId ? "詳細" : "新規イベント"}
               </h2>
-              {editingEventIsGoogle ? (
-                <div className="w-16"></div> /* Googleの場合は完了ボタンを非表示 */
-              ) : (
-                <button onClick={handleCreateEvent} className="text-orange-500 text-base font-semibold">
-                  {editingEventId ? "完了" : "追加"}
-                </button>
-              )}
+              {/* ★ 変更：Googleの予定でも「完了（更新）」ボタンを表示 */}
+              <button onClick={handleCreateEvent} className="text-orange-500 text-base font-semibold">
+                {editingEventId ? "完了" : "追加"}
+              </button>
             </div>
             
             {/* Apple風 フォームボディ（グレー背景） */}
@@ -131,11 +128,10 @@ export default function Modals({
                 <input 
                   type="text" 
                   required 
-                  disabled={editingEventIsGoogle}
                   value={newEventTitle} 
                   onChange={(e) => setNewEventTitle(e.target.value)} 
                   placeholder="タイトル" 
-                  className="w-full px-4 py-3 text-lg outline-none text-gray-900 placeholder-gray-400 disabled:bg-white disabled:text-gray-500" 
+                  className="w-full px-4 py-3 text-lg outline-none text-gray-900 placeholder-gray-400" 
                 />
               </div>
 
@@ -144,10 +140,9 @@ export default function Modals({
                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
                   <span className="text-gray-900">日付</span>
                   <select 
-                    disabled={editingEventIsGoogle}
                     value={newEventDayIndex} 
                     onChange={(e) => setNewEventDayIndex(Number(e.target.value))} 
-                    className="bg-transparent text-gray-500 outline-none text-right appearance-none disabled:opacity-80"
+                    className="bg-transparent text-gray-500 outline-none text-right appearance-none"
                   >
                     {days.map((day, idx) => <option key={idx} value={idx}>{day}</option>)}
                   </select>
@@ -155,10 +150,9 @@ export default function Modals({
                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
                   <span className="text-gray-900">開始</span>
                   <select 
-                    disabled={editingEventIsGoogle}
                     value={newEventStartHour} 
                     onChange={(e) => setNewEventStartHour(Number(e.target.value))} 
-                    className="bg-transparent text-gray-500 outline-none text-right appearance-none disabled:opacity-80"
+                    className="bg-transparent text-gray-500 outline-none text-right appearance-none"
                   >
                     {hours.map((hour, idx) => <option key={idx} value={idx}>{hour}</option>)}
                   </select>
@@ -166,10 +160,9 @@ export default function Modals({
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="text-gray-900">所要時間</span>
                   <select 
-                    disabled={editingEventIsGoogle}
                     value={newEventDuration} 
                     onChange={(e) => setNewEventDuration(Number(e.target.value))} 
-                    className="bg-transparent text-gray-500 outline-none text-right appearance-none disabled:opacity-80"
+                    className="bg-transparent text-gray-500 outline-none text-right appearance-none"
                   >
                     <option value={0.5}>30分</option><option value={1}>1時間</option>
                     <option value={1.5}>1時間30分</option><option value={2}>2時間</option>
@@ -183,31 +176,23 @@ export default function Modals({
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="text-gray-900">カレンダー</span>
                   <select 
-                    disabled={editingEventIsGoogle}
                     value={newEventMemberId} 
                     onChange={(e) => setNewEventMemberId(e.target.value)} 
-                    className="w-32 bg-transparent text-gray-500 outline-none text-right truncate appearance-none disabled:opacity-80"
+                    className="w-32 bg-transparent text-gray-500 outline-none text-right truncate appearance-none"
                   >
                     {members.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
                   </select>
                 </div>
               </div>
 
-              {/* Apple風 削除ボタン（編集時のみ、かつGoogle以外） */}
-              {editingEventId && !editingEventIsGoogle && (
+              {/* Apple風 削除ボタン（Googleの予定でも表示！） */}
+              {editingEventId && (
                 <button 
-                  onClick={() => handleDeleteEvent(editingEventId, false)} 
+                  onClick={() => handleDeleteEvent(editingEventId, editingEventIsGoogle, newEventMemberId)} 
                   className="w-full bg-white rounded-xl py-3 text-red-500 font-semibold shadow-sm text-center"
                 >
                   予定を削除
                 </button>
-              )}
-
-              {/* Google予定の注意書き */}
-              {editingEventId && editingEventIsGoogle && (
-                <p className="text-xs text-center text-gray-400 mt-4 px-4">
-                  Googleカレンダーの予定は、Googleカレンダーアプリ側で編集・削除してください。
-                </p>
               )}
 
             </div>

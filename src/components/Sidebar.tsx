@@ -32,7 +32,7 @@ interface SidebarProps {
   signOut: () => void;
   handlePrevWeek: () => void;
   handleNextWeek: () => void;
-  setEditingEventId: (id: number | null) => void; // ★ 追加
+  setEditingEventId: (id: any) => void; // ★ 変更: anyにする
 }
 
 export default function Sidebar({
@@ -56,7 +56,7 @@ export default function Sidebar({
   signOut,
   handlePrevWeek,
   handleNextWeek,
-  setEditingEventId // ★ 追加
+  setEditingEventId
 }: SidebarProps) {
   return (
     <aside className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
@@ -68,7 +68,7 @@ export default function Sidebar({
       <div className="p-4 flex-1 overflow-y-auto">
         <button 
           onClick={() => {
-            setEditingEventId(null); // ★ 追加：新規作成としてリセット
+            setEditingEventId(null);
             setNewEventTitle("");
             setNewEventDayIndex(0);
             setNewEventStartHour(0);

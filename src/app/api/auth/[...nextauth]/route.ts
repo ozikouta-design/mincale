@@ -11,8 +11,8 @@ const handler = NextAuth({
           prompt: "consent",
           access_type: "offline",
           response_type: "code",
-          // Googleカレンダーの予定を読み取るための権限（スコープ）を要求します
-          scope: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+          // ★ 修正：Googleカレンダーの予定を「読み込み・作成・更新・削除」するための権限に変更
+          scope: "openid email profile https://www.googleapis.com/auth/calendar.events",
         },
       },
     }),
