@@ -209,7 +209,6 @@ export default function CalendarDashboard() {
     e.dataTransfer.setData("todoId", todoId.toString());
   };
 
-  // ★ 新規追加：予定（イベント）をつまんだ時の処理
   const handleEventDragStart = (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => {
     e.dataTransfer.setData("type", "event");
     e.dataTransfer.setData("eventId", eventId.toString());
@@ -219,7 +218,6 @@ export default function CalendarDashboard() {
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
   
-  // ★ 変更：タスク追加と予定移動（時間変更）の分岐処理
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => {
     e.preventDefault();
     const dragType = e.dataTransfer.getData("type");
@@ -238,7 +236,6 @@ export default function CalendarDashboard() {
         }
       }
     } else if (dragType === "event") {
-      // 予定（イベント）のドラッグ＆ドロップ移動
       const eventId = e.dataTransfer.getData("eventId");
       const isGoogle = e.dataTransfer.getData("isGoogle") === "true";
       const memberId = e.dataTransfer.getData("memberId");
@@ -248,23 +245,36 @@ export default function CalendarDashboard() {
 
       if (isGoogle) {
         const token = (session as any)?.accessToken;
+        
+        // ISO日時の正確な計算
         const startDt = new Date(currentViewDate);
         const diff = startDt.getDay() === 0 ? -6 : 1 - startDt.getDay();
         startDt.setDate(startDt.getDate() + diff + dayIndex);
         startDt.setHours(9 + startHour, 0, 0, 0);
         const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000);
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; // 端末のタイムゾーンを自動取得
 
         try {
-          // ★ PATCHメソッドで時間だけを安全に更新（他の情報は保持される）
+          // ★ PATCHメソッドで時間だけを安全に更新
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
             method: 'PATCH',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ start: { dateTime: startDt.toISOString() }, end: { dateTime: endDt.toISOString() } })
+            body: JSON.stringify({ 
+              start: { dateTime: startDt.toISOString(), timeZone }, 
+              end: { dateTime: endDt.toISOString(), timeZone } 
+            })
           });
-          if (!res.ok) throw new Error("Google更新エラー");
+          
+          if (!res.ok) {
+            const errBody = await res.json();
+            throw new Error(errBody.error?.message || "原因不明のエラー");
+          }
+          
+          // 成功したら画面の表示を更新
           setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
-        } catch (e) {
-          alert("Googleの予定の移動に失敗しました。");
+        } catch (error: any) {
+          console.error("Google移動エラー:", error);
+          alert(`Googleの予定の移動に失敗しました。\n詳細: ${error.message}`);
         }
       } else {
         const { error } = await supabase.from('events').update({ day_index: dayIndex, start_hour: startHour }).eq('id', eventId);
@@ -315,6 +325,7 @@ export default function CalendarDashboard() {
     startDt.setDate(startDt.getDate() + diff + newEventDayIndex);
     startDt.setHours(9 + newEventStartHour, 0, 0, 0);
     const endDt = new Date(startDt.getTime() + newEventDuration * 60 * 60 * 1000);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     if (editingEventId) {
       if (editingEventIsGoogle) {
@@ -323,7 +334,11 @@ export default function CalendarDashboard() {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, {
             method: 'PATCH',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString() }, end: { dateTime: endDt.toISOString() } })
+            body: JSON.stringify({ 
+              summary: newEventTitle, 
+              start: { dateTime: startDt.toISOString(), timeZone }, 
+              end: { dateTime: endDt.toISOString(), timeZone } 
+            })
           });
           if (!res.ok) throw new Error("更新失敗");
           setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: `📅 ${newEventTitle}`, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration } : ev));
@@ -392,8 +407,7 @@ export default function CalendarDashboard() {
         currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId}
       />
       <CalendarMain
-        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick}
-        handleEventDragStart={handleEventDragStart} // ★追加
+        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart}
       />
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask}

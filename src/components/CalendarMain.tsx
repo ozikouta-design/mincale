@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { Search, Link as LinkIcon, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface CalendarMainProps {
@@ -16,7 +18,7 @@ interface CalendarMainProps {
   handlePrevWeek: () => void;
   handleNextWeek: () => void;
   handleEventClick: (event: any, e: React.MouseEvent) => void; 
-  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void; // ★ 追加
+  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void;
 }
 
 export default function CalendarMain({
@@ -34,8 +36,12 @@ export default function CalendarMain({
   handlePrevWeek,
   handleNextWeek,
   handleEventClick,
-  handleEventDragStart // ★ 追加
+  handleEventDragStart
 }: CalendarMainProps) {
+  
+  // ★ 新規追加：今ドラッグして重なっている「着地枠」を記憶するステート
+  const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number, startHour: number } | null>(null);
+
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative">
       <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-white">
@@ -54,7 +60,7 @@ export default function CalendarMain({
         <div className="flex items-center space-x-4">
           <div className="relative">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-            <input type="text" placeholder="予定を検索、または 'Cmd+K'" className="pl-9 pr-4 py-2 w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all" />
+            <input type="text" placeholder="予定を検索..." className="pl-9 pr-4 py-2 w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all" />
           </div>
           
           <button onClick={() => setIsScheduleModalOpen(true)} className="bg-white border border-gray-200 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700 transition-all shadow-sm flex items-center group">
@@ -83,8 +89,27 @@ export default function CalendarMain({
           {hours.map((hour, hourIndex) => (
             <div key={hourIndex} className="flex border-b border-gray-100 h-16">
               <div className="w-16 flex-shrink-0 text-right pr-2 py-2 text-xs text-gray-400">{hour}</div>
+              
               {days.map((_, dayIndex) => (
-                <div key={dayIndex} className="flex-1 border-l border-gray-100 relative group hover:bg-orange-50/50 cursor-crosshair transition-colors" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, dayIndex, hourIndex)} onClick={() => handleEmptySlotClick(dayIndex, hourIndex)}>
+                <div 
+                  key={dayIndex} 
+                  // ★ ここが魔法！ドラッグ中の枠だけ色を変えて太いオレンジの枠線を出す
+                  className={`flex-1 border-l border-gray-100 relative group transition-all duration-150 cursor-crosshair
+                    ${dragOverSlot?.dayIndex === dayIndex && dragOverSlot?.startHour === hourIndex
+                      ? 'bg-orange-100/60 ring-2 ring-orange-500 ring-inset z-20 shadow-inner' 
+                      : 'hover:bg-orange-50/50'
+                    }`}
+                  onDragOver={(e) => {
+                    handleDragOver(e);
+                    setDragOverSlot({ dayIndex, startHour: hourIndex }); // マウスが乗った枠を記憶
+                  }}
+                  onDragLeave={() => setDragOverSlot(null)} // マウスが離れたら記憶を消す
+                  onDrop={(e) => {
+                    setDragOverSlot(null); // ドロップ完了時に記憶を消す
+                    handleDrop(e, dayIndex, hourIndex);
+                  }}
+                  onClick={() => handleEmptySlotClick(dayIndex, hourIndex)}
+                >
                   {events
                     .filter((event) => event.dayIndex === dayIndex && event.startHour === hourIndex)
                     .filter((event) => selectedMemberIds.includes(event.memberId))
@@ -95,16 +120,29 @@ export default function CalendarMain({
                       return (
                         <div 
                           key={event.id} 
-                          draggable={true} // ★ ドラッグ可能に！
-                          onDragStart={(e) => handleEventDragStart(e, event.id, event.isGoogle, event.memberId)} // ★ ドラッグ開始処理
+                          draggable={true} 
+                          onDragStart={(e) => {
+                            // ★ ドラッグ開始時に「浮き上がる」ような半透明縮小アニメーション
+                            e.currentTarget.style.opacity = '0.6';
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                            handleEventDragStart(e, event.id, event.isGoogle, event.memberId);
+                          }}
+                          onDragEnd={(e) => {
+                            // ★ ドラッグ終了時に元に戻す
+                            e.currentTarget.style.opacity = '1';
+                            e.currentTarget.style.transform = 'scale(1)';
+                            setDragOverSlot(null);
+                          }}
                           onClick={(e) => handleEventClick(event, e)}
-                          // ★ 超リッチなAppleライクホバーアニメーション！
-                          className="absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 active:shadow-sm cursor-grab active:cursor-grabbing z-10 hover:z-20" 
+                          className="absolute w-[92%] left-[4%] rounded-md px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20" 
                           style={{ top: '2%', height: `calc(${heightPct}% - 4%)`, backgroundColor: bgColor }} 
                           title="ドラッグで移動、クリックで詳細を表示"
                         >
                           <div className="font-semibold truncate">{event.title}</div>
-                          <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}</div>
+                          <div className="text-[10px] opacity-90 truncate mt-0.5 flex items-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>
+                            {member?.name || "カレンダー"}
+                          </div>
                         </div>
                       );
                     })}

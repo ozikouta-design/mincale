@@ -78,7 +78,13 @@ export default function RightPanel({
               <div 
                 key={todo.id} 
                 draggable={true} 
-                onDragStart={(e) => handleDragStart(e, todo.id)} // ここで "todo" がセットされるようになりました
+                onDragStart={(e) => {
+                  e.currentTarget.style.opacity = '0.5'; // ★ ドラッグ中は半透明に
+                  handleDragStart(e, todo.id);
+                }} 
+                onDragEnd={(e) => {
+                  e.currentTarget.style.opacity = '1'; // ★ 元に戻す
+                }}
                 className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
               >
                 <div className="flex justify-between items-start mb-2 pointer-events-none">
