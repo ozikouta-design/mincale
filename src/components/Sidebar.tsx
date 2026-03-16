@@ -30,8 +30,9 @@ interface SidebarProps {
   isSyncing: boolean;
   signIn: (provider: string) => void;
   signOut: () => void;
-  handlePrevWeek: () => void; // ★追加
-  handleNextWeek: () => void; // ★追加
+  handlePrevWeek: () => void;
+  handleNextWeek: () => void;
+  setEditingEventId: (id: number | null) => void; // ★ 追加
 }
 
 export default function Sidebar({
@@ -54,7 +55,8 @@ export default function Sidebar({
   signIn,
   signOut,
   handlePrevWeek,
-  handleNextWeek
+  handleNextWeek,
+  setEditingEventId // ★ 追加
 }: SidebarProps) {
   return (
     <aside className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
@@ -66,6 +68,7 @@ export default function Sidebar({
       <div className="p-4 flex-1 overflow-y-auto">
         <button 
           onClick={() => {
+            setEditingEventId(null); // ★ 追加：新規作成としてリセット
             setNewEventTitle("");
             setNewEventDayIndex(0);
             setNewEventStartHour(0);
@@ -81,7 +84,6 @@ export default function Sidebar({
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
             <span className="font-semibold text-sm">{currentMonthYear}</span>
-            {/* ★ 週移動ボタンをアクティブ化 */}
             <div className="flex space-x-1">
               <ChevronLeft onClick={handlePrevWeek} className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800 bg-white rounded-full shadow-sm" />
               <ChevronRight onClick={handleNextWeek} className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800 bg-white rounded-full shadow-sm" />

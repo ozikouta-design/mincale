@@ -24,6 +24,9 @@ export default function CalendarDashboard() {
   const [trackedSeconds, setTrackedSeconds] = useState(0);
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
 
+  // ★ 追加：現在編集中の予定ID（nullなら新規作成）
+  const [editingEventId, setEditingEventId] = useState<number | null>(null);
+
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventMemberId, setNewEventMemberId] = useState<string>("");
   const [newEventDayIndex, setNewEventDayIndex] = useState(0);
@@ -40,10 +43,9 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  // ★ 新規追加：現在表示している週の基準日
   const [currentViewDate, setCurrentViewDate] = useState(new Date());
 
-  // === 日付の自動計算（表示中の週に合わせて動的に変化） ===
+  // === 日付の自動計算 ===
   const { currentWeekDays, currentMonthYear, todayDate } = useMemo(() => {
     const dayOfWeek = currentViewDate.getDay();
     const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -60,7 +62,6 @@ export default function CalendarDashboard() {
       weekDays.push(`${dayNames[i]} ${currentDate.getDate()}`);
     }
     
-    // 今週を見ている時だけ「今日」をハイライトするための判定
     const actualToday = new Date();
     const isCurrentWeek = monday.getMonth() === actualToday.getMonth() && monday.getFullYear() === actualToday.getFullYear();
     
@@ -145,7 +146,6 @@ export default function CalendarDashboard() {
         }
       }
 
-      // ★ 表示中の週に合わせてGoogleから取得する期間を変更
       const dayOfWeek = currentViewDate.getDay();
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
       const monday = new Date(currentViewDate);
@@ -204,7 +204,6 @@ export default function CalendarDashboard() {
     }
   };
 
-  // 表示している週（currentViewDate）が変わるたびにGoogleデータを同期する
   useEffect(() => {
     if (status === "authenticated" && session) {
       syncGoogleData();
@@ -214,8 +213,6 @@ export default function CalendarDashboard() {
 
 
   // === 操作関数 ===
-
-  // ★ 新規追加：週の切り替え関数
   const handlePrevWeek = () => {
     const newDate = new Date(currentViewDate);
     newDate.setDate(currentViewDate.getDate() - 7);
@@ -228,17 +225,15 @@ export default function CalendarDashboard() {
     setCurrentViewDate(newDate);
   };
 
-  // ★ 新規追加：タスクの削除機能
   const handleDeleteTask = async (taskId: number, e: React.MouseEvent) => {
-    e.stopPropagation(); // ドラッグ等を誤作動させない
+    e.stopPropagation();
     const { error } = await supabase.from('todos').delete().eq('id', taskId);
     if (error) { alert("削除に失敗しました"); return; }
     setTodos(todos.filter(t => t.id !== taskId));
   };
 
-  // ★ 新規追加：予定の削除機能
   const handleDeleteEvent = async (eventId: number, isGoogle: boolean, e: React.MouseEvent) => {
-    e.stopPropagation(); // タイマー開始を誤作動させない
+    e.stopPropagation();
     if (isGoogle) {
       alert("Googleカレンダーの予定は、Googleカレンダーアプリ側で削除してください。");
       return;
@@ -298,12 +293,6 @@ export default function CalendarDashboard() {
     setIsTracking(!isTracking);
   };
 
-  const startTrackingFromEvent = (eventTitle: string) => {
-    setActiveTab("time");
-    setActiveTaskName(eventTitle.replace("📅 ", ""));
-    setIsTracking(true);
-  };
-
   const formatTime = (totalSeconds: number) => {
     const hrs = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
@@ -312,6 +301,7 @@ export default function CalendarDashboard() {
   };
 
   const handleEmptySlotClick = (dayIndex: number, startHour: number) => {
+    setEditingEventId(null); // ★ 新規作成モードとしてリセット
     setNewEventTitle("");
     setNewEventDayIndex(dayIndex);
     setNewEventStartHour(startHour);
@@ -319,23 +309,56 @@ export default function CalendarDashboard() {
     setIsCreateEventModalOpen(true);
   };
 
+  // ★ 新規追加：予定ブロックをクリックして「編集モード」で開く処理
+  const handleEventClick = (event: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (event.isGoogle) {
+      alert("Googleカレンダーの予定は、Googleカレンダーアプリ側で編集してください。");
+      return;
+    }
+    setEditingEventId(event.id);
+    setNewEventTitle(event.title);
+    setNewEventMemberId(event.memberId);
+    setNewEventDayIndex(event.dayIndex);
+    setNewEventStartHour(event.startHour);
+    setNewEventDuration(event.duration);
+    setIsCreateEventModalOpen(true);
+  };
+
+  // ★ 変更：新規作成 ＆ 上書き更新 の両方に対応
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEventTitle || !newEventMemberId) return;
 
-    const { data, error } = await supabase
-      .from('events')
-      .insert({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration })
-      .select().single();
+    if (editingEventId) {
+      // ===== 更新処理 =====
+      const { data, error } = await supabase
+        .from('events')
+        .update({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration })
+        .eq('id', editingEventId)
+        .select().single();
 
-    if (error) { alert("予定の作成に失敗しました。"); return; }
+      if (error) { alert("予定の更新に失敗しました。"); return; }
 
-    const newEvent = {
-      id: data.id, memberId: data.member_id, title: data.title, dayIndex: data.day_index,
-      startHour: data.start_hour, duration: Number(data.duration), isGoogle: false
-    };
-    setEvents((prevEvents) => [...prevEvents, newEvent]);
+      setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: data.member_id, title: data.title, dayIndex: data.day_index, startHour: data.start_hour, duration: Number(data.duration) } : ev));
+    } else {
+      // ===== 新規作成処理 =====
+      const { data, error } = await supabase
+        .from('events')
+        .insert({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration })
+        .select().single();
+
+      if (error) { alert("予定の作成に失敗しました。"); return; }
+
+      const newEvent = {
+        id: data.id, memberId: data.member_id, title: data.title, dayIndex: data.day_index,
+        startHour: data.start_hour, duration: Number(data.duration), isGoogle: false
+      };
+      setEvents((prevEvents) => [...prevEvents, newEvent]);
+    }
+
     setIsCreateEventModalOpen(false);
+    setEditingEventId(null);
     setNewEventTitle("");
     if (!selectedMemberIds.includes(newEventMemberId)) setSelectedMemberIds((prev) => [...prev, newEventMemberId]);
   };
@@ -392,21 +415,21 @@ export default function CalendarDashboard() {
       
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration}
+        editingEventId={editingEventId} setEditingEventId={setEditingEventId} // ★ Props追加
       />
 
       <Sidebar 
-        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut}
-        handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} // ★追加
+        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek}
+        setEditingEventId={setEditingEventId} // ★ Props追加
       />
 
       <CalendarMain
-        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} startTrackingFromEvent={startTrackingFromEvent} setIsScheduleModalOpen={setIsScheduleModalOpen}
-        handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleDeleteEvent={handleDeleteEvent} // ★追加
+        currentMonthYear={currentMonthYear} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEmptySlotClick={handleEmptySlotClick} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} handleDeleteEvent={handleDeleteEvent}
+        handleEventClick={handleEventClick} // ★ Props追加
       />
 
       <RightPanel 
-        activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking}
-        handleDeleteTask={handleDeleteTask} // ★追加
+        activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask}
       />
 
     </div>

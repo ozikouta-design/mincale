@@ -23,6 +23,8 @@ interface ModalsProps {
   hours: string[];
   newEventDuration: number;
   setNewEventDuration: (duration: number) => void;
+  editingEventId: number | null; // ★ 追加
+  setEditingEventId: (id: number | null) => void; // ★ 追加
 }
 
 export default function Modals({
@@ -47,7 +49,16 @@ export default function Modals({
   hours,
   newEventDuration,
   setNewEventDuration,
+  editingEventId, // ★ 追加
+  setEditingEventId // ★ 追加
 }: ModalsProps) {
+
+  // ★ 追加：モーダルを閉じる時に編集状態もリセットする
+  const closeEventModal = () => {
+    setIsCreateEventModalOpen(false);
+    setEditingEventId(null);
+  };
+
   return (
     <>
       {/* ========== モーダル：日程調整リンク発行 ========== */}
@@ -87,13 +98,15 @@ export default function Modals({
         </div>
       )}
 
-      {/* ========== モーダル：手動予定作成 ========== */}
+      {/* ========== モーダル：手動予定作成 ＆ 編集 ========== */}
       {isCreateEventModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-              <h2 className="text-base font-bold text-gray-800">新しい予定を作成</h2>
-              <button onClick={() => setIsCreateEventModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
+              <h2 className="text-base font-bold text-gray-800">
+                {editingEventId ? "予定の編集" : "新しい予定を作成"} {/* ★ 文言切り替え */}
+              </h2>
+              <button onClick={closeEventModal} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -140,8 +153,12 @@ export default function Modals({
               </div>
 
               <div className="pt-4 flex justify-end space-x-3">
-                <button type="button" onClick={() => setIsCreateEventModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">キャンセル</button>
-                <button type="submit" className="px-5 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors shadow-sm">保存する</button>
+                <button type="button" onClick={closeEventModal} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
+                  キャンセル
+                </button>
+                <button type="submit" className="px-5 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors shadow-sm">
+                  {editingEventId ? "更新する" : "保存する"} {/* ★ 文言切り替え */}
+                </button>
               </div>
             </form>
           </div>
