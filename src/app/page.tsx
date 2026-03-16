@@ -47,7 +47,7 @@ export default function CalendarDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
-  // ★ 新規追加：グループ管理のステート
+  // ★ グループ管理のステート
   const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -90,15 +90,16 @@ export default function CalendarDashboard() {
 
       const { data: todosData } = await supabase.from('todos').select('*').order('id', { ascending: true });
       if (todosData) setTodos(todosData);
+
+      // ★ 追加：初期ロード時にSupabaseから「グループ一覧」を取得する
+      const { data: groupsData } = await supabase.from('groups').select('*').order('id', { ascending: true });
+      if (groupsData) {
+        setGroups(groupsData.map(g => ({ id: g.id.toString(), name: g.name, memberIds: g.member_ids })));
+      }
+
       setIsLoadingData(false);
     };
     fetchData();
-
-    // ★ 初期ロード時にローカルストレージからグループ情報を復元
-    const savedGroups = localStorage.getItem("mincale_groups");
-    if (savedGroups) {
-      try { setGroups(JSON.parse(savedGroups)); } catch (e) {}
-    }
   }, []);
 
   useEffect(() => {
@@ -181,9 +182,9 @@ export default function CalendarDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, currentViewDate]);
 
-  // ★ 改善：週移動時に「古いGoogleの予定」を一瞬で消して、ラグ表示を防ぐ！
+  // ★ 改善：週移動時に古いGoogle予定を一瞬で消す（ラグ解消）
   const handlePrevWeek = () => {
-    setEvents(prev => prev.filter(e => !e.isGoogle)); 
+    setEvents(prev => prev.filter(e => !e.isGoogle));
     const newDate = new Date(currentViewDate);
     newDate.setDate(currentViewDate.getDate() - 7);
     setCurrentViewDate(newDate);
@@ -223,24 +224,39 @@ export default function CalendarDashboard() {
   const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
   const selectAllMembers = () => setSelectedMemberIds(members.map(m => m.id));
   
-  // ★ 新規追加：グループの保存ロジック
-  const handleSaveGroup = () => {
+  // ★ 変更：グループを「Supabaseのデータベース」に保存する
+  const handleSaveGroup = async () => {
     if (!newGroupName.trim() || newGroupMemberIds.length === 0) return;
-    const newGroup = { id: Date.now().toString(), name: newGroupName, memberIds: newGroupMemberIds };
-    const updatedGroups = [...groups, newGroup];
-    setGroups(updatedGroups);
-    localStorage.setItem("mincale_groups", JSON.stringify(updatedGroups)); // ブラウザに保存
+    
+    // DBにインサート
+    const { data, error } = await supabase.from('groups').insert({ 
+      name: newGroupName, 
+      member_ids: newGroupMemberIds 
+    }).select().single();
+
+    if (!error && data) {
+      setGroups([...groups, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]);
+    } else {
+      alert("グループの保存に失敗しました。");
+    }
+    
     setIsGroupModalOpen(false);
     setNewGroupName("");
     setNewGroupMemberIds([]);
   };
 
-  // ★ 新規追加：グループの削除ロジック
-  const handleDeleteGroup = (groupId: string, e: React.MouseEvent) => {
+  // ★ 変更：グループを「Supabaseのデータベース」から完全に削除する
+  const handleDeleteGroup = async (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updatedGroups = groups.filter(g => g.id !== groupId);
-    setGroups(updatedGroups);
-    localStorage.setItem("mincale_groups", JSON.stringify(updatedGroups));
+    
+    // DBからデリート
+    const { error } = await supabase.from('groups').delete().eq('id', parseInt(groupId, 10));
+    
+    if (!error) {
+      setGroups(groups.filter(g => g.id !== groupId));
+    } else {
+      alert("グループの削除に失敗しました。");
+    }
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => {
@@ -444,13 +460,13 @@ export default function CalendarDashboard() {
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration}
         editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent}
-        isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup} // ★ 追加
+        isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup}
       />
       
       <Sidebar 
         currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrevWeek} handleNextWeek={handleNextWeek} setEditingEventId={setEditingEventId}
         isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
-        groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} // ★ 追加
+        groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
       />
       
       <CalendarMain
