@@ -36,7 +36,9 @@ export default function CalendarMain({
 
   const mainWrapperRef = useRef<HTMLDivElement>(null);
   const weekScrollContainerRef = useRef<HTMLDivElement>(null);
+  const weekGridRef = useRef<HTMLDivElement>(null);
   const dayScrollContainerRef = useRef<HTMLDivElement>(null);
+  const dayGridRef = useRef<HTMLDivElement>(null); // ← これを渡す必要がありました
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -91,7 +93,6 @@ export default function CalendarMain({
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // ★ 大改修：ボタン操作は「いま表示されているコンテナのスクロール位置を1画面分横にズラすだけ」に統一！
   const handlePrev = () => {
     if (viewMode === 'day' && dayScrollContainerRef.current) dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: 'smooth' });
     else if (viewMode === 'week' && weekScrollContainerRef.current) weekScrollContainerRef.current.scrollBy({ left: -weekDayWidth * 7, behavior: 'smooth' });
@@ -118,7 +119,6 @@ export default function CalendarMain({
     }
   };
 
-  // ★ 起動時・ViewMode変更時に、自動的に「今日」の場所にスクロールを合わせる
   useEffect(() => {
     const alignToToday = () => {
       if (viewMode === 'week' && weekScrollContainerRef.current && weekDayWidth > 0) {
@@ -136,7 +136,7 @@ export default function CalendarMain({
       }
     };
     alignToToday();
-    const timer = setTimeout(alignToToday, 100); // 描画直後にもう一度確実に合わせる
+    const timer = setTimeout(alignToToday, 100);
     return () => clearTimeout(timer);
   }, [viewMode, days, months, weekDayWidth, singleDayWidth, weekStartDay, hourHeight]);
 
@@ -170,11 +170,9 @@ export default function CalendarMain({
         newDuration = Math.max(0.25, newDuration); 
         setResizingEvent(prev => prev ? { ...prev, currentDuration: newDuration } : null);
       } else if (selection) {
-        // ★ 選択時のY座標計算用に固定のラッパーを参照する
         if (mainWrapperRef.current) {
           const rect = mainWrapperRef.current.getBoundingClientRect();
           const clampedY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-          // ヘッダーの高さを考慮（約72px分を引く）
           setSelection(prev => prev ? { ...prev, currentHour: Math.max(0, (clampedY - 72) / hourHeight) } : null);
         }
       }
@@ -207,7 +205,8 @@ export default function CalendarMain({
           <DayView 
             days={days} hours={hours} currentHourExact={currentHourExact} accentColor={accentColor} hourHeight={hourHeight} selectedMemberIds={selectedMemberIds} members={members} events={events} eventLayouts={eventLayouts}
             selection={selection} setSelection={setSelection} dragOverSlot={dragOverSlot} setDragOverSlot={setDragOverSlot} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEventDragStart={handleEventDragStart} handleEventClick={handleEventClick}
-            dayScrollContainerRef={dayScrollContainerRef} handleDayScroll={handleDayScroll} singleDayWidth={singleDayWidth}
+            // ★ 修正：ここで dayGridRef を確実に渡す！
+            dayScrollContainerRef={dayScrollContainerRef} handleDayScroll={handleDayScroll} dayGridRef={dayGridRef} singleDayWidth={singleDayWidth}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
           />
         )}
@@ -216,7 +215,7 @@ export default function CalendarMain({
           <WeekView 
             days={days} hours={hours} currentHourExact={currentHourExact} accentColor={accentColor} hourHeight={hourHeight} selectedMemberIds={selectedMemberIds} members={members} events={events} eventLayouts={eventLayouts}
             selection={selection} setSelection={setSelection} dragOverSlot={dragOverSlot} setDragOverSlot={setDragOverSlot} handleDragOver={handleDragOver} handleDrop={handleDrop} handleEventDragStart={handleEventDragStart} handleEventClick={handleEventClick}
-            weekScrollContainerRef={weekScrollContainerRef} handleWeekScroll={handleWeekScroll}
+            weekScrollContainerRef={weekScrollContainerRef} handleWeekScroll={handleWeekScroll} weekGridRef={weekGridRef}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent} weekStartDay={weekStartDay} dayWidth={weekDayWidth}
           />
         )}
