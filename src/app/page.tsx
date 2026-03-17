@@ -33,54 +33,54 @@ export const formatLocalISO = (date: Date) => {
 export default function CalendarDashboard() {
   const { data: session, status } = useSession();
 
+  // ビューとタブの状態
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
-  const [activeTab, setActiveTab] = useState<"todo" | "time">("todo");
+  const [activeTab, setActiveTab] = useState<"todo" | "settings">("todo");
+  
+  // メンバー・グループ・予定・タスクのデータ
   const [members, setMembers] = useState<any[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-  
+  const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [todos, setTodos] = useState<any[]>([]);
+
+  // モーダルとUI開閉の状態
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
-  const [isCopied, setIsCopied] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [isTaskEditModalOpen, setIsTaskEditModalOpen] = useState(false);
 
-  const [isTracking, setIsTracking] = useState(false);
-  const [trackedSeconds, setTrackedSeconds] = useState(0);
-  const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
-
+  // 新規・編集用のステート
   const [editingEventId, setEditingEventId] = useState<any>(null);
   const [editingEventIsGoogle, setEditingEventIsGoogle] = useState<boolean>(false);
-
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventMemberId, setNewEventMemberId] = useState<string>("");
   const [newEventDayIndex, setNewEventDayIndex] = useState(0);
   const [newEventStartHour, setNewEventStartHour] = useState(0);
   const [newEventDuration, setNewEventDuration] = useState(1);
-
+  
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskProject, setNewTaskProject] = useState("");
-
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(true);
-
-  const [events, setEvents] = useState<any[]>([]);
-  const [todos, setTodos] = useState<any[]>([]);
-
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
-
-  const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
-  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
-
-  const [isTaskEditModalOpen, setIsTaskEditModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskProject, setEditTaskProject] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
+
+  const [isCopied, setIsCopied] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   const [currentViewDate, setCurrentViewDate] = useState(new Date());
   const [currentMonthYear, setCurrentMonthYear] = useState("");
   const [scrollTrigger, setScrollTrigger] = useState<{ direction: 'prev' | 'next' | 'today', timestamp: number } | null>(null);
+
+  // UI/UXカスタマイズ設定
+  const [accentColor, setAccentColor] = useState("#2563eb");
+  const [hourHeight, setHourHeight] = useState(64);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth >= 768) {
@@ -115,18 +115,15 @@ export default function CalendarDashboard() {
 
   const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
 
-  // ★ 変更：ユーザーごとのデータ分離対応
   useEffect(() => {
     const today = new Date();
     setCurrentMonthYear(`${today.getFullYear()}年 ${today.getMonth() + 1}月`);
     
     const fetchData = async () => {
-      // ログインしていない場合は処理をスキップ
       if (!session?.user?.email) return;
 
       setIsLoadingData(true);
       
-      // 自分（ログインユーザー）のToDoのみを取得
       const { data: todosData } = await supabase
         .from('todos')
         .select('*')
@@ -134,7 +131,6 @@ export default function CalendarDashboard() {
         .order('id', { ascending: true });
       if (todosData) setTodos(todosData);
 
-      // 自分（ログインユーザー）のグループのみを取得
       const { data: groupsData } = await supabase
         .from('groups')
         .select('*')
@@ -146,13 +142,7 @@ export default function CalendarDashboard() {
       setIsLoadingData(false);
     };
     fetchData();
-  }, [session]); // sessionの変更を監視
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTracking) { interval = setInterval(() => setTrackedSeconds((prev) => prev + 1), 1000); }
-    return () => clearInterval(interval);
-  }, [isTracking]);
+  }, [session]);
 
   const syncGoogleData = async () => {
     if (!session || !(session as any).accessToken) return;
@@ -204,7 +194,6 @@ export default function CalendarDashboard() {
 
         const results = await Promise.all(eventPromises);
         allGoogleEvents = results.flat();
-        
         setEvents(allGoogleEvents);
       }
     } catch (error) {
@@ -232,6 +221,7 @@ export default function CalendarDashboard() {
       setCurrentViewDate(newDate);
     }
   };
+
   const handleNext = () => {
     if (viewMode === 'week' || viewMode === 'day') {
       setScrollTrigger({ direction: 'next', timestamp: Date.now() });
@@ -261,6 +251,12 @@ export default function CalendarDashboard() {
     if (!error) setTodos(todos.filter(t => t.id !== taskId));
   };
 
+  const handleToggleTodo = async (taskId: number, currentStatus: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const { data, error } = await supabase.from('todos').update({ is_completed: !currentStatus }).eq('id', taskId).select().single();
+    if (!error && data) setTodos(todos.map(t => t.id === taskId ? data : t));
+  };
+
   const handleDeleteEvent = async (eventId: any, isGoogle: boolean, calendarId: string) => {
     if (!confirm("この予定を削除しますか？\n(Googleカレンダーからも削除されます)")) return;
     const token = (session as any)?.accessToken;
@@ -276,7 +272,6 @@ export default function CalendarDashboard() {
   const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
   const selectAllMembers = () => setSelectedMemberIds(members.map(m => m.id));
   
-  // ★ 変更：グループ保存時に自分の user_email を記録する
   const handleSaveGroup = async () => {
     if (!newGroupName.trim() || newGroupMemberIds.length === 0 || !session?.user?.email) return;
     const { data, error } = await supabase.from('groups').insert({ 
@@ -312,6 +307,7 @@ export default function CalendarDashboard() {
       const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10);
       const targetTodo = todos.find((t) => t.id === draggedTodoId);
       const targetCalendarId = newEventMemberId || members[0]?.id || "";
+      
       if (targetTodo && targetCalendarId) {
         const token = (session as any)?.accessToken;
         if (!token) return;
@@ -370,15 +366,6 @@ export default function CalendarDashboard() {
     }
   };
 
-  const toggleTracking = () => {
-    if (!isTracking && !activeTaskName) setActiveTaskName("一般作業");
-    setIsTracking(!isTracking);
-  };
-  const formatTime = (totalSeconds: number) => {
-    const hrs = Math.floor(totalSeconds / 3600); const mins = Math.floor((totalSeconds % 3600) / 60); const secs = totalSeconds % 60;
-    return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
   const handleRangeSelect = (dayIndex: number, startHour: number, duration: number) => {
     setEditingEventId(null); 
     setEditingEventIsGoogle(false);
@@ -390,9 +377,14 @@ export default function CalendarDashboard() {
   };
 
   const handleEventClick = (event: any, e: React.MouseEvent) => {
-    e.stopPropagation(); setEditingEventId(event.id); setEditingEventIsGoogle(event.isGoogle);
-    setNewEventTitle(event.title); setNewEventMemberId(event.memberId);
-    setNewEventDayIndex(event.dayIndex); setNewEventStartHour(event.startHour); setNewEventDuration(event.duration);
+    e.stopPropagation(); 
+    setEditingEventId(event.id); 
+    setEditingEventIsGoogle(event.isGoogle);
+    setNewEventTitle(event.title); 
+    setNewEventMemberId(event.memberId);
+    setNewEventDayIndex(event.dayIndex); 
+    setNewEventStartHour(event.startHour); 
+    setNewEventDuration(event.duration);
     setIsCreateEventModalOpen(true);
   };
 
@@ -442,15 +434,16 @@ export default function CalendarDashboard() {
     if (!selectedMemberIds.includes(newEventMemberId)) setSelectedMemberIds((prev) => [...prev, newEventMemberId]);
   };
 
-  // ★ 変更：ToDoタスク保存時に自分の user_email を記録する
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault(); 
     if (!newTaskTitle.trim() || !session?.user?.email) return;
+    
     const { data, error } = await supabase.from('todos').insert({ 
       title: newTaskTitle, 
       project: newTaskProject || "一般タスク",
       user_email: session.user.email 
     }).select().single();
+    
     if (!error) setTodos([...todos, data]);
     setNewTaskTitle(""); setNewTaskProject(""); setIsAddingTask(false);
   };
@@ -468,7 +461,9 @@ export default function CalendarDashboard() {
             if (h >= event.startHour && h < event.startHour + event.duration) { isOccupied = true; break; }
           }
         }
-        if (!isOccupied) { if (blockStart === -1) blockStart = h; } else {
+        if (!isOccupied) {
+          if (blockStart === -1) blockStart = h;
+        } else {
           if (blockStart !== -1) {
             freeSlots.push(`・${visibleDays[d].label} ${hours[blockStart]}〜${hours[h]}`);
             blockStart = -1;
@@ -482,7 +477,13 @@ export default function CalendarDashboard() {
     return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.slice(0, 5).join("\n")}\n\n▼ こちらのリンクからもそのままカレンダーへの登録（日程確定）が可能です：\nhttps://mincale.app/t/req-schedule-xyz\n\nご検討のほど、よろしくお願いいたします。`;
   };
 
-  const handleCopyToClipboard = async () => { try { await navigator.clipboard.writeText(getCommonFreeTimeText()); setIsCopied(true); setTimeout(() => setIsCopied(false), 2000); } catch (err) {} };
+  const handleCopyToClipboard = async () => { 
+    try { 
+      await navigator.clipboard.writeText(getCommonFreeTimeText()); 
+      setIsCopied(true); 
+      setTimeout(() => setIsCopied(false), 2000); 
+    } catch (err) {} 
+  };
 
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
@@ -500,16 +501,18 @@ export default function CalendarDashboard() {
       />
       
       <Sidebar 
-        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrev} handleNextWeek={handleNext} setEditingEventId={setEditingEventId} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
+        currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrev} handleNextWeek={handleNext} setEditingEventId={setEditingEventId} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup}
+        accentColor={accentColor}
       />
       
       <CalendarMain
-        currentMonthYear={currentMonthYear} setCurrentMonthYear={setCurrentMonthYear} currentViewDate={currentViewDate} viewMode={viewMode} setViewMode={setViewMode} scrollTrigger={scrollTrigger} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleRangeSelect={handleRangeSelect} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrev} handleNextWeek={handleNext} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart} setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
-        handleToday={handleToday}
+        currentMonthYear={currentMonthYear} setCurrentMonthYear={setCurrentMonthYear} currentViewDate={currentViewDate} viewMode={viewMode} setViewMode={setViewMode} scrollTrigger={scrollTrigger} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleRangeSelect={handleRangeSelect} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrev} handleNextWeek={handleNext} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart} setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen} handleToday={handleToday}
+        accentColor={accentColor} hourHeight={hourHeight}
       />
       
       <RightPanel 
-        activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask} isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} openTaskEditModal={openTaskEditModal} 
+        activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} handleDeleteTask={handleDeleteTask} isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} openTaskEditModal={openTaskEditModal}
+        handleToggleTodo={handleToggleTodo} accentColor={accentColor} setAccentColor={setAccentColor} hourHeight={hourHeight} setHourHeight={setHourHeight}
       />
     </div>
   );
