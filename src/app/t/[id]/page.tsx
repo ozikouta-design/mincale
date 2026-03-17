@@ -11,13 +11,11 @@ export default function PublicBookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   
-  // 実施形式のステート
   const [meetingType, setMeetingType] = useState<"meet" | "zoom" | "inperson" | "other">("meet");
   const [zoomUrl, setZoomUrl] = useState("");
   const [location, setLocation] = useState("");
   const [otherDetails, setOtherDetails] = useState("");
 
-  // お客様情報のステート
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
@@ -28,18 +26,43 @@ export default function PublicBookingPage() {
 
   const availableSlots = ["10:00", "11:00", "13:00", "15:00", "16:30"];
 
+  // ★ 修正：APIを呼び出すように書き換え
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
-    // 名前と日時だけは必須
     if (!selectedDate || !selectedTime || !guestName) return;
 
     setIsSubmitting(true);
     
-    // 【ここに実際の予約処理が入ります】
-    setTimeout(() => {
-      setIsSubmitting(false);
+    // 選択された時間から、開始日時と終了日時（30分後）を計算
+    const [hours, minutes] = selectedTime.split(':').map(Number);
+    const startDt = new Date(selectedDate);
+    startDt.setHours(hours, minutes, 0, 0);
+    const endDt = new Date(startDt.getTime() + 30 * 60000);
+
+    try {
+      const res = await fetch('/api/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hostSlug: hostId,
+          guestName, guestEmail, guestPhone, guestNotes,
+          meetingType, zoomUrl, location, otherDetails,
+          startDt: startDt.toISOString(),
+          endDt: endDt.toISOString()
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || '予約に失敗しました');
+      }
+      
       setIsSuccess(true);
-    }, 2000);
+    } catch (err: any) {
+      alert(`エラーが発生しました: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSuccess) {
@@ -190,7 +213,6 @@ export default function PublicBookingPage() {
                     </div>
                   </div>
 
-                  {/* 形式に応じた動的入力フィールド */}
                   <div className="animate-in fade-in slide-in-from-top-1 duration-200">
                     {meetingType === "meet" && (
                       <div className="bg-blue-50 text-blue-700 p-3 rounded-lg text-xs font-medium border border-blue-100">
