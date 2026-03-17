@@ -6,31 +6,32 @@ interface DayViewProps {
   selectedMemberIds: string[]; members: any[]; events: any[]; eventLayouts: any;
   selection: any; setSelection: (sel: any) => void;
   dragOverSlot: any; setDragOverSlot: (slot: any) => void;
-  // ★ 修正：<HTMLDivElement> を追加
-  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; 
-  handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
+  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
   handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void;
   handleEventClick: (ev: any, e: React.MouseEvent) => void;
-  dayScrollContainerRef: React.RefObject<HTMLDivElement | null>;
-  handleDayScroll: () => void;
-  dayGridRefs: React.MutableRefObject<any>;
+  dayScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleDayScroll: () => void; dayGridRefs: React.MutableRefObject<any>;
+  resizingEvent: any; setResizingEvent: (evt: any) => void;
 }
 
 export default function DayView({
   days, hours, currentHourExact, accentColor, hourHeight, selectedMemberIds, members, events, eventLayouts,
   selection, setSelection, dragOverSlot, setDragOverSlot, handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
-  dayScrollContainerRef, handleDayScroll, dayGridRefs
+  dayScrollContainerRef, handleDayScroll, dayGridRefs, resizingEvent, setResizingEvent
 }: DayViewProps) {
   const activeMembers = members.filter(m => selectedMemberIds.includes(m.id));
 
   return (
     <div className="flex-1 overflow-x-auto overflow-y-auto flex snap-x snap-mandatory bg-white relative" ref={dayScrollContainerRef} onScroll={handleDayScroll} style={{ scrollbarWidth: 'none' }}>
-      {days.map((day) => (
+      {days.map((day) => {
+        const isSat = day.date.getDay() === 6; const isSun = day.date.getDay() === 0;
+        const textColor = day.isToday ? 'text-white' : isSat ? 'text-blue-500' : isSun ? 'text-red-500' : 'text-gray-500';
+
+        return (
         <div key={day.dayIndex} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white relative">
           <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
             <div className="w-16 shrink-0 border-r border-gray-100 bg-white flex flex-col items-center justify-center py-2">
-              <span className={`text-2xl font-light ${day.isToday ? 'font-bold' : 'text-gray-700'}`} style={day.isToday ? { color: accentColor } : {}}>{day.date.getDate()}</span>
-              <span className={`text-xs ${day.isToday ? 'font-bold' : 'text-gray-500'}`} style={day.isToday ? { color: accentColor } : {}}>{["日","月","火","水","木","金","土"][day.date.getDay()]}</span>
+              <span className={`text-2xl font-light ${day.isToday ? 'font-bold text-gray-800' : textColor}`} style={day.isToday ? { color: accentColor } : {}}>{day.date.getDate()}</span>
+              <span className={`text-xs ${day.isToday ? 'font-bold text-gray-800' : textColor}`} style={day.isToday ? { color: accentColor } : {}}>{["日","月","火","水","木","金","土"][day.date.getDay()]}</span>
             </div>
             <div className="flex-1 flex overflow-hidden">
               {activeMembers.map(member => (
@@ -66,9 +67,16 @@ export default function DayView({
                   ))}
                   {events.filter(ev => ev.dayIndex === day.dayIndex && ev.memberId === member.id).map((event, idx) => {
                     const layoutKey = `${event.id}-${event.memberId}`; const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 }; const widthPct = 100 / layout.totalColumns; const leftPct = (layout.column * widthPct);
+                    const isResizing = resizingEvent?.eventId === event.id;
+                    const displayDuration = isResizing ? resizingEvent.currentDuration : event.duration;
+
                     return (
-                      <div key={`${event.id}-${idx}`} draggable={true} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }} onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }} onClick={(e) => handleEventClick(event, e)} className="absolute rounded-lg px-2 py-1 text-[11px] text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 cursor-grab active:cursor-grabbing" style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${event.duration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member.colorHex }}>
+                      <div key={`${event.id}-${idx}`} draggable={!isResizing} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }} onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }} onClick={(e) => { if(!isResizing) handleEventClick(event, e); }} 
+                        className={`absolute rounded-lg px-2 py-1 text-[11px] text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'}`} 
+                        style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member.colorHex }}>
                         <div className="font-bold truncate">{event.title}</div>
+                        {/* ★ リサイズ用ハンドル */}
+                        <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/20 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId }); }} />
                       </div>
                     );
                   })}
@@ -77,7 +85,8 @@ export default function DayView({
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
