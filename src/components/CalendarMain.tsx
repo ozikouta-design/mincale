@@ -47,9 +47,6 @@ export default function CalendarMain({
 
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ==============================
-  // ▼ オーバーラップ（重なり）計算エンジン
-  // ==============================
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number, totalColumns: number }> = {};
     const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
@@ -132,10 +129,6 @@ export default function CalendarMain({
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // ==============================
-  // ▼ スクロール ＆ マウスイベント制御
-  // ==============================
-  
   useEffect(() => {
     if (viewMode === 'week' && weekScrollContainerRef.current) {
       const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
@@ -209,7 +202,6 @@ export default function CalendarMain({
     }
   };
 
-  // 無段階ドラッグ作成のアニメーション＆マウス監視
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (selection) {
@@ -239,10 +231,6 @@ export default function CalendarMain({
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [selection, handleRangeSelect, viewMode]);
 
-
-  // ==============================
-  // ▼ 1. 日別（デイリー）表示
-  // ==============================
   const renderDayView = () => {
     const activeMembers = members.filter(m => selectedMemberIds.includes(m.id));
 
@@ -256,7 +244,6 @@ export default function CalendarMain({
         {days.map((day) => (
           <div key={day.dayIndex} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white">
             
-            {/* ヘッダー */}
             <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
               <div className="w-16 shrink-0 border-r border-gray-100 bg-white flex flex-col items-center justify-center py-2">
                 <span className={`text-2xl font-light ${day.isToday ? 'text-blue-600' : 'text-gray-700'}`}>{day.date.getDate()}</span>
@@ -272,14 +259,13 @@ export default function CalendarMain({
               </div>
             </div>
 
-            {/* タイムグリッド */}
-            <div className="flex-1 overflow-y-auto relative flex" ref={el => dayGridRefs.current[day.dayIndex] = el}>
+            {/* ★ 変更：ref に渡すアロー関数を波括弧で囲み、void を返すように修正 */}
+            <div className="flex-1 overflow-y-auto relative flex" ref={el => { dayGridRefs.current[day.dayIndex] = el; }}>
               <div className="w-16 shrink-0 border-r border-gray-100 bg-white z-20">
                 {hours.map((hour, i) => <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-50">{hour}</div>)}
               </div>
 
               <div className="flex-1 flex relative">
-                {/* ★ 復旧：日別表示のドラッグプレビュー（青枠） */}
                 {selection && selection.dayIndex === day.dayIndex && selection.memberId && (
                   <div 
                     className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
@@ -303,7 +289,6 @@ export default function CalendarMain({
 
                 {activeMembers.map((member) => (
                   <div key={member.id} className="flex-1 min-w-[120px] border-r border-gray-50 relative group">
-                    {/* ★ 復旧：背景グリッドセルでのドラッグ開始・ドロップ受付 */}
                     {hours.map((_, i) => (
                       <div 
                         key={i} className={`h-16 border-b border-gray-50 cursor-crosshair hover:bg-gray-50/30 transition-colors ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
@@ -319,7 +304,6 @@ export default function CalendarMain({
                       />
                     ))}
                     
-                    {/* ★ 復旧：既存の予定ブロックのドラッグ移動（DnD）対応 */}
                     {events
                       .filter(ev => ev.dayIndex === day.dayIndex && ev.memberId === member.id)
                       .map((event, idx) => {
@@ -332,7 +316,7 @@ export default function CalendarMain({
                           <div 
                             key={`${event.id}-${idx}`}
                             draggable={true} 
-                            onMouseDown={(e) => e.stopPropagation()} // 新規作成との競合防止
+                            onMouseDown={(e) => e.stopPropagation()} 
                             onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
                             onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
                             onClick={(e) => handleEventClick(event, e)}
@@ -359,15 +343,9 @@ export default function CalendarMain({
     );
   };
 
-
-  // ==============================
-  // ▼ 2. 週別（ウィークリー）表示
-  // ==============================
   const renderWeekView = () => (
     <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative" ref={weekScrollContainerRef} onScroll={handleWeekScroll}>
       <div className="flex flex-col min-w-max">
-        
-        {/* ヘッダー */}
         <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
           <div className="w-16 shrink-0 sticky left-0 bg-white z-50 border-r border-gray-100"></div>
           {days.map((day) => (
@@ -377,8 +355,7 @@ export default function CalendarMain({
           ))}
         </div>
 
-        {/* タイムグリッド */}
-        <div className="flex-1 flex relative" ref={weekGridRef}>
+        <div className="flex-1 relative" ref={weekGridRef}>
           <div className="w-16 shrink-0 sticky left-0 bg-white z-30 border-r border-gray-100 flex flex-col">
             {hours.map((hour, i) => (
               <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-100">{hour}</div>
@@ -387,8 +364,6 @@ export default function CalendarMain({
 
           {days.map((day, colIndex) => (
             <div key={day.dayIndex} className={`w-48 shrink-0 border-r border-gray-100 relative ${day.isToday ? 'bg-blue-50/10' : ''}`}>
-              
-              {/* ★ 復旧：背景グリッドセルでのドラッグ開始・ドロップ受付 */}
               {hours.map((_, i) => (
                 <div 
                   key={i} 
@@ -405,7 +380,6 @@ export default function CalendarMain({
                 />
               ))}
 
-              {/* ★ 復旧：既存の予定ブロックのドラッグ移動（DnD）対応 */}
               {events
                 .filter(ev => ev.dayIndex === day.dayIndex && selectedMemberIds.includes(ev.memberId))
                 .map((event, idx) => {
@@ -419,7 +393,7 @@ export default function CalendarMain({
                     <div 
                       key={`${event.id}-${idx}`}
                       draggable={true} 
-                      onMouseDown={(e) => e.stopPropagation()} // 新規作成との競合防止
+                      onMouseDown={(e) => e.stopPropagation()} 
                       onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
                       onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
                       onClick={(e) => handleEventClick(event, e)}
@@ -442,7 +416,6 @@ export default function CalendarMain({
             </div>
           ))}
 
-          {/* ★ 復旧：週別表示のドラッグプレビュー（青枠） */}
           {selection && viewMode === 'week' && (
             <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
                  style={{ 
@@ -466,10 +439,6 @@ export default function CalendarMain({
     </div>
   );
 
-
-  // ==============================
-  // ▼ 3. 月別（マンスリー）表示
-  // ==============================
   const renderMonthView = () => {
     const baseDate = currentViewDate;
     const monthsData = [-1, 0, 1].map(offset => {
@@ -520,7 +489,7 @@ export default function CalendarMain({
                     key={i} 
                     className={`border-b border-r border-gray-100 p-1 flex flex-col relative hover:bg-gray-50 transition-colors group ${!isCurrentMonth && 'bg-gray-50/40'}`}
                     onClick={() => handleRangeSelect(dayIdx, 0, 1)}
-                    onDragOver={(e) => handleDragOver(e)} // ★ 復旧：月別表示でのドロップ対応
+                    onDragOver={(e) => handleDragOver(e)} 
                     onDrop={(e) => handleDrop(e, dayIdx, 0)}
                   >
                     <div className={`text-[11px] w-6 h-6 mx-auto rounded-full flex items-center justify-center mb-1 ${isToday ? 'bg-blue-600 text-white font-bold' : isCurrentMonth ? 'text-gray-700 font-medium' : 'text-gray-300'}`}>
@@ -534,7 +503,7 @@ export default function CalendarMain({
                         return (
                           <div 
                             key={evIdx} 
-                            draggable={true} // ★ 復旧：月別表示でのドラッグ対応
+                            draggable={true} 
                             onDragStart={(evt) => { evt.currentTarget.style.opacity = '0.6'; handleEventDragStart(evt, e.id, e.isGoogle, e.memberId); }}
                             onDragEnd={(evt) => { evt.currentTarget.style.opacity = '1'; }}
                             className="text-[10px] px-1.5 py-0.5 rounded-[4px] truncate cursor-pointer hover:brightness-90 text-white font-medium shadow-sm transition-all"
@@ -608,7 +577,6 @@ export default function CalendarMain({
         </div>
       </header>
 
-      {/* ビューの切り替え */}
       {viewMode === 'month' ? renderMonthView() : viewMode === 'day' ? renderDayView() : renderWeekView()}
       
     </main>
