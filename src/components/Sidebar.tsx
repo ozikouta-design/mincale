@@ -15,8 +15,8 @@ export default function Sidebar({
   handlePrevWeek, handleNextWeek, isSidebarOpen, setIsSidebarOpen, groups, setIsGroupModalOpen, setSelectedMemberIds, handleDeleteGroup 
 }: SidebarProps) {
   return (
-    // ★ 変更：isSidebarOpen が false の場合、w-0 にしてアニメーションで完全に隠す
-    <aside className={`flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out z-10 ${isSidebarOpen ? "w-64 translate-x-0" : "w-0 -translate-x-full overflow-hidden border-none"}`}>
+    // ★ 変更：スマホでは fixed で浮かせ、PCでは relative にする。
+    <aside className={`fixed md:relative z-40 inset-y-0 left-0 h-full flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out ${isSidebarOpen ? "w-64 translate-x-0" : "w-0 -translate-x-full overflow-hidden border-none"}`}>
       <div className="h-16 min-h-[64px] flex items-center justify-between px-4 border-b border-gray-200">
         <div className="flex items-center whitespace-nowrap">
           <CalendarIcon className="w-6 h-6 text-orange-500 mr-2" />

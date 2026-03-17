@@ -18,18 +18,12 @@ export default function CalendarMain({
 
   const weekScrollContainerRef = useRef<HTMLDivElement>(null);
   const weekGridRef = useRef<HTMLDivElement>(null);
-  
   const dayScrollContainerRef = useRef<HTMLDivElement>(null);
   const dayGridRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
-
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ★ 新規追加：現在時刻のステートと1分ごとの更新
   const [currentTime, setCurrentTime] = useState(new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
+  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
   const eventLayouts = useMemo(() => {
@@ -92,12 +86,11 @@ export default function CalendarMain({
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // ★ 変更：初期表示時に縦スクロールを「9:00（576px）」の位置に自動調整する
   useEffect(() => {
     if (viewMode === 'week' && weekScrollContainerRef.current) {
       const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
       if (targetColIndex !== -1) weekScrollContainerRef.current.scrollTo({ left: Math.max(0, targetColIndex * 192 - 192), behavior: 'auto' });
-      weekScrollContainerRef.current.scrollTop = 9 * 64; // 9時にスクロール
+      weekScrollContainerRef.current.scrollTop = 9 * 64; 
     }
   }, [viewMode, currentViewDate, days]);
 
@@ -123,12 +116,11 @@ export default function CalendarMain({
     }
   };
 
-  // ★ 変更：日別表示も初期スクロールを「9:00（576px）」に
   useEffect(() => {
     if (viewMode === 'day' && dayScrollContainerRef.current) {
       const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
       if (targetColIndex !== -1) dayScrollContainerRef.current.scrollLeft = targetColIndex * dayScrollContainerRef.current.clientWidth;
-      dayScrollContainerRef.current.scrollTop = 9 * 64; // 9時にスクロール
+      dayScrollContainerRef.current.scrollTop = 9 * 64; 
     }
   }, [viewMode, currentViewDate, days]);
 
@@ -157,12 +149,7 @@ export default function CalendarMain({
     const el = monthScrollContainerRef.current;
     const width = el.clientWidth;
     if (width === 0) return;
-
-    if (el.scrollLeft === 0) {
-      handlePrevWeek(); 
-    } else if (el.scrollLeft >= width * 2 - 10) {
-      handleNextWeek(); 
-    }
+    if (el.scrollLeft === 0) { handlePrevWeek(); } else if (el.scrollLeft >= width * 2 - 10) { handleNextWeek(); }
   };
 
   useEffect(() => {
@@ -195,9 +182,6 @@ export default function CalendarMain({
   }, [selection, handleRangeSelect, viewMode]);
 
 
-  // ==============================
-  // ▼ 1. 日別（デイリー）表示
-  // ==============================
   const renderDayView = () => {
     const activeMembers = members.filter(m => selectedMemberIds.includes(m.id));
 
@@ -228,7 +212,6 @@ export default function CalendarMain({
 
               <div className="flex-1 flex relative">
                 
-                {/* ★ 新規追加：現在時刻の赤線（日別表示） */}
                 {day.isToday && (
                   <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center" style={{ top: `${currentHourExact * 64}px` }}>
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500 absolute -left-1.5"></div>
@@ -295,10 +278,6 @@ export default function CalendarMain({
     );
   };
 
-
-  // ==============================
-  // ▼ 2. 週別（ウィークリー）表示
-  // ==============================
   const renderWeekView = () => (
     <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative" ref={weekScrollContainerRef} onScroll={handleWeekScroll}>
       <div className="flex flex-col min-w-max">
@@ -317,7 +296,6 @@ export default function CalendarMain({
             {hours.map((hour, i) => <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-100">{hour}</div>)}
           </div>
 
-          {/* ★ 新規追加：現在時刻の赤線（週別表示） */}
           {days.some(d => d.isToday) && (
             <div className="absolute left-16 right-0 z-20 pointer-events-none flex items-center" style={{ top: `${currentHourExact * 64}px` }}>
               <div className="w-2.5 h-2.5 rounded-full bg-red-500 absolute -left-1.5"></div>
@@ -382,10 +360,6 @@ export default function CalendarMain({
     </div>
   );
 
-
-  // ==============================
-  // ▼ 3. 月別（マンスリー）表示
-  // ==============================
   const renderMonthView = () => {
     const baseDate = currentViewDate;
     const monthsData = [-1, 0, 1].map(offset => {
@@ -451,22 +425,25 @@ export default function CalendarMain({
 
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative w-full select-none bg-white">
-      <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200">
-        <div className="flex items-center space-x-4 md:space-x-6">
-          <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="サイドバーを開閉"><Menu className="w-5 h-5 text-gray-700" /></button>
+      {/* ★ 変更：スマホ対応のレスポンシブなヘッダー！ 日程調整ボタンが絶対に隠れない */}
+      <header className="h-14 md:h-16 flex items-center justify-between px-3 md:px-6 border-b border-gray-200 overflow-x-auto no-scrollbar">
+        
+        {/* 左側グループ */}
+        <div className="flex items-center space-x-2 md:space-x-6 shrink-0">
+          <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-lg transition-colors" title="サイドバーを開閉"><Menu className="w-5 h-5 text-gray-700" /></button>
           
-          <div className="flex items-center space-x-3">
-            <h1 className="text-xl font-semibold text-gray-800 tracking-tight min-w-[130px]">{displayMonthYear}</h1>
-            <div className="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200">
-              <button onClick={handlePrevWeek} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"><ChevronLeft className="w-4 h-4" /></button>
-              <button onClick={handleNextWeek} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"><ChevronRight className="w-4 h-4" /></button>
+          <div className="flex items-center space-x-1 md:space-x-3">
+            <h1 className="text-base md:text-xl font-semibold text-gray-800 tracking-tight shrink-0">{displayMonthYear}</h1>
+            <div className="flex items-center bg-gray-50 rounded-lg p-0.5 md:p-1 border border-gray-200 shrink-0">
+              <button onClick={handlePrevWeek} className="p-1 md:p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={handleNextWeek} className="p-1 md:p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"><ChevronRight className="w-4 h-4" /></button>
             </div>
-            <button onClick={handleToday} className="px-3 py-1.5 text-sm font-bold border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 transition-all shadow-sm bg-white ml-2">
+            <button onClick={handleToday} className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-bold border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 transition-all shadow-sm bg-white shrink-0">
               今日
             </button>
           </div>
 
-          <div className="hidden md:flex items-center bg-gray-100 rounded-lg p-1 border border-gray-200">
+          <div className="hidden md:flex items-center bg-gray-100 rounded-lg p-1 border border-gray-200 shrink-0">
             {["day", "week", "month"].map((mode) => (
               <button 
                 key={mode} onClick={() => setViewMode(mode as any)}
@@ -478,16 +455,20 @@ export default function CalendarMain({
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        {/* 右側グループ */}
+        <div className="flex items-center space-x-2 md:space-x-4 shrink-0 ml-2">
           <div className="hidden lg:block relative group">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500" />
             <input type="text" placeholder="予定、メンバーを検索" className="pl-9 pr-4 py-2 w-64 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all" />
           </div>
-          <button onClick={() => setIsScheduleModalOpen(true)} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center">
-            <LinkIcon className="w-3.5 h-3.5 mr-2" />
+          
+          {/* ★ アピールポイント：日程調整ボタンはスマホでも shrink-0 で絶対に潰さず強調 */}
+          <button onClick={() => setIsScheduleModalOpen(true)} className="bg-blue-600 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-lg md:rounded-xl text-xs font-bold hover:bg-blue-700 shadow-sm md:shadow-lg shadow-blue-200 transition-all flex items-center shrink-0">
+            <LinkIcon className="w-3.5 h-3.5 mr-1 md:mr-2" />
             日程調整
           </button>
-          <button onClick={() => setIsRightPanelOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg" title="右パネルを開閉"><ListTodo className="w-5 h-5 text-gray-700" /></button>
+          
+          <button onClick={() => setIsRightPanelOpen(prev => !prev)} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-lg shrink-0" title="右パネルを開閉"><ListTodo className="w-5 h-5 text-gray-700" /></button>
         </div>
       </header>
 

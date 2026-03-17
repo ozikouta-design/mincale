@@ -21,7 +21,6 @@ export const getDayIndex = (date: Date) => {
   return parseInt(`${y}${m}${d}`, 10);
 };
 
-// ★ 新規追加：Google APIに正確なローカル時間を送るためのフォーマッター
 export const formatLocalISO = (date: Date) => {
   const tzo = -date.getTimezoneOffset();
   const dif = tzo >= 0 ? '+' : '-';
@@ -66,8 +65,9 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  // ★ 変更：初期値はfalseにし、PC幅の場合のみマウント後にtrueにする
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
   const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -82,6 +82,14 @@ export default function CalendarDashboard() {
   const [currentViewDate, setCurrentViewDate] = useState(new Date());
   const [currentMonthYear, setCurrentMonthYear] = useState("");
   const [scrollTrigger, setScrollTrigger] = useState<{ direction: 'prev' | 'next' | 'today', timestamp: number } | null>(null);
+
+  // ★ スマホ判定のためのuseEffect
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 768) {
+      setIsSidebarOpen(true);
+      setIsRightPanelOpen(true);
+    }
+  }, []);
 
   const { days, timeMin, timeMax, todayDate } = useMemo(() => {
     const today = new Date();
@@ -300,7 +308,6 @@ export default function CalendarDashboard() {
         const endDt = new Date(startDt.getTime() + 1 * 60 * 60 * 1000); 
 
         try {
-          // ★ 変更：formatLocalISO を使用して正確な時間を送信
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {
             method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ summary: targetTodo.title, start: { dateTime: formatLocalISO(startDt) }, end: { dateTime: formatLocalISO(endDt) } })
@@ -455,6 +462,15 @@ export default function CalendarDashboard() {
 
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
+      
+      {/* ★ 復活：スマホでサイドバー開閉時に背景を暗くしてタップで閉じるオーバーレイ */}
+      {(isSidebarOpen || isRightPanelOpen) && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300" 
+          onClick={() => { setIsSidebarOpen(false); setIsRightPanelOpen(false); }} 
+        />
+      )}
+
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration} editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent} isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup}
         isTaskEditModalOpen={isTaskEditModalOpen} setIsTaskEditModalOpen={setIsTaskEditModalOpen} editTaskTitle={editTaskTitle} setEditTaskTitle={setEditTaskTitle} editTaskProject={editTaskProject} setEditTaskProject={setEditTaskProject} handleUpdateTask={handleUpdateTask}
