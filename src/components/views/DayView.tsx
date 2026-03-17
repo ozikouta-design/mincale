@@ -1,81 +1,114 @@
 import React from "react";
 
 interface DayViewProps {
-  days: any[]; hours: string[]; currentHourExact: number;
-  accentColor: string; hourHeight: number;
+  days: any[]; hours: string[]; currentHourExact: number; accentColor: string; hourHeight: number;
   selectedMemberIds: string[]; members: any[]; events: any[]; eventLayouts: any;
-  selection: any; setSelection: (sel: any) => void;
-  dragOverSlot: any; setDragOverSlot: (slot: any) => void;
+  selection: any; setSelection: (sel: any) => void; dragOverSlot: any; setDragOverSlot: (slot: any) => void;
   handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
-  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void;
-  handleEventClick: (ev: any, e: React.MouseEvent) => void;
-  dayScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleDayScroll: () => void; dayGridRefs: React.MutableRefObject<any>;
-  resizingEvent: any; setResizingEvent: (evt: any) => void;
+  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void; handleEventClick: (ev: any, e: React.MouseEvent) => void;
+  dayScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleDayScroll: () => void; 
+  // ★ 修正：CalendarMain と名前を一致させ、単一の Ref として受け取る
+  dayGridRef: React.RefObject<HTMLDivElement | null>;
+  resizingEvent: any; setResizingEvent: (evt: any) => void; singleDayWidth: number;
 }
 
 export default function DayView({
   days, hours, currentHourExact, accentColor, hourHeight, selectedMemberIds, members, events, eventLayouts,
   selection, setSelection, dragOverSlot, setDragOverSlot, handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
-  dayScrollContainerRef, handleDayScroll, dayGridRefs, resizingEvent, setResizingEvent
+  dayScrollContainerRef, handleDayScroll, dayGridRef, resizingEvent, setResizingEvent, singleDayWidth
 }: DayViewProps) {
-  const activeMembers = members.filter(m => selectedMemberIds.includes(m.id));
+  
+  const activeMembers = selectedMemberIds.length > 0 ? members.filter(m => selectedMemberIds.includes(m.id)) : [{ id: 'all', name: 'マイカレンダー', colorHex: accentColor, initials: 'マ' }];
 
   return (
-    <div className="flex-1 overflow-x-auto overflow-y-auto flex snap-x snap-mandatory bg-white relative" ref={dayScrollContainerRef} onScroll={handleDayScroll} style={{ scrollbarWidth: 'none' }}>
-      {days.map((day) => {
-        const isSat = day.date.getDay() === 6; const isSun = day.date.getDay() === 0;
-        const textColor = day.isToday ? 'text-white' : isSat ? 'text-blue-500' : isSun ? 'text-red-500' : 'text-gray-500';
+    <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative snap-x snap-mandatory scroll-pl-16" ref={dayScrollContainerRef} onScroll={handleDayScroll} style={{ scrollbarWidth: 'none' }}>
+      <div className="flex flex-col min-w-max">
+        
+        {/* ヘッダー部分 */}
+        <div className="flex sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm min-w-max">
+          <div className="w-16 shrink-0 sticky left-0 z-50 bg-white border-r border-gray-100 flex flex-col items-center justify-center py-2 h-[72px]"></div>
+          
+          {days.map((day) => {
+            const isSat = day.date.getDay() === 6; const isSun = day.date.getDay() === 0;
+            const textColor = day.isToday ? 'text-white' : isSat ? 'text-blue-500' : isSun ? 'text-red-500' : 'text-gray-700';
 
-        return (
-        <div key={day.dayIndex} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white relative">
-          <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
-            <div className="w-16 shrink-0 border-r border-gray-100 bg-white flex flex-col items-center justify-center py-2">
-              <span className={`text-2xl font-light ${day.isToday ? 'font-bold text-gray-800' : textColor}`} style={day.isToday ? { color: accentColor } : {}}>{day.date.getDate()}</span>
-              <span className={`text-xs ${day.isToday ? 'font-bold text-gray-800' : textColor}`} style={day.isToday ? { color: accentColor } : {}}>{["日","月","火","水","木","金","土"][day.date.getDay()]}</span>
-            </div>
-            <div className="flex-1 flex overflow-hidden">
-              {activeMembers.map(member => (
-                <div key={member.id} className="flex-1 min-w-[120px] py-2 border-r border-gray-100 flex flex-col items-center justify-center">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs mb-1 shadow-sm" style={{ backgroundColor: member.colorHex }}>{member.initials}</div>
-                  <span className="text-[11px] font-semibold text-gray-700 truncate px-2 w-full text-center">{member.name}</span>
+            return (
+              <div key={day.dayIndex} className="shrink-0 snap-start snap-always border-r border-gray-200 flex flex-col h-[72px]" style={{ width: singleDayWidth, ...(day.isToday ? { backgroundColor: accentColor + '05' } : {}) }}>
+                <div className="flex items-center justify-center border-b border-gray-50 h-10 bg-gray-50/30">
+                  <div className={`flex items-center justify-center px-3 py-0.5 rounded-full ${day.isToday ? 'shadow-sm' : ''}`} style={day.isToday ? { backgroundColor: accentColor } : {}}>
+                    <span className={`text-xs font-bold ${textColor}`} style={day.isToday ? { color: 'white' } : {}}>{day.label} ({["日","月","火","水","木","金","土"][day.date.getDay()]})</span>
+                  </div>
                 </div>
-              ))}
-            </div>
+                <div className="flex flex-1">
+                  {activeMembers.map(member => (
+                    <div key={member.id} className="flex-1 min-w-0 py-1 border-r border-gray-100 flex items-center justify-center last:border-r-0 px-1">
+                      <span className="text-[10px] font-semibold text-gray-700 truncate w-full text-center flex items-center justify-center">
+                        <span className="w-2 h-2 rounded-full mr-1 shrink-0 shadow-sm" style={{ backgroundColor: member.colorHex || accentColor }}></span>
+                        <span className="truncate">{member.name}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* グリッド部分（予定を入れる領域） */}
+        {/* ★ 修正：ここに dayGridRef を設定し、全体の基準点にする */}
+        <div className="flex-1 flex relative min-w-max" ref={dayGridRef}>
+          {/* 左側の時間軸 */}
+          <div className="w-16 shrink-0 sticky left-0 z-30 bg-white border-r border-gray-100 flex flex-col">
+            {hours.map((hour, i) => ( <div key={i} className="text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-50" style={{ height: hourHeight }}>{hour}</div> ))}
           </div>
-          <div className="flex-1 relative flex" ref={el => { dayGridRefs.current[day.dayIndex] = el; }}>
-            <div className="w-16 shrink-0 border-r border-gray-100 bg-white z-20">
-              {hours.map((hour, i) => ( <div key={i} className="text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-50" style={{ height: hourHeight }}>{hour}</div> ))}
-            </div>
-            <div className="flex-1 flex relative">
+
+          {/* 各日のグリッド列 */}
+          {days.map(day => (
+            // ★ 修正：エラー原因だった不要な ref の割り当て処理を完全に削除
+            <div key={day.dayIndex} className="shrink-0 snap-start snap-always border-r border-gray-200 relative flex" style={{ width: singleDayWidth, ...(day.isToday ? { backgroundColor: accentColor + '02' } : {}) }}>
+              
               {day.isToday && (
                 <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center" style={{ top: `${currentHourExact * hourHeight}px` }}>
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500 absolute -left-1.5"></div><div className="h-[2px] bg-red-500 w-full shadow-[0_0_4px_rgba(239,68,68,0.5)]"></div>
                 </div>
               )}
-              {selection && selection.dayIndex === day.dayIndex && selection.memberId && (
-                <div className="absolute rounded-lg shadow-lg pointer-events-none z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none" style={{ backgroundColor: accentColor + 'E6', left: `${(activeMembers.findIndex(m => m.id === selection.memberId) / activeMembers.length) * 100}%`, width: `${100 / activeMembers.length}%`, top: `${Math.min(selection.startHour, selection.currentHour) * hourHeight}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * hourHeight}px` }}>
-                   <div className="font-bold tracking-wide">新規予定</div>
-                </div>
-              )}
-              {activeMembers.map((member) => (
-                <div key={member.id} className="flex-1 min-w-[120px] border-r border-gray-50 relative group">
+
+              {activeMembers.map(member => (
+                <div key={member.id} className="flex-1 min-w-0 border-r border-gray-50 relative group last:border-r-0">
+                  
+                  {/* 1時間ごとのマス目 */}
                   {hours.map((_, i) => (
-                    <div key={i} className={`border-b border-gray-50 cursor-crosshair hover:bg-gray-50/30 transition-colors ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'ring-2 ring-inset z-20 shadow-inner' : ''}`} style={{ height: hourHeight, ...(dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? { backgroundColor: accentColor + '20', borderColor: accentColor } : {}) }}
-                      onMouseDown={(e) => { const rect = dayGridRefs.current[day.dayIndex]?.getBoundingClientRect(); if (!rect) return; const exactHour = (e.clientY - rect.top) / hourHeight; setSelection({ dayIndex: day.dayIndex, memberId: member.id, startHour: exactHour, currentHour: exactHour, colIndex: 0 }); }}
+                    <div key={i} className={`border-b border-gray-50 cursor-crosshair hover:bg-gray-50/50 ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'ring-2 ring-inset z-20 shadow-inner' : ''}`} style={{ height: hourHeight, ...(dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? { backgroundColor: accentColor + '20', borderColor: accentColor } : {}) }}
+                      onMouseDown={(e) => { 
+                        // ★ 修正：dayGridRef から座標を計算
+                        const rect = dayGridRef.current?.getBoundingClientRect(); 
+                        if (!rect) return; 
+                        const exactHour = (e.clientY - rect.top) / hourHeight; 
+                        setSelection({ dayIndex: day.dayIndex, memberId: member.id, startHour: exactHour, currentHour: exactHour, colIndex: 0 }); 
+                      }}
                       onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: i }); }} onDragLeave={() => setDragOverSlot(null)} onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, i); }}
                     />
                   ))}
+                  
+                  {/* 新規予定の作成ドラッグ */}
+                  {selection && selection.dayIndex === day.dayIndex && selection.memberId === member.id && (
+                    <div className="absolute rounded-lg shadow-lg pointer-events-none z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none" style={{ backgroundColor: accentColor + 'E6', left: '2px', right: '4px', top: `${Math.min(selection.startHour, selection.currentHour) * hourHeight}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * hourHeight}px` }}>
+                       <div className="font-bold tracking-wide">新規予定</div>
+                    </div>
+                  )}
+
+                  {/* 予定ブロックの表示 */}
                   {events.filter(ev => ev.dayIndex === day.dayIndex && ev.memberId === member.id).map((event, idx) => {
                     const layoutKey = `${event.id}-${event.memberId}`; const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 }; const widthPct = 100 / layout.totalColumns; const leftPct = (layout.column * widthPct);
-                    const isResizing = resizingEvent?.eventId === event.id;
-                    const displayDuration = isResizing ? resizingEvent.currentDuration : event.duration;
+                    const isResizing = resizingEvent?.eventId === event.id; const displayDuration = isResizing ? resizingEvent.currentDuration : event.duration;
 
                     return (
-                      <div key={`${event.id}-${idx}`} draggable={!isResizing} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }} onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }} onClick={(e) => { if(!isResizing) handleEventClick(event, e); }} 
-                        className={`absolute rounded-lg px-2 py-1 text-[11px] text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'}`} 
-                        style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member.colorHex }}>
-                        <div className="font-bold truncate">{event.title}</div>
-                        {/* ★ リサイズ用ハンドル */}
+                      <div key={`${event.id}-${idx}`} draggable={!isResizing} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }} onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }} onClick={(e) => { if(!isResizing) handleEventClick(event, e); }}
+                        className={`absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'} flex flex-col items-start`}
+                        style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member.colorHex || accentColor }}>
+                        
+                        <div className="font-bold text-[10px] md:text-[11px] leading-tight break-words whitespace-normal w-full overflow-hidden">{event.title}</div>
+                        
                         <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/20 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId }); }} />
                       </div>
                     );
@@ -83,10 +116,9 @@ export default function DayView({
                 </div>
               ))}
             </div>
-          </div>
+          ))}
         </div>
-        );
-      })}
+      </div>
     </div>
   );
 }

@@ -1,71 +1,90 @@
-import React from "react";
-import { Check, X, Copy, Link as LinkIcon, Calendar as CalendarIcon, Clock, MapPin } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { X, CheckCircle, Clock, Calendar as CalendarIcon, AlignLeft, Trash2, Pencil, MapPin } from "lucide-react";
 
 interface ModalsProps {
   isScheduleModalOpen: boolean; setIsScheduleModalOpen: (isOpen: boolean) => void;
-  getCommonFreeTimeText: () => string; handleCopyToClipboard: () => void; isCopied: boolean;
-  isCreateEventModalOpen: boolean; setIsCreateEventModalOpen: (isOpen: boolean) => void; handleCreateEvent: () => void;
+  isCreateEventModalOpen: boolean; setIsCreateEventModalOpen: (isOpen: boolean) => void;
+  isGroupModalOpen: boolean; handleCloseGroupModal: () => void; // ★ 変更
+  isTaskEditModalOpen: boolean; setIsTaskEditModalOpen: (isOpen: boolean) => void;
+  editingEventId: any; editingEventIsGoogle: boolean;
   newEventTitle: string; setNewEventTitle: (title: string) => void;
   newEventMemberId: string; setNewEventMemberId: (id: string) => void;
+  newEventDayIndex: number; setNewEventDayIndex: (idx: number) => void;
+  newEventStartHour: number; setNewEventStartHour: (h: number) => void;
+  newEventDuration: number; setNewEventDuration: (d: number) => void;
+  newEventLocation: string; setNewEventLocation: (loc: string) => void;
+  newEventDescription: string; setNewEventDescription: (desc: string) => void;
+  handleCreateEvent: () => void; handleDeleteEvent: (id: any, isG: boolean, mId: string) => void;
   members: any[];
-  newEventDayIndex: number; setNewEventDayIndex: (index: number) => void; 
-  days: any[];
-  newEventStartHour: number; setNewEventStartHour: (hour: number) => void; hours: string[];
-  newEventDuration: number; setNewEventDuration: (duration: number) => void;
-  editingEventId: any; setEditingEventId: (id: any) => void;
-  editingEventIsGoogle: boolean; handleDeleteEvent: (eventId: any, isGoogle: boolean, calendarId: string) => void;
-  isGroupModalOpen?: boolean; setIsGroupModalOpen?: (isOpen: boolean) => void;
-  newGroupName?: string; setNewGroupName?: (name: string) => void;
-  newGroupMemberIds?: string[]; setNewGroupMemberIds?: (ids: string[]) => void;
-  handleSaveGroup?: () => void;
-  isTaskEditModalOpen?: boolean; setIsTaskEditModalOpen?: (isOpen: boolean) => void;
-  editTaskTitle?: string; setEditTaskTitle?: (title: string) => void;
-  editTaskProject?: string; setEditTaskProject?: (project: string) => void;
-  handleUpdateTask?: () => void;
+  newGroupName: string; setNewGroupName: (name: string) => void;
+  newGroupMemberIds: string[]; setNewGroupMemberIds: (ids: string[]) => void;
+  handleSaveGroup: () => void;
+  editTaskTitle: string; setEditTaskTitle: (t: string) => void;
+  editTaskProject: string; setEditTaskProject: (p: string) => void;
+  handleUpdateTask: () => void;
+  isCopied: boolean; handleCopyToClipboard: () => void; getCommonFreeTimeText: () => string;
+  accentColor: string;
+  selectedEventDetails: any; setSelectedEventDetails: (d: any) => void;
+  eventPopupPosition: { x: number, y: number } | null;
+  handleEditEventClick: () => void;
 }
 
 export default function Modals({
-  isScheduleModalOpen, setIsScheduleModalOpen, getCommonFreeTimeText, handleCopyToClipboard, isCopied,
-  isCreateEventModalOpen, setIsCreateEventModalOpen, handleCreateEvent,
-  newEventTitle, setNewEventTitle, newEventMemberId, setNewEventMemberId, members,
-  newEventDayIndex, setNewEventDayIndex, days, newEventStartHour, setNewEventStartHour, hours,
-  newEventDuration, setNewEventDuration, editingEventId, setEditingEventId, editingEventIsGoogle, handleDeleteEvent,
-  isGroupModalOpen, setIsGroupModalOpen, newGroupName, setNewGroupName, newGroupMemberIds, setNewGroupMemberIds, handleSaveGroup,
-  isTaskEditModalOpen, setIsTaskEditModalOpen, editTaskTitle, setEditTaskTitle, editTaskProject, setEditTaskProject, handleUpdateTask
+  isScheduleModalOpen, setIsScheduleModalOpen, isCreateEventModalOpen, setIsCreateEventModalOpen,
+  isGroupModalOpen, handleCloseGroupModal, isTaskEditModalOpen, setIsTaskEditModalOpen,
+  editingEventId, editingEventIsGoogle, newEventTitle, setNewEventTitle,
+  newEventMemberId, setNewEventMemberId, newEventDayIndex, setNewEventDayIndex,
+  newEventStartHour, setNewEventStartHour, newEventDuration, setNewEventDuration,
+  newEventLocation, setNewEventLocation, newEventDescription, setNewEventDescription,
+  handleCreateEvent, handleDeleteEvent, members,
+  newGroupName, setNewGroupName, newGroupMemberIds, setNewGroupMemberIds, handleSaveGroup,
+  editTaskTitle, setEditTaskTitle, editTaskProject, setEditTaskProject, handleUpdateTask,
+  isCopied, handleCopyToClipboard, getCommonFreeTimeText, accentColor,
+  selectedEventDetails, setSelectedEventDetails, eventPopupPosition, handleEditEventClick
 }: ModalsProps) {
 
-  const closeEventModal = () => { setIsCreateEventModalOpen(false); setEditingEventId(null); };
+  const [scheduleText, setScheduleText] = useState("");
+  useEffect(() => { if (isScheduleModalOpen) setScheduleText(getCommonFreeTimeText()); }, [isScheduleModalOpen]);
 
-  // ★ 変更：9時間のオフセットを消し、00:00〜23:45 までの24時間の選択肢を生成
-  const timeOptions = [];
-  for (let i = 0; i <= 23.75; i += 0.25) {
-    const h = Math.floor(i); 
-    const m = Math.round((i % 1) * 60);
-    timeOptions.push({ value: i, label: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}` });
-  }
+  const y = Math.floor(newEventDayIndex / 10000); const m = Math.floor((newEventDayIndex % 10000) / 100); const d = newEventDayIndex % 100;
+  const dateStr = y ? `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}` : "";
+  const sh = Math.floor(newEventStartHour); const sm = Math.round((newEventStartHour % 1) * 60);
+  const startTimeStr = `${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`;
+  const endHCalc = newEventStartHour + newEventDuration; const eh = Math.floor(endHCalc); const em = Math.round((endHCalc % 1) * 60);
+  const endTimeStr = `${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`;
 
-  const durationOptions = [];
-  for (let i = 0.25; i <= 24; i += 0.25) {
-    const h = Math.floor(i); const m = Math.round((i % 1) * 60);
-    let label = "";
-    if (h > 0) label += `${h}時間`; if (m > 0) label += `${m}分`;
-    durationOptions.push({ value: i, label });
-  }
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const date = new Date(e.target.value); if (isNaN(date.getTime())) return;
+    setNewEventDayIndex(date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate());
+  };
+  const handleStartTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const [h, min] = e.target.value.split(':').map(Number); setNewEventStartHour(h + min / 60);
+  };
+  const handleEndTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const [h, min] = e.target.value.split(':').map(Number); let newEnd = h + min / 60;
+    if (newEnd <= newEventStartHour) newEnd = newEventStartHour + 0.5;
+    setNewEventDuration(newEnd - newEventStartHour);
+  };
 
   return (
     <>
       {isScheduleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
-          <div className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-              <div className="flex items-center"><div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mr-3"><LinkIcon className="w-4 h-4 text-orange-600" /></div><div><h2 className="text-base font-bold text-gray-800">日程調整リンクの発行</h2><p className="text-xs text-gray-500 mt-0.5">選択中のカレンダーから共通の空き時間を抽出しました</p></div></div>
-              <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"><X className="w-5 h-5" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsScheduleModalOpen(false)}></div>
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl z-10 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800">日程調整テキストを生成</h2>
+              <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-6"><div className="bg-gray-50 border border-gray-200 rounded-lg p-4 font-mono text-sm text-gray-700 whitespace-pre-wrap leading-relaxed h-[240px] overflow-y-auto">{getCommonFreeTimeText()}</div></div>
-            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3">
-              <button onClick={() => setIsScheduleModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors">キャンセル</button>
-              <button onClick={handleCopyToClipboard} className={`flex items-center px-5 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm ${isCopied ? "bg-green-600 hover:bg-green-700" : "bg-orange-500 hover:bg-orange-600"}`}>
-                {isCopied ? <><Check className="w-4 h-4 mr-2" />コピーしました！</> : <><Copy className="w-4 h-4 mr-2" />テキストをコピー</>}
+            <div className="p-5 flex-1 overflow-y-auto">
+              <p className="text-sm text-gray-600 mb-4 font-medium">選択中のメンバーの空き時間を元に、以下のテキストを生成しました。</p>
+              <div className="relative group">
+                <textarea readOnly value={scheduleText} className="w-full h-48 p-4 text-sm border border-gray-200 rounded-xl bg-gray-50 text-gray-700 outline-none resize-none focus:ring-2 focus:ring-blue-100 transition-all font-mono" />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button onClick={handleCopyToClipboard} className="px-6 py-2.5 text-white text-sm font-bold rounded-xl flex items-center shadow-sm hover:brightness-110 transition-all" style={{ backgroundColor: isCopied ? "#10b981" : accentColor }}>
+                {isCopied ? <><CheckCircle className="w-4 h-4 mr-2" />コピーしました！</> : "テキストをコピー"}
               </button>
             </div>
           </div>
@@ -73,95 +92,191 @@ export default function Modals({
       )}
 
       {isCreateEventModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent backdrop-blur-sm transition-opacity duration-300" onMouseDown={closeEventModal}>
-          <div className="bg-[#282828]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-[380px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in zoom-in-[0.95] duration-200 ease-out" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="p-5 space-y-4">
-              <div><input type="text" autoFocus required value={newEventTitle} onChange={(e) => setNewEventTitle(e.target.value)} placeholder="新規予定" className="w-full bg-transparent text-xl font-bold outline-none text-white placeholder-gray-500" /></div>
-              <div className="h-px w-full bg-white/10 my-2"></div>
-              <div className="space-y-3">
-                <div className="flex items-center text-sm text-gray-300">
-                  <CalendarIcon className="w-4 h-4 mr-3 text-gray-400" />
-                  <select value={newEventDayIndex} onChange={(e) => setNewEventDayIndex(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none">
-                    {days.map((day) => <option key={day.dayIndex} value={day.dayIndex} className="bg-gray-800">{day.label}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center text-sm text-gray-300">
-                  <Clock className="w-4 h-4 mr-3 text-gray-400" />
-                  <div className="flex items-center space-x-2">
-                    <select value={newEventStartHour} onChange={(e) => setNewEventStartHour(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none">
-                      {timeOptions.map(opt => <option key={opt.value} value={opt.value} className="bg-gray-800">{opt.label}</option>)}
-                    </select>
-                    <span>から</span>
-                    <select value={newEventDuration} onChange={(e) => setNewEventDuration(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none text-blue-400 font-medium">
-                      {durationOptions.map(opt => <option key={opt.value} value={opt.value} className="bg-gray-800">{opt.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-center text-sm text-gray-300">
-                  <MapPin className="w-4 h-4 mr-3 text-gray-400" />
-                  <select value={newEventMemberId} onChange={(e) => setNewEventMemberId(e.target.value)} className="w-48 bg-transparent outline-none cursor-pointer hover:text-white transition-colors truncate appearance-none">
-                    {members.map(m => (<option key={m.id} value={m.id} className="bg-gray-800">{m.name}</option>))}
-                  </select>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsCreateEventModalOpen(false)}></div>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
+              <h2 className="text-base font-bold text-gray-800">{editingEventId ? "予定を編集" : "新しい予定"}</h2>
+              <button onClick={() => setIsCreateEventModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-5 overflow-y-auto flex-1">
+              <div>
+                <input type="text" autoFocus value={newEventTitle} onChange={(e) => setNewEventTitle(e.target.value)} placeholder="タイトルを追加" className="w-full p-2 text-xl font-bold border-b border-gray-200 outline-none focus:border-blue-500 placeholder-gray-300 transition-colors" />
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Clock className="w-5 h-5 text-gray-400 shrink-0" />
+                <input type="date" value={dateStr} onChange={handleDateChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
+                <input type="time" value={startTimeStr} onChange={handleStartTimeChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
+                <span className="text-gray-400">-</span>
+                <input type="time" value={endTimeStr} onChange={handleEndTimeChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5 text-gray-400 shrink-0" />
+                <select value={newEventMemberId} onChange={(e) => setNewEventMemberId(e.target.value)} className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none bg-white focus:border-blue-500">
+                  {members.map(m => ( <option key={m.id} value={m.id}>{m.name}</option> ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-gray-400 shrink-0" />
+                <input type="text" value={newEventLocation} onChange={(e) => setNewEventLocation(e.target.value)} placeholder="場所を追加" className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
+              </div>
+              <div className="flex items-start gap-2">
+                <AlignLeft className="w-5 h-5 text-gray-400 shrink-0 mt-2" />
+                <textarea value={newEventDescription} onChange={(e) => setNewEventDescription(e.target.value)} placeholder="説明を追加" rows={3} className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
               </div>
             </div>
-            <div className="flex items-center justify-end px-4 py-3 bg-white/5 border-t border-white/10 space-x-2">
-              {editingEventId && <button onClick={() => handleDeleteEvent(editingEventId, editingEventIsGoogle, newEventMemberId)} className="px-4 py-1.5 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-md transition-colors mr-auto">削除</button>}
-              <button onClick={closeEventModal} className="px-4 py-1.5 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors">キャンセル</button>
-              <button onClick={handleCreateEvent} className="px-4 py-1.5 text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 rounded-md transition-colors shadow-sm">{editingEventId ? "完了" : "追加"}</button>
+            <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 rounded-b-2xl shrink-0">
+              <button onClick={() => setIsCreateEventModalOpen(false)} className="px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">キャンセル</button>
+              <button onClick={handleCreateEvent} disabled={!newEventTitle} className="px-6 py-2 text-sm font-bold text-white rounded-xl disabled:opacity-50 shadow-sm hover:brightness-110" style={{ backgroundColor: accentColor }}>保存する</button>
             </div>
           </div>
         </div>
       )}
 
-      {isGroupModalOpen && setIsGroupModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
-          <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[400px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
-            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-              <button onClick={() => setIsGroupModalOpen(false)} className="text-orange-500 text-base font-medium">キャンセル</button>
-              <h2 className="text-base font-semibold text-gray-900">グループ作成</h2>
-              <button onClick={handleSaveGroup} className="text-orange-500 text-base font-semibold" disabled={!newGroupName || newGroupMemberIds?.length === 0}>保存</button>
+      {isGroupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleCloseGroupModal}></div>
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100">
+              {/* ★ タイトルも動的に変更 */}
+              <h2 className="text-base font-bold text-gray-800">{newGroupName ? "グループを編集" : "グループを作成"}</h2>
+              <button onClick={handleCloseGroupModal} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-4 space-y-6 overflow-y-auto max-h-[80vh]">
-              <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-                <input type="text" value={newGroupName} onChange={(e) => setNewGroupName && setNewGroupName(e.target.value)} placeholder="グループ名 (例: 開発チーム)" className="w-full px-4 py-3 text-base outline-none text-gray-900 placeholder-gray-400" />
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">グループ名</label>
+                <input type="text" autoFocus value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="開発チーム、営業部など..." className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
               <div>
-                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 pl-2">表示するメンバー</h3>
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
-                  {members.map((m, idx) => (
-                    <label key={m.id} className={`flex items-center justify-between px-4 py-3 cursor-pointer ${idx !== members.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                      <div className="flex items-center"><div className="w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] mr-3" style={{ backgroundColor: m.colorHex }}>{m.initials}</div><span className="text-gray-900">{m.name}</span></div>
-                      <input type="checkbox" checked={newGroupMemberIds?.includes(m.id)} onChange={(e) => { if (!setNewGroupMemberIds || !newGroupMemberIds) return; if (e.target.checked) setNewGroupMemberIds([...newGroupMemberIds, m.id]); else setNewGroupMemberIds(newGroupMemberIds.filter(id => id !== m.id)); }} className="w-5 h-5 accent-orange-500" />
+                <label className="block text-xs font-bold text-gray-500 mb-2">含めるメンバー</label>
+                <div className="max-h-48 overflow-y-auto space-y-1 p-2 border border-gray-100 rounded-xl bg-gray-50">
+                  {members.map(m => (
+                    <label key={m.id} className="flex items-center p-2 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-gray-200 hover:shadow-sm">
+                      <input type="checkbox" checked={newGroupMemberIds.includes(m.id)} onChange={(e) => { if (e.target.checked) setNewGroupMemberIds([...newGroupMemberIds, m.id]); else setNewGroupMemberIds(newGroupMemberIds.filter(id => id !== m.id)); }} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" style={{ accentColor }} />
+                      <span className="ml-3 text-sm font-medium text-gray-700">{m.name}</span>
                     </label>
                   ))}
                 </div>
               </div>
             </div>
+            <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 rounded-b-2xl">
+              <button onClick={handleCloseGroupModal} className="px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">キャンセル</button>
+              <button onClick={handleSaveGroup} disabled={!newGroupName || newGroupMemberIds.length === 0} className="px-6 py-2 text-sm font-bold text-white rounded-xl disabled:opacity-50 shadow-sm hover:brightness-110" style={{ backgroundColor: accentColor }}>保存</button>
+            </div>
           </div>
         </div>
       )}
 
-      {isTaskEditModalOpen && setIsTaskEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300">
-          <div className="bg-[#f2f2f7] rounded-xl shadow-2xl w-[400px] max-w-[90vw] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 zoom-in-[0.98] duration-300 ease-out">
-            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-              <button onClick={() => setIsTaskEditModalOpen(false)} className="text-orange-500 text-base font-medium">キャンセル</button>
-              <h2 className="text-base font-semibold text-gray-900">タスク編集</h2>
-              <button onClick={handleUpdateTask} className="text-orange-500 text-base font-semibold" disabled={!editTaskTitle}>保存</button>
+      {isTaskEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsTaskEditModalOpen(false)}></div>
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-800">タスクを編集</h2>
+              <button onClick={() => setIsTaskEditModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-4 space-y-6 overflow-y-auto max-h-[80vh]">
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden text-base">
-                <div className="border-b border-gray-100">
-                  <input type="text" value={editTaskTitle} onChange={(e) => setEditTaskTitle && setEditTaskTitle(e.target.value)} placeholder="タスク名" className="w-full px-4 py-3 text-base outline-none text-gray-900 placeholder-gray-400" />
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">タスク名</label>
+                <input type="text" autoFocus value={editTaskTitle} onChange={(e) => setEditTaskTitle(e.target.value)} className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">プロジェクト (任意)</label>
+                <input type="text" value={editTaskProject} onChange={(e) => setEditTaskProject(e.target.value)} className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setIsTaskEditModalOpen(false)} className="px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">キャンセル</button>
+              <button onClick={handleUpdateTask} disabled={!editTaskTitle} className="px-6 py-2 text-sm font-bold text-white rounded-xl disabled:opacity-50 shadow-sm hover:brightness-110" style={{ backgroundColor: accentColor }}>更新する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedEventDetails && (
+        <>
+          <div className="hidden md:block fixed inset-0 z-40" onClick={() => setSelectedEventDetails(null)} />
+          
+          <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white animate-in slide-in-from-bottom-full duration-300">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100">
+              <button onClick={() => setSelectedEventDetails(null)} className="p-2 -ml-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X className="w-6 h-6" /></button>
+              <div className="flex items-center gap-2">
+                <button onClick={handleEditEventClick} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Pencil className="w-5 h-5" /></button>
+                <button onClick={() => { handleDeleteEvent(selectedEventDetails.id, selectedEventDetails.isGoogle, selectedEventDetails.memberId); }} className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
+              </div>
+            </div>
+            <div className="p-6 flex-1 overflow-y-auto">
+              <div className="w-4 h-4 rounded-full mb-4 shadow-sm" style={{ backgroundColor: selectedEventDetails.colorHex || accentColor }} />
+              <h2 className="text-2xl font-black text-gray-900 mb-6 leading-tight break-words">{selectedEventDetails.title}</h2>
+              <div className="space-y-5">
+                <div className="flex items-start text-gray-600">
+                  <Clock className="w-6 h-6 mr-4 text-gray-400 shrink-0" />
+                  <span className="font-medium text-base">
+                    {Math.floor(selectedEventDetails.startHour).toString().padStart(2, '0')}:{Math.round((selectedEventDetails.startHour % 1) * 60).toString().padStart(2, '0')} 〜 
+                    {Math.floor(selectedEventDetails.startHour + selectedEventDetails.duration).toString().padStart(2, '0')}:{Math.round(((selectedEventDetails.startHour + selectedEventDetails.duration) % 1) * 60).toString().padStart(2, '0')}
+                  </span>
                 </div>
-                <div>
-                  <input type="text" value={editTaskProject} onChange={(e) => setEditTaskProject && setEditTaskProject(e.target.value)} placeholder="プロジェクト名 (任意)" className="w-full px-4 py-3 text-base outline-none text-gray-900 placeholder-gray-400" />
+                <div className="flex items-start text-gray-600">
+                  <CalendarIcon className="w-6 h-6 mr-4 text-gray-400 shrink-0" />
+                  <span className="font-medium text-base">{members.find(m => m.id === selectedEventDetails.memberId)?.name || "カレンダー"}</span>
+                </div>
+                {selectedEventDetails.location && (
+                  <div className="flex items-start text-gray-600">
+                    <MapPin className="w-6 h-6 mr-4 text-gray-400 shrink-0" />
+                    <span className="font-medium text-base break-words">{selectedEventDetails.location}</span>
+                  </div>
+                )}
+                {selectedEventDetails.description && (
+                  <div className="flex items-start text-gray-600">
+                    <AlignLeft className="w-6 h-6 mr-4 text-gray-400 shrink-0" />
+                    <span className="font-medium text-sm whitespace-pre-wrap break-words leading-relaxed">{selectedEventDetails.description}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden md:block fixed z-50 animate-in fade-in zoom-in-95 duration-200" style={{ left: eventPopupPosition?.x, top: eventPopupPosition?.y, transform: 'translate(-50%, -100%)', marginTop: '-12px' }}>
+            <div className="bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] border border-gray-100 w-80 relative">
+              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-5 h-5 bg-white border-b border-r border-gray-100 rotate-45 shadow-[4px_4px_4px_rgba(0,0,0,0.02)]"></div>
+              <div className="p-5 relative z-10 max-h-[400px] overflow-y-auto">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="w-3.5 h-3.5 rounded-full mt-1.5 shadow-sm shrink-0" style={{ backgroundColor: selectedEventDetails.colorHex || accentColor }} />
+                  <div className="flex gap-1 -mt-1 -mr-2 shrink-0">
+                    <button onClick={handleEditEventClick} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="編集"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => { handleDeleteEvent(selectedEventDetails.id, selectedEventDetails.isGoogle, selectedEventDetails.memberId); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="削除"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => setSelectedEventDetails(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md transition-colors ml-1"><X className="w-4 h-4" /></button>
+                  </div>
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 mb-4 leading-snug pr-4 break-words">{selectedEventDetails.title}</h3>
+                <div className="space-y-3">
+                  <div className="flex items-start text-gray-600 text-sm font-medium">
+                    <Clock className="w-4 h-4 mr-3 text-gray-400 shrink-0" />
+                    <span>
+                      {Math.floor(selectedEventDetails.startHour).toString().padStart(2, '0')}:{Math.round((selectedEventDetails.startHour % 1) * 60).toString().padStart(2, '0')} - {Math.floor(selectedEventDetails.startHour + selectedEventDetails.duration).toString().padStart(2, '0')}:{Math.round(((selectedEventDetails.startHour + selectedEventDetails.duration) % 1) * 60).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+                  <div className="flex items-start text-gray-600 text-sm font-medium">
+                    <CalendarIcon className="w-4 h-4 mr-3 text-gray-400 shrink-0" />
+                    <span>{members.find(m => m.id === selectedEventDetails.memberId)?.name || "カレンダー"}</span>
+                  </div>
+                  {selectedEventDetails.location && (
+                    <div className="flex items-start text-gray-600 text-sm font-medium">
+                      <MapPin className="w-4 h-4 mr-3 text-gray-400 shrink-0" />
+                      <span className="break-words">{selectedEventDetails.location}</span>
+                    </div>
+                  )}
+                  {selectedEventDetails.description && (
+                    <div className="flex items-start text-gray-600 text-xs mt-4 pt-4 border-t border-gray-100">
+                      <AlignLeft className="w-4 h-4 mr-3 text-gray-400 shrink-0" />
+                      <span className="whitespace-pre-wrap break-words leading-relaxed">{selectedEventDetails.description}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

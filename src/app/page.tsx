@@ -6,13 +6,10 @@ import Sidebar from "@/components/Sidebar";
 import CalendarMain from "@/components/CalendarMain";
 import Modals from "@/components/Modals";
 
-// ★ 他のファイルで使われている関数を、新しいフックから「中継」してあげる
 export { getDayIndex, formatLocalISO } from "@/hooks/useCalendarLogic";
-
 import { useCalendarLogic } from "@/hooks/useCalendarLogic";
 
 export default function CalendarDashboard() {
-  // ★ すべての頭脳（ロジック）を1行で呼び出す！
   const logic = useCalendarLogic();
 
   return (
