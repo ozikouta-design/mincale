@@ -6,8 +6,10 @@ interface DayViewProps {
   selectedMemberIds: string[]; members: any[]; events: any[]; eventLayouts: any;
   selection: any; setSelection: (sel: any) => void;
   dragOverSlot: any; setDragOverSlot: (slot: any) => void;
-  handleDragOver: (e: React.DragEvent) => void; handleDrop: (e: React.DragEvent, d: number, h: number) => void;
-  handleEventDragStart: (e: React.DragEvent, id: any, isG: boolean, mId: string) => void;
+  // ★ 修正：<HTMLDivElement> を追加
+  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; 
+  handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
+  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void;
   handleEventClick: (ev: any, e: React.MouseEvent) => void;
   dayScrollContainerRef: React.RefObject<HTMLDivElement | null>;
   handleDayScroll: () => void;

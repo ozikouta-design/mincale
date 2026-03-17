@@ -5,8 +5,10 @@ interface MonthViewProps {
   currentViewDate: Date; events: any[]; selectedMemberIds: string[]; members: any[];
   accentColor: string;
   handleRangeSelect: (dayIndex: number, startHour: number, duration: number) => void;
-  handleDragOver: (e: React.DragEvent) => void; handleDrop: (e: React.DragEvent, d: number, h: number) => void;
-  handleEventDragStart: (e: React.DragEvent, id: any, isG: boolean, mId: string) => void;
+  // ★ 修正：<HTMLDivElement> を追加
+  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; 
+  handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
+  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void;
   handleEventClick: (ev: any, e: React.MouseEvent) => void;
   monthScrollContainerRef: React.RefObject<HTMLDivElement | null>;
   handleMonthScroll: () => void;

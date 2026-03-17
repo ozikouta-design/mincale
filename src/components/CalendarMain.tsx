@@ -12,12 +12,15 @@ interface CalendarMainProps {
   currentViewDate: Date; viewMode: "day" | "week" | "month"; setViewMode: (mode: "day" | "week" | "month") => void;
   scrollTrigger: any; days: any[]; hours: string[]; isLoadingData: boolean;
   events: any[]; selectedMemberIds: string[]; members: any[];
-  handleDragOver: (e: React.DragEvent) => void; handleDrop: (e: React.DragEvent, dayIndex: number, startHour: number) => void;
+  // ★ 修正：<HTMLDivElement> を追加
+  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; 
+  handleDrop: (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => void;
   handleRangeSelect: (dayIndex: number, startHour: number, duration: number) => void;
   setIsScheduleModalOpen: (isOpen: boolean) => void;
   handlePrevWeek: () => void; handleNextWeek: () => void; handleToday: () => void;
   handleEventClick: (event: any, e: React.MouseEvent) => void;
-  handleEventDragStart: (e: React.DragEvent, eventId: any, isGoogle: boolean, memberId: string) => void;
+  // ★ 修正：<HTMLDivElement> を追加
+  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void;
   setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>; setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   accentColor: string; hourHeight: number;
 }
@@ -42,7 +45,6 @@ export default function CalendarMain({
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
-  // 重複予定のレイアウト計算ロジック
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number, totalColumns: number }> = {};
     const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
@@ -88,7 +90,6 @@ export default function CalendarMain({
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // スクロール制御（週・日・月）
   useEffect(() => {
     if (viewMode === 'week' && weekScrollContainerRef.current) {
       const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
@@ -136,7 +137,6 @@ export default function CalendarMain({
     else if (monthScrollContainerRef.current.scrollLeft >= width * 2 - 10) handleNextWeek();
   };
 
-  // ドラッグ選択による新規作成
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (selection) {
