@@ -21,6 +21,16 @@ export const getDayIndex = (date: Date) => {
   return parseInt(`${y}${m}${d}`, 10);
 };
 
+// ★ 新規追加：Google APIに正確なローカル時間を送るためのフォーマッター
+export const formatLocalISO = (date: Date) => {
+  const tzo = -date.getTimezoneOffset();
+  const dif = tzo >= 0 ? '+' : '-';
+  const pad = (num: number) => (num < 10 ? '0' : '') + num;
+  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+    'T' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds()) +
+    dif + pad(Math.floor(Math.abs(tzo) / 60)) + ':' + pad(Math.abs(tzo) % 60);
+};
+
 export default function CalendarDashboard() {
   const { data: session, status } = useSession();
 
@@ -105,7 +115,6 @@ export default function CalendarDashboard() {
     
     const fetchData = async () => {
       setIsLoadingData(true);
-      // ★ 変更：Supabaseからの予定取得を完全廃止し、Googleカレンダーのみから読み込むように統一
       const { data: todosData } = await supabase.from('todos').select('*').order('id', { ascending: true });
       if (todosData) setTodos(todosData);
 
@@ -164,7 +173,6 @@ export default function CalendarDashboard() {
             const startHour = start.getHours() + (start.getMinutes() / 60);
             const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
-            // ★ 変更：すべてGoogleの予定になったため、「📅」マークを削除
             return { 
               id: item.id, memberId: member.id, title: item.summary || "予定あり", 
               dayIndex: evDayIndex, startHour, duration, isGoogle: true,
@@ -176,7 +184,6 @@ export default function CalendarDashboard() {
         const results = await Promise.all(eventPromises);
         allGoogleEvents = results.flat();
         
-        // ★ 変更：Supabaseの予定合成を廃止し、Googleの予定だけをセット
         setEvents(allGoogleEvents);
       }
     } catch (error) {
@@ -235,7 +242,6 @@ export default function CalendarDashboard() {
 
   const handleDeleteEvent = async (eventId: any, isGoogle: boolean, calendarId: string) => {
     if (!confirm("この予定を削除しますか？\n(Googleカレンダーからも削除されます)")) return;
-    // ★ 変更：Googleカレンダーからの削除に統一
     const token = (session as any)?.accessToken;
     if (!token) return;
     try {
@@ -281,7 +287,6 @@ export default function CalendarDashboard() {
       const targetTodo = todos.find((t) => t.id === draggedTodoId);
       const targetCalendarId = newEventMemberId || members[0]?.id || "";
       if (targetTodo && targetCalendarId) {
-        // ★ 変更：タスクからのドラッグ＆ドロップもGoogleに直接作成する
         const token = (session as any)?.accessToken;
         if (!token) return;
 
@@ -293,12 +298,12 @@ export default function CalendarDashboard() {
         const startDt = new Date(y, mo, d);
         startDt.setHours(h, m, 0, 0); 
         const endDt = new Date(startDt.getTime() + 1 * 60 * 60 * 1000); 
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         try {
+          // ★ 変更：formatLocalISO を使用して正確な時間を送信
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {
             method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ summary: targetTodo.title, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+            body: JSON.stringify({ summary: targetTodo.title, start: { dateTime: formatLocalISO(startDt) }, end: { dateTime: formatLocalISO(endDt) } })
           });
           if (!res.ok) throw new Error("Google作成エラー");
           const createdEvent = await res.json();
@@ -325,16 +330,14 @@ export default function CalendarDashboard() {
       const startDt = new Date(y, mo, d);
       startDt.setHours(h, m, 0, 0); 
       const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000); 
-      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
 
       const token = (session as any)?.accessToken;
       if (!token) return;
 
       try {
-        // ★ 変更：予定の移動もGoogleへのPATCHに一本化
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
           method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+          body: JSON.stringify({ start: { dateTime: formatLocalISO(startDt) }, end: { dateTime: formatLocalISO(endDt) } })
         });
         if (!res.ok) throw new Error("Google更新エラー");
         setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
@@ -363,7 +366,6 @@ export default function CalendarDashboard() {
 
   const handleEventClick = (event: any, e: React.MouseEvent) => {
     e.stopPropagation(); setEditingEventId(event.id); setEditingEventIsGoogle(event.isGoogle);
-    // 「📅 」を外す処理も不要になったため、そのまま代入
     setNewEventTitle(event.title); setNewEventMemberId(event.memberId);
     setNewEventDayIndex(event.dayIndex); setNewEventStartHour(event.startHour); setNewEventDuration(event.duration);
     setIsCreateEventModalOpen(true);
@@ -382,7 +384,6 @@ export default function CalendarDashboard() {
     startDt.setHours(h, min, 0, 0); 
     
     const endDt = new Date(startDt.getTime() + newEventDuration * 60 * 60 * 1000); 
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     const token = (session as any)?.accessToken;
     if (!token) {
@@ -394,17 +395,16 @@ export default function CalendarDashboard() {
       try {
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, {
           method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+          body: JSON.stringify({ summary: newEventTitle, start: { dateTime: formatLocalISO(startDt) }, end: { dateTime: formatLocalISO(endDt) } })
         });
         if (!res.ok) throw new Error("更新失敗");
         setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: newEventTitle, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration } : ev));
       } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
     } else {
-      // ★ 変更：新規作成時、Google APIへのPOSTのみを実行し、Supabaseには保存しない
       try {
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+          body: JSON.stringify({ summary: newEventTitle, start: { dateTime: formatLocalISO(startDt) }, end: { dateTime: formatLocalISO(endDt) } })
         });
         if (!res.ok) throw new Error("作成失敗");
         const createdEvent = await res.json();

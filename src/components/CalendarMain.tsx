@@ -5,35 +5,12 @@ import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, Menu, ListTodo } f
 import { getDayIndex } from "@/app/page";
 
 interface CalendarMainProps {
-  currentMonthYear: string;
-  setCurrentMonthYear: (month: string) => void;
-  currentViewDate: Date;
-  viewMode: "day" | "week" | "month";
-  setViewMode: (mode: "day" | "week" | "month") => void;
-  scrollTrigger: any;
-  days: any[];
-  hours: string[];
-  isLoadingData: boolean;
-  events: any[];
-  selectedMemberIds: string[];
-  members: any[];
-  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  handleDrop: (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => void;
-  handleRangeSelect: (dayIndex: number, startHour: number, duration: number) => void;
-  setIsScheduleModalOpen: (isOpen: boolean) => void;
-  handlePrevWeek: () => void;
-  handleNextWeek: () => void;
-  handleEventClick: (event: any, e: React.MouseEvent) => void; 
-  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void;
-  setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  handleToday: () => void;
+  currentMonthYear: string; setCurrentMonthYear: (month: string) => void; currentViewDate: Date; viewMode: "day" | "week" | "month"; setViewMode: (mode: "day" | "week" | "month") => void; scrollTrigger: any; days: any[]; hours: string[]; isLoadingData: boolean; events: any[]; selectedMemberIds: string[]; members: any[];
+  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; handleDrop: (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => void; handleRangeSelect: (dayIndex: number, startHour: number, duration: number) => void; setIsScheduleModalOpen: (isOpen: boolean) => void; handlePrevWeek: () => void; handleNextWeek: () => void; handleEventClick: (event: any, e: React.MouseEvent) => void; handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void; setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>; setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>; handleToday: () => void;
 }
 
 export default function CalendarMain({
-  currentMonthYear, setCurrentMonthYear, currentViewDate, viewMode, setViewMode, scrollTrigger, days, hours, isLoadingData, events, selectedMemberIds, members,
-  handleDragOver, handleDrop, handleRangeSelect,
-  setIsScheduleModalOpen, handlePrevWeek, handleNextWeek, handleEventClick, handleEventDragStart, setIsSidebarOpen, setIsRightPanelOpen, handleToday
+  currentMonthYear, setCurrentMonthYear, currentViewDate, viewMode, setViewMode, scrollTrigger, days, hours, isLoadingData, events, selectedMemberIds, members, handleDragOver, handleDrop, handleRangeSelect, setIsScheduleModalOpen, handlePrevWeek, handleNextWeek, handleEventClick, handleEventDragStart, setIsSidebarOpen, setIsRightPanelOpen, handleToday
 }: CalendarMainProps) {
   
   const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number, startHour: number } | null>(null);
@@ -47,6 +24,14 @@ export default function CalendarMain({
 
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // ★ 新規追加：現在時刻のステートと1分ごとの更新
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
+
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number, totalColumns: number }> = {};
     const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
@@ -56,31 +41,20 @@ export default function CalendarMain({
         selectedMemberIds.forEach(memberId => {
           const colEvents = visibleEvents.filter(e => e.dayIndex === day.dayIndex && e.memberId === memberId);
           colEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
-          
-          let clusters: any[][] = [];
-          let currentCluster: any[] = [];
-          let clusterEnd = 0;
-
+          let clusters: any[][] = []; let currentCluster: any[] = []; let clusterEnd = 0;
           colEvents.forEach(ev => {
-            if (currentCluster.length === 0) {
-              currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
-            } else if (ev.startHour < clusterEnd) {
-              currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
-            } else {
-              clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
-            }
+            if (currentCluster.length === 0) { currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration; } 
+            else if (ev.startHour < clusterEnd) { currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration); } 
+            else { clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration; }
           });
           if (currentCluster.length > 0) clusters.push(currentCluster);
-
           clusters.forEach(cluster => {
             let columns: any[][] = [];
             cluster.forEach(ev => {
               let placed = false;
               for (let i = 0; i < columns.length; i++) {
                 let lastEv = columns[i][columns[i].length - 1];
-                if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
-                  columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
-                }
+                if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) { columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break; }
               }
               if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
             });
@@ -93,31 +67,20 @@ export default function CalendarMain({
       days.forEach(day => {
         const dayEvents = visibleEvents.filter(e => e.dayIndex === day.dayIndex);
         dayEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
-
-        let clusters: any[][] = [];
-        let currentCluster: any[] = [];
-        let clusterEnd = 0;
-
+        let clusters: any[][] = []; let currentCluster: any[] = []; let clusterEnd = 0;
         dayEvents.forEach(ev => {
-          if (currentCluster.length === 0) {
-            currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
-          } else if (ev.startHour < clusterEnd) {
-            currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
-          } else {
-            clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
-          }
+          if (currentCluster.length === 0) { currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration; } 
+          else if (ev.startHour < clusterEnd) { currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration); } 
+          else { clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration; }
         });
         if (currentCluster.length > 0) clusters.push(currentCluster);
-
         clusters.forEach(cluster => {
           let columns: any[][] = [];
           cluster.forEach(ev => {
             let placed = false;
             for (let i = 0; i < columns.length; i++) {
               let lastEv = columns[i][columns[i].length - 1];
-              if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
-                columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
-              }
+              if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) { columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break; }
             }
             if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
           });
@@ -129,12 +92,12 @@ export default function CalendarMain({
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
+  // ★ 変更：初期表示時に縦スクロールを「9:00（576px）」の位置に自動調整する
   useEffect(() => {
     if (viewMode === 'week' && weekScrollContainerRef.current) {
       const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
-      if (targetColIndex !== -1) {
-        weekScrollContainerRef.current.scrollTo({ left: Math.max(0, targetColIndex * 192 - 192), behavior: 'auto' });
-      }
+      if (targetColIndex !== -1) weekScrollContainerRef.current.scrollTo({ left: Math.max(0, targetColIndex * 192 - 192), behavior: 'auto' });
+      weekScrollContainerRef.current.scrollTop = 9 * 64; // 9時にスクロール
     }
   }, [viewMode, currentViewDate, days]);
 
@@ -160,12 +123,12 @@ export default function CalendarMain({
     }
   };
 
+  // ★ 変更：日別表示も初期スクロールを「9:00（576px）」に
   useEffect(() => {
     if (viewMode === 'day' && dayScrollContainerRef.current) {
       const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
-      if (targetColIndex !== -1) {
-        dayScrollContainerRef.current.scrollLeft = targetColIndex * dayScrollContainerRef.current.clientWidth;
-      }
+      if (targetColIndex !== -1) dayScrollContainerRef.current.scrollLeft = targetColIndex * dayScrollContainerRef.current.clientWidth;
+      dayScrollContainerRef.current.scrollTop = 9 * 64; // 9時にスクロール
     }
   }, [viewMode, currentViewDate, days]);
 
@@ -231,18 +194,17 @@ export default function CalendarMain({
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [selection, handleRangeSelect, viewMode]);
 
+
+  // ==============================
+  // ▼ 1. 日別（デイリー）表示
+  // ==============================
   const renderDayView = () => {
     const activeMembers = members.filter(m => selectedMemberIds.includes(m.id));
 
     return (
-      <div 
-        className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-white relative"
-        ref={dayScrollContainerRef}
-        onScroll={handleDayScroll}
-        style={{ scrollbarWidth: 'none' }}
-      >
+      <div className="flex-1 overflow-x-auto overflow-y-auto flex snap-x snap-mandatory bg-white relative" ref={dayScrollContainerRef} onScroll={handleDayScroll} style={{ scrollbarWidth: 'none' }}>
         {days.map((day) => (
-          <div key={day.dayIndex} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white">
+          <div key={day.dayIndex} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white relative">
             
             <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
               <div className="w-16 shrink-0 border-r border-gray-100 bg-white flex flex-col items-center justify-center py-2">
@@ -259,22 +221,24 @@ export default function CalendarMain({
               </div>
             </div>
 
-            {/* ★ 変更：ref に渡すアロー関数を波括弧で囲み、void を返すように修正 */}
-            <div className="flex-1 overflow-y-auto relative flex" ref={el => { dayGridRefs.current[day.dayIndex] = el; }}>
+            <div className="flex-1 relative flex" ref={el => { dayGridRefs.current[day.dayIndex] = el; }}>
               <div className="w-16 shrink-0 border-r border-gray-100 bg-white z-20">
                 {hours.map((hour, i) => <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-50">{hour}</div>)}
               </div>
 
               <div className="flex-1 flex relative">
+                
+                {/* ★ 新規追加：現在時刻の赤線（日別表示） */}
+                {day.isToday && (
+                  <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center" style={{ top: `${currentHourExact * 64}px` }}>
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 absolute -left-1.5"></div>
+                    <div className="h-[2px] bg-red-500 w-full shadow-[0_0_4px_rgba(239,68,68,0.5)]"></div>
+                  </div>
+                )}
+
                 {selection && selection.dayIndex === day.dayIndex && selection.memberId && (
-                  <div 
-                    className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
-                    style={{
-                      left: `${(activeMembers.findIndex(m => m.id === selection.memberId) / activeMembers.length) * 100}%`,
-                      width: `${100 / activeMembers.length}%`,
-                      top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`,
-                      height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px`,
-                    }}
+                  <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
+                    style={{ left: `${(activeMembers.findIndex(m => m.id === selection.memberId) / activeMembers.length) * 100}%`, width: `${100 / activeMembers.length}%`, top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` }}
                   >
                      <div className="font-bold tracking-wide">新規予定</div>
                      <div className="text-[10px] opacity-90 mt-0.5">
@@ -290,8 +254,7 @@ export default function CalendarMain({
                 {activeMembers.map((member) => (
                   <div key={member.id} className="flex-1 min-w-[120px] border-r border-gray-50 relative group">
                     {hours.map((_, i) => (
-                      <div 
-                        key={i} className={`h-16 border-b border-gray-50 cursor-crosshair hover:bg-gray-50/30 transition-colors ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
+                      <div key={i} className={`h-16 border-b border-gray-50 cursor-crosshair hover:bg-gray-50/30 transition-colors ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
                         onMouseDown={(e) => {
                           const rect = dayGridRefs.current[day.dayIndex]?.getBoundingClientRect();
                           if (!rect) return;
@@ -304,30 +267,19 @@ export default function CalendarMain({
                       />
                     ))}
                     
-                    {events
-                      .filter(ev => ev.dayIndex === day.dayIndex && ev.memberId === member.id)
-                      .map((event, idx) => {
+                    {events.filter(ev => ev.dayIndex === day.dayIndex && ev.memberId === member.id).map((event, idx) => {
                         const layoutKey = `${event.id}-${event.memberId}`;
                         const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
                         const widthPct = 100 / layout.totalColumns;
                         const leftPct = (layout.column * widthPct);
 
                         return (
-                          <div 
-                            key={`${event.id}-${idx}`}
-                            draggable={true} 
-                            onMouseDown={(e) => e.stopPropagation()} 
+                          <div key={`${event.id}-${idx}`} draggable={true} onMouseDown={(e) => e.stopPropagation()} 
                             onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
                             onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
                             onClick={(e) => handleEventClick(event, e)}
                             className="absolute rounded-lg px-2 py-1 text-[11px] text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 cursor-grab active:cursor-grabbing"
-                            style={{ 
-                              top: `${event.startHour * 64 + 1}px`, 
-                              height: `${event.duration * 64 - 2}px`, 
-                              left: `calc(${leftPct}% + 1px)`,
-                              width: `calc(${widthPct}% - 2px)`,
-                              backgroundColor: event.colorHex || member.colorHex 
-                            }}
+                            style={{ top: `${event.startHour * 64 + 1}px`, height: `${event.duration * 64 - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member.colorHex }}
                           >
                             <div className="font-bold truncate">{event.title}</div>
                           </div>
@@ -343,9 +295,14 @@ export default function CalendarMain({
     );
   };
 
+
+  // ==============================
+  // ▼ 2. 週別（ウィークリー）表示
+  // ==============================
   const renderWeekView = () => (
     <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative" ref={weekScrollContainerRef} onScroll={handleWeekScroll}>
       <div className="flex flex-col min-w-max">
+        
         <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
           <div className="w-16 shrink-0 sticky left-0 bg-white z-50 border-r border-gray-100"></div>
           {days.map((day) => (
@@ -355,19 +312,23 @@ export default function CalendarMain({
           ))}
         </div>
 
-        <div className="flex-1 relative" ref={weekGridRef}>
+        <div className="flex-1 flex relative" ref={weekGridRef}>
           <div className="w-16 shrink-0 sticky left-0 bg-white z-30 border-r border-gray-100 flex flex-col">
-            {hours.map((hour, i) => (
-              <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-100">{hour}</div>
-            ))}
+            {hours.map((hour, i) => <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-100">{hour}</div>)}
           </div>
+
+          {/* ★ 新規追加：現在時刻の赤線（週別表示） */}
+          {days.some(d => d.isToday) && (
+            <div className="absolute left-16 right-0 z-20 pointer-events-none flex items-center" style={{ top: `${currentHourExact * 64}px` }}>
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 absolute -left-1.5"></div>
+              <div className="h-[2px] bg-red-500 w-full shadow-[0_0_4px_rgba(239,68,68,0.5)]"></div>
+            </div>
+          )}
 
           {days.map((day, colIndex) => (
             <div key={day.dayIndex} className={`w-48 shrink-0 border-r border-gray-100 relative ${day.isToday ? 'bg-blue-50/10' : ''}`}>
               {hours.map((_, i) => (
-                <div 
-                  key={i} 
-                  className={`h-16 border-b border-gray-100 cursor-crosshair hover:bg-gray-50/50 ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
+                <div key={i} className={`h-16 border-b border-gray-100 cursor-crosshair hover:bg-gray-50/50 ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
                   onMouseDown={(e) => {
                     if (!weekGridRef.current) return;
                     const rect = weekGridRef.current.getBoundingClientRect();
@@ -380,9 +341,7 @@ export default function CalendarMain({
                 />
               ))}
 
-              {events
-                .filter(ev => ev.dayIndex === day.dayIndex && selectedMemberIds.includes(ev.memberId))
-                .map((event, idx) => {
+              {events.filter(ev => ev.dayIndex === day.dayIndex && selectedMemberIds.includes(ev.memberId)).map((event, idx) => {
                   const member = members.find(m => m.id === event.memberId);
                   const layoutKey = `${event.id}-${event.memberId}`;
                   const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
@@ -390,26 +349,15 @@ export default function CalendarMain({
                   const leftPct = (layout.column * widthPct);
 
                   return (
-                    <div 
-                      key={`${event.id}-${idx}`}
-                      draggable={true} 
-                      onMouseDown={(e) => e.stopPropagation()} 
+                    <div key={`${event.id}-${idx}`} draggable={true} onMouseDown={(e) => e.stopPropagation()} 
                       onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
                       onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
                       onClick={(e) => handleEventClick(event, e)}
                       className="absolute rounded-lg px-2 py-1.5 text-[11px] text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 cursor-grab active:cursor-grabbing"
-                      style={{ 
-                        top: `${event.startHour * 64 + 1}px`, 
-                        height: `${event.duration * 64 - 2}px`, 
-                        left: `calc(${leftPct}% + 1px)`, 
-                        width: `calc(${widthPct}% - 2px)`,
-                        backgroundColor: event.colorHex || member?.colorHex || "#f97316" 
-                      }} 
+                      style={{ top: `${event.startHour * 64 + 1}px`, height: `${event.duration * 64 - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member?.colorHex || "#f97316" }} 
                     >
                       <div className="font-semibold truncate">{event.title}</div>
-                      <div className="text-[9px] opacity-90 truncate mt-0.5 flex items-center">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}
-                      </div>
+                      <div className="text-[9px] opacity-90 truncate mt-0.5 flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}</div>
                     </div>
                   );
                 })}
@@ -418,12 +366,7 @@ export default function CalendarMain({
 
           {selection && viewMode === 'week' && (
             <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
-                 style={{ 
-                   left: `calc(4rem + ${selection.colIndex * 192}px + 2px)`, 
-                   width: `calc(192px - 4px)`, 
-                   top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, 
-                   height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` 
-                 }}>
+                 style={{ left: `calc(4rem + ${selection.colIndex * 192}px + 2px)`, width: `calc(192px - 4px)`, top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` }}>
               <div className="font-bold tracking-wide">新規予定</div>
               <div className="text-[10px] opacity-90 mt-0.5">
                 {(() => {
@@ -439,6 +382,10 @@ export default function CalendarMain({
     </div>
   );
 
+
+  // ==============================
+  // ▼ 3. 月別（マンスリー）表示
+  // ==============================
   const renderMonthView = () => {
     const baseDate = currentViewDate;
     const monthsData = [-1, 0, 1].map(offset => {
@@ -458,18 +405,11 @@ export default function CalendarMain({
     });
 
     return (
-      <div 
-        className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-gray-50" 
-        ref={monthScrollContainerRef} 
-        onScroll={handleMonthScroll} 
-        style={{ scrollbarWidth: 'none' }}
-      >
+      <div className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-gray-50" ref={monthScrollContainerRef} onScroll={handleMonthScroll} style={{ scrollbarWidth: 'none' }}>
         {monthsData.map((mData, mIdx) => (
           <div key={mIdx} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white border-r border-gray-200">
             <div className="grid grid-cols-7 border-b border-gray-200 bg-white shrink-0">
-              {['日', '月', '火', '水', '木', '金', '土'].map(w => (
-                <div key={w} className="py-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest border-r border-gray-100 last:border-0">{w}</div>
-              ))}
+              {['日', '月', '火', '水', '木', '金', '土'].map(w => <div key={w} className="py-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest border-r border-gray-100 last:border-0">{w}</div>)}
             </div>
             <div className="flex-1 grid grid-cols-7 grid-rows-6 border-l border-gray-100">
               {mData.calendarDays.map((d, i) => {
@@ -477,51 +417,25 @@ export default function CalendarMain({
                 const dayIdx = getDayIndex(d);
                 const isToday = dayIdx === getDayIndex(new Date());
                 const dayEvents = events.filter(e => e.dayIndex === dayIdx && selectedMemberIds.includes(e.memberId));
-                
                 dayEvents.sort((a, b) => a.startHour - b.startHour);
-                
                 const maxVisible = 4;
                 const visibleEvents = dayEvents.slice(0, maxVisible);
                 const hiddenCount = dayEvents.length - maxVisible;
 
                 return (
-                  <div 
-                    key={i} 
-                    className={`border-b border-r border-gray-100 p-1 flex flex-col relative hover:bg-gray-50 transition-colors group ${!isCurrentMonth && 'bg-gray-50/40'}`}
-                    onClick={() => handleRangeSelect(dayIdx, 0, 1)}
-                    onDragOver={(e) => handleDragOver(e)} 
-                    onDrop={(e) => handleDrop(e, dayIdx, 0)}
-                  >
-                    <div className={`text-[11px] w-6 h-6 mx-auto rounded-full flex items-center justify-center mb-1 ${isToday ? 'bg-blue-600 text-white font-bold' : isCurrentMonth ? 'text-gray-700 font-medium' : 'text-gray-300'}`}>
-                      {d.getDate() === 1 ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate()}
-                    </div>
-                    
+                  <div key={i} className={`border-b border-r border-gray-100 p-1 flex flex-col relative hover:bg-gray-50 transition-colors group ${!isCurrentMonth && 'bg-gray-50/40'}`} onClick={() => handleRangeSelect(dayIdx, 0, 1)} onDragOver={(e) => handleDragOver(e)} onDrop={(e) => handleDrop(e, dayIdx, 0)}>
+                    <div className={`text-[11px] w-6 h-6 mx-auto rounded-full flex items-center justify-center mb-1 ${isToday ? 'bg-blue-600 text-white font-bold' : isCurrentMonth ? 'text-gray-700 font-medium' : 'text-gray-300'}`}>{d.getDate() === 1 ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate()}</div>
                     <div className="flex-1 flex flex-col gap-0.5 overflow-hidden">
                       {visibleEvents.map((e, evIdx) => {
                         const member = members.find(m => m.id === e.memberId);
                         const bgColor = e.colorHex || member?.colorHex || "#f97316";
                         return (
-                          <div 
-                            key={evIdx} 
-                            draggable={true} 
-                            onDragStart={(evt) => { evt.currentTarget.style.opacity = '0.6'; handleEventDragStart(evt, e.id, e.isGoogle, e.memberId); }}
-                            onDragEnd={(evt) => { evt.currentTarget.style.opacity = '1'; }}
-                            className="text-[10px] px-1.5 py-0.5 rounded-[4px] truncate cursor-pointer hover:brightness-90 text-white font-medium shadow-sm transition-all"
-                            style={{ backgroundColor: bgColor }}
-                            onClick={(evt) => { evt.stopPropagation(); handleEventClick(e, evt); }}
-                          >
-                            <span className="font-semibold mr-1">
-                              {e.startHour != null ? `${Math.floor(e.startHour).toString().padStart(2, '0')}:${Math.round((e.startHour % 1) * 60).toString().padStart(2, '0')}` : ''}
-                            </span>
-                            {e.title}
+                          <div key={evIdx} draggable={true} onDragStart={(evt) => { evt.currentTarget.style.opacity = '0.6'; handleEventDragStart(evt, e.id, e.isGoogle, e.memberId); }} onDragEnd={(evt) => { evt.currentTarget.style.opacity = '1'; }} className="text-[10px] px-1.5 py-0.5 rounded-[4px] truncate cursor-pointer hover:brightness-90 text-white font-medium shadow-sm transition-all" style={{ backgroundColor: bgColor }} onClick={(evt) => { evt.stopPropagation(); handleEventClick(e, evt); }}>
+                            <span className="font-semibold mr-1">{e.startHour != null ? `${Math.floor(e.startHour).toString().padStart(2, '0')}:${Math.round((e.startHour % 1) * 60).toString().padStart(2, '0')}` : ''}</span>{e.title}
                           </div>
                         );
                       })}
-                      {hiddenCount > 0 && (
-                        <div className="text-[10px] font-bold text-gray-500 pl-1.5 py-0.5 hover:bg-gray-100 rounded cursor-pointer mt-0.5">
-                          他 {hiddenCount} 件
-                        </div>
-                      )}
+                      {hiddenCount > 0 && <div className="text-[10px] font-bold text-gray-500 pl-1.5 py-0.5 hover:bg-gray-100 rounded cursor-pointer mt-0.5">他 {hiddenCount} 件</div>}
                     </div>
                   </div>
                 );
@@ -539,7 +453,7 @@ export default function CalendarMain({
     <main className="flex-1 flex flex-col min-w-0 z-0 relative w-full select-none bg-white">
       <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200">
         <div className="flex items-center space-x-4 md:space-x-6">
-          <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><Menu className="w-5 h-5 text-gray-700" /></button>
+          <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="サイドバーを開閉"><Menu className="w-5 h-5 text-gray-700" /></button>
           
           <div className="flex items-center space-x-3">
             <h1 className="text-xl font-semibold text-gray-800 tracking-tight min-w-[130px]">{displayMonthYear}</h1>
@@ -573,7 +487,7 @@ export default function CalendarMain({
             <LinkIcon className="w-3.5 h-3.5 mr-2" />
             日程調整
           </button>
-          <button onClick={() => setIsRightPanelOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg"><ListTodo className="w-5 h-5 text-gray-700" /></button>
+          <button onClick={() => setIsRightPanelOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg" title="右パネルを開閉"><ListTodo className="w-5 h-5 text-gray-700" /></button>
         </div>
       </header>
 
