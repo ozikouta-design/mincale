@@ -65,7 +65,6 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  // ★ 変更：初期値はfalseにし、PC幅の場合のみマウント後にtrueにする
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
@@ -83,7 +82,6 @@ export default function CalendarDashboard() {
   const [currentMonthYear, setCurrentMonthYear] = useState("");
   const [scrollTrigger, setScrollTrigger] = useState<{ direction: 'prev' | 'next' | 'today', timestamp: number } | null>(null);
 
-  // ★ スマホ判定のためのuseEffect
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth >= 768) {
       setIsSidebarOpen(true);
@@ -117,23 +115,38 @@ export default function CalendarDashboard() {
 
   const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
 
+  // ★ 変更：ユーザーごとのデータ分離対応
   useEffect(() => {
     const today = new Date();
     setCurrentMonthYear(`${today.getFullYear()}年 ${today.getMonth() + 1}月`);
     
     const fetchData = async () => {
+      // ログインしていない場合は処理をスキップ
+      if (!session?.user?.email) return;
+
       setIsLoadingData(true);
-      const { data: todosData } = await supabase.from('todos').select('*').order('id', { ascending: true });
+      
+      // 自分（ログインユーザー）のToDoのみを取得
+      const { data: todosData } = await supabase
+        .from('todos')
+        .select('*')
+        .eq('user_email', session.user.email)
+        .order('id', { ascending: true });
       if (todosData) setTodos(todosData);
 
-      const { data: groupsData } = await supabase.from('groups').select('*').order('id', { ascending: true });
+      // 自分（ログインユーザー）のグループのみを取得
+      const { data: groupsData } = await supabase
+        .from('groups')
+        .select('*')
+        .eq('user_email', session.user.email)
+        .order('id', { ascending: true });
       if (groupsData) {
         setGroups(groupsData.map(g => ({ id: g.id.toString(), name: g.name, memberIds: g.member_ids })));
       }
       setIsLoadingData(false);
     };
     fetchData();
-  }, []);
+  }, [session]); // sessionの変更を監視
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -263,9 +276,14 @@ export default function CalendarDashboard() {
   const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
   const selectAllMembers = () => setSelectedMemberIds(members.map(m => m.id));
   
+  // ★ 変更：グループ保存時に自分の user_email を記録する
   const handleSaveGroup = async () => {
-    if (!newGroupName.trim() || newGroupMemberIds.length === 0) return;
-    const { data, error } = await supabase.from('groups').insert({ name: newGroupName, member_ids: newGroupMemberIds }).select().single();
+    if (!newGroupName.trim() || newGroupMemberIds.length === 0 || !session?.user?.email) return;
+    const { data, error } = await supabase.from('groups').insert({ 
+      name: newGroupName, 
+      member_ids: newGroupMemberIds,
+      user_email: session.user.email 
+    }).select().single();
     if (!error && data) { setGroups([...groups, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]); } 
     setIsGroupModalOpen(false); setNewGroupName(""); setNewGroupMemberIds([]);
   };
@@ -424,9 +442,15 @@ export default function CalendarDashboard() {
     if (!selectedMemberIds.includes(newEventMemberId)) setSelectedMemberIds((prev) => [...prev, newEventMemberId]);
   };
 
+  // ★ 変更：ToDoタスク保存時に自分の user_email を記録する
   const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault(); if (!newTaskTitle.trim()) return;
-    const { data, error } = await supabase.from('todos').insert({ title: newTaskTitle, project: newTaskProject || "一般タスク" }).select().single();
+    e.preventDefault(); 
+    if (!newTaskTitle.trim() || !session?.user?.email) return;
+    const { data, error } = await supabase.from('todos').insert({ 
+      title: newTaskTitle, 
+      project: newTaskProject || "一般タスク",
+      user_email: session.user.email 
+    }).select().single();
     if (!error) setTodos([...todos, data]);
     setNewTaskTitle(""); setNewTaskProject(""); setIsAddingTask(false);
   };
@@ -463,7 +487,6 @@ export default function CalendarDashboard() {
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
       
-      {/* ★ 復活：スマホでサイドバー開閉時に背景を暗くしてタップで閉じるオーバーレイ */}
       {(isSidebarOpen || isRightPanelOpen) && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300" 
