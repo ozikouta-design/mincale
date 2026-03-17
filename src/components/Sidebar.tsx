@@ -1,149 +1,57 @@
 import React from "react";
-import {
-  Calendar as CalendarIcon,
-  Users,
-  Plus,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  LogOut,
-  RefreshCw,
-  X
-} from "lucide-react"; 
+import { Calendar as CalendarIcon, Users, Plus, Settings, ChevronLeft, ChevronRight, Check, LogOut, RefreshCw, X } from "lucide-react"; 
 
 interface SidebarProps {
-  currentMonthYear: string;
-  todayDate: number;
-  setNewEventTitle: (title: string) => void;
-  setNewEventDayIndex: (index: number) => void;
-  setNewEventStartHour: (hour: number) => void;
-  setNewEventDuration: (duration: number) => void;
-  setIsCreateEventModalOpen: (isOpen: boolean) => void;
-  selectAllMembers: () => void;
-  members: any[];
-  isLoadingData: boolean;
-  selectedMemberIds: string[];
-  toggleMember: (id: string) => void;
-  status: "loading" | "authenticated" | "unauthenticated";
-  session: any;
-  syncGoogleData: () => void;
-  isSyncing: boolean;
-  signIn: (provider: string) => void;
-  signOut: () => void;
-  handlePrevWeek: () => void; // ★ Propsとしてはそのまま受け取る
-  handleNextWeek: () => void;
-  setEditingEventId: (id: any) => void;
-  isSidebarOpen: boolean; 
-  setIsSidebarOpen: (isOpen: boolean) => void; 
-  groups: any[]; 
-  setIsGroupModalOpen: (isOpen: boolean) => void; 
-  setSelectedMemberIds: (ids: string[]) => void; 
-  handleDeleteGroup: (groupId: string, e: React.MouseEvent) => void; 
+  currentMonthYear: string; todayDate: number; setNewEventTitle: (title: string) => void; setNewEventDayIndex: (index: number) => void;
+  setNewEventStartHour: (hour: number) => void; setNewEventDuration: (duration: number) => void; setIsCreateEventModalOpen: (isOpen: boolean) => void;
+  selectAllMembers: () => void; members: any[]; isLoadingData: boolean; selectedMemberIds: string[]; toggleMember: (id: string) => void;
+  status: "loading" | "authenticated" | "unauthenticated"; session: any; syncGoogleData: () => void; isSyncing: boolean; signIn: (provider: string) => void; signOut: () => void;
+  handlePrevWeek: () => void; handleNextWeek: () => void; setEditingEventId: (id: any) => void; isSidebarOpen: boolean; setIsSidebarOpen: (isOpen: boolean) => void; 
+  groups: any[]; setIsGroupModalOpen: (isOpen: boolean) => void; setSelectedMemberIds: (ids: string[]) => void; handleDeleteGroup: (groupId: string, e: React.MouseEvent) => void; 
 }
 
 export default function Sidebar({
-  currentMonthYear,
-  todayDate,
-  selectAllMembers,
-  members,
-  isLoadingData,
-  selectedMemberIds,
-  toggleMember,
-  status,
-  session,
-  syncGoogleData,
-  isSyncing,
-  signIn,
-  signOut,
-  handlePrevWeek,
-  handleNextWeek,
-  isSidebarOpen, 
-  setIsSidebarOpen,
-  groups, 
-  setIsGroupModalOpen, 
-  setSelectedMemberIds, 
-  handleDeleteGroup 
+  currentMonthYear, todayDate, selectAllMembers, members, isLoadingData, selectedMemberIds, toggleMember, status, session, syncGoogleData, isSyncing, signIn, signOut,
+  handlePrevWeek, handleNextWeek, isSidebarOpen, setIsSidebarOpen, groups, setIsGroupModalOpen, setSelectedMemberIds, handleDeleteGroup 
 }: SidebarProps) {
   return (
-    <aside className={`fixed md:relative z-40 inset-y-0 left-0 bg-gray-50 border-r border-gray-200 w-64 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 ${isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}>
-      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
-        <div className="flex items-center">
+    // ★ 変更：isSidebarOpen が false の場合、w-0 にしてアニメーションで完全に隠す
+    <aside className={`flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out z-10 ${isSidebarOpen ? "w-64 translate-x-0" : "w-0 -translate-x-full overflow-hidden border-none"}`}>
+      <div className="h-16 min-h-[64px] flex items-center justify-between px-4 border-b border-gray-200">
+        <div className="flex items-center whitespace-nowrap">
           <CalendarIcon className="w-6 h-6 text-orange-500 mr-2" />
           <h1 className="text-lg font-bold text-gray-800 tracking-tight">みんカレ</h1>
         </div>
-        <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 text-gray-500 hover:bg-gray-200 rounded-full">
+        <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500 hover:bg-gray-200 rounded-full md:hidden">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="p-4 flex-1 overflow-y-auto">
+      <div className="p-4 flex-1 overflow-y-auto whitespace-nowrap">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-2 mt-2">
-            <span className="font-semibold text-sm">{currentMonthYear}</span>
-            <div className="flex space-x-1">
-              <ChevronLeft onClick={handlePrevWeek} className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800 bg-white rounded-full shadow-sm" />
-              <ChevronRight onClick={handleNextWeek} className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800 bg-white rounded-full shadow-sm" />
-            </div>
-          </div>
+          <div className="flex items-center justify-between mb-2 mt-2"><span className="font-semibold text-sm">{currentMonthYear}</span><div className="flex space-x-1"><ChevronLeft onClick={handlePrevWeek} className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800 bg-white rounded-full shadow-sm" /><ChevronRight onClick={handleNextWeek} className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-800 bg-white rounded-full shadow-sm" /></div></div>
           <div className="w-full bg-white border border-gray-200 rounded-lg p-2 shadow-sm">
-            <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1">
-              <div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-sm">
-              {[...Array(31)].map((_, i) => {
-                const dayNum = i + 1;
-                const isToday = dayNum === todayDate;
-                return (
-                  <div key={i} className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${isToday ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"}`}>
-                    {dayNum}
-                  </div>
-                );
-              })}
-            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
+            <div className="grid grid-cols-7 gap-1 text-center text-sm">{[...Array(31)].map((_, i) => { const dayNum = i + 1; const isToday = dayNum === todayDate; return ( <div key={i} className={`py-1 rounded-md cursor-pointer hover:bg-gray-100 ${isToday ? "bg-orange-500 text-white font-bold hover:bg-orange-600" : "text-gray-700"}`}>{dayNum}</div> ); })}</div>
           </div>
         </div>
 
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700">
-            <div className="flex items-center">
-              <Users className="w-4 h-4 mr-2" />
-              クイック表示
-            </div>
-            <Plus onClick={() => setIsGroupModalOpen(true)} className="w-4 h-4 text-gray-400 cursor-pointer hover:text-orange-500 transition-colors" />
-          </div>
+          <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700"><div className="flex items-center"><Users className="w-4 h-4 mr-2" />クイック表示</div><Plus onClick={() => setIsGroupModalOpen(true)} className="w-4 h-4 text-gray-400 cursor-pointer hover:text-orange-500 transition-colors" /></div>
           <ul className="space-y-1">
-            <li onClick={selectAllMembers} className="text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors">
-              すべてのカレンダーを表示
-            </li>
-            {groups.map(group => (
-              <li key={group.id} onClick={() => { setSelectedMemberIds(group.memberIds); setIsSidebarOpen(false); }} className="flex items-center justify-between text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors group">
-                <span className="truncate">{group.name}</span>
-                <button onClick={(e) => handleDeleteGroup(group.id, e)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity p-0.5"><X className="w-3 h-3" /></button>
-              </li>
-            ))}
+            <li onClick={selectAllMembers} className="text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors">すべてのカレンダーを表示</li>
+            {groups.map(group => ( <li key={group.id} onClick={() => { setSelectedMemberIds(group.memberIds); setIsSidebarOpen(false); }} className="flex items-center justify-between text-sm text-gray-600 hover:bg-orange-50 hover:text-orange-700 px-2 py-1.5 rounded-md cursor-pointer transition-colors group"><span className="truncate">{group.name}</span><button onClick={(e) => handleDeleteGroup(group.id, e)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity p-0.5"><X className="w-3 h-3" /></button></li> ))}
           </ul>
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700">
-            <span>マイカレンダー</span>
-            <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-700" />
-          </div>
-          {members.length === 0 && !isLoadingData && (
-            <div className="text-xs text-gray-400 pl-2">Googleにログインしてください</div>
-          )}
+          <div className="flex items-center justify-between mb-3 text-sm font-semibold text-gray-700"><span>マイカレンダー</span><Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-700" /></div>
+          {members.length === 0 && !isLoadingData && <div className="text-xs text-gray-400 pl-2">Googleにログインしてください</div>}
           <ul className="space-y-1">
             {members.map((member) => {
               const isSelected = selectedMemberIds.includes(member.id);
               return (
-                <li
-                  key={member.id}
-                  onClick={() => toggleMember(member.id)}
-                  className={`flex items-center text-sm cursor-pointer p-1.5 rounded-md transition-all ${
-                    isSelected ? "bg-orange-50 text-orange-900 font-medium" : "text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
+                <li key={member.id} onClick={() => toggleMember(member.id)} className={`flex items-center text-sm cursor-pointer p-1.5 rounded-md transition-all ${isSelected ? "bg-orange-50 text-orange-900 font-medium" : "text-gray-700 hover:bg-gray-200"}`}>
                   <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] mr-2 shadow-sm ${!isSelected && "opacity-60"}`} style={{ backgroundColor: member.colorHex }}>{member.initials}</div>
                   <span className="flex-1 truncate" title={member.name}>{member.name}</span>
                   {isSelected && <Check className="w-4 h-4" style={{ color: member.colorHex }} />}
@@ -154,26 +62,16 @@ export default function Sidebar({
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-200 bg-white flex flex-col space-y-4">
-        {status === "loading" ? (
-          <div className="flex items-center justify-center py-2 text-sm text-gray-500 animate-pulse">読み込み中...</div>
-        ) : session && session.user ? (
+      <div className="p-4 border-t border-gray-200 bg-white flex flex-col space-y-4 whitespace-nowrap">
+        {status === "loading" ? <div className="flex items-center justify-center py-2 text-sm text-gray-500 animate-pulse">読み込み中...</div> : session && session.user ? (
           <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
             <div className="flex items-center space-x-3 overflow-hidden">
               {session.user.image ? <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full shadow-sm" /> : <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">{session.user.name?.charAt(0) || "U"}</div>}
               <div className="flex flex-col truncate"><span className="text-sm font-semibold text-gray-800 truncate">{session.user.name}</span><span className="text-[10px] text-gray-500 truncate">{session.user.email}</span></div>
             </div>
-            <div className="flex space-x-1">
-              <button onClick={syncGoogleData} disabled={isSyncing} className="p-1.5 text-orange-500 hover:text-white hover:bg-orange-500 rounded-md transition-colors disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} /></button>
-              <button onClick={() => signOut()} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"><LogOut className="w-4 h-4" /></button>
-            </div>
+            <div className="flex space-x-1"><button onClick={syncGoogleData} disabled={isSyncing} className="p-1.5 text-orange-500 hover:text-white hover:bg-orange-500 rounded-md transition-colors disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} /></button><button onClick={() => signOut()} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"><LogOut className="w-4 h-4" /></button></div>
           </div>
-        ) : (
-          <button onClick={() => signIn("google")} className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
-            <svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
-            <span>Googleでログイン</span>
-          </button>
-        )}
+        ) : ( <button onClick={() => signIn("google")} className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"><span>Googleでログイン</span></button> )}
       </div>
     </aside>
   );

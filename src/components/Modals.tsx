@@ -9,7 +9,7 @@ interface ModalsProps {
   newEventMemberId: string; setNewEventMemberId: (id: string) => void;
   members: any[];
   newEventDayIndex: number; setNewEventDayIndex: (index: number) => void; 
-  days: any[]; // ★ 変更: DayInfoの配列を受け取る
+  days: any[];
   newEventStartHour: number; setNewEventStartHour: (hour: number) => void; hours: string[];
   newEventDuration: number; setNewEventDuration: (duration: number) => void;
   editingEventId: any; setEditingEventId: (id: any) => void;
@@ -36,15 +36,16 @@ export default function Modals({
 
   const closeEventModal = () => { setIsCreateEventModalOpen(false); setEditingEventId(null); };
 
+  // ★ 変更：9時間のオフセットを消し、00:00〜23:45 までの24時間の選択肢を生成
   const timeOptions = [];
-  for (let i = 0; i <= 10; i += 0.25) {
-    const totalMinutes = Math.round(i * 60) + 9 * 60;
-    const h = Math.floor(totalMinutes / 60); const m = totalMinutes % 60;
+  for (let i = 0; i <= 23.75; i += 0.25) {
+    const h = Math.floor(i); 
+    const m = Math.round((i % 1) * 60);
     timeOptions.push({ value: i, label: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}` });
   }
 
   const durationOptions = [];
-  for (let i = 0.25; i <= 10; i += 0.25) {
+  for (let i = 0.25; i <= 24; i += 0.25) {
     const h = Math.floor(i); const m = Math.round((i % 1) * 60);
     let label = "";
     if (h > 0) label += `${h}時間`; if (m > 0) label += `${m}分`;
@@ -80,7 +81,6 @@ export default function Modals({
               <div className="space-y-3">
                 <div className="flex items-center text-sm text-gray-300">
                   <CalendarIcon className="w-4 h-4 mr-3 text-gray-400" />
-                  {/* ★ 変更：日時の選択を120日分の本格的なデータから取得 */}
                   <select value={newEventDayIndex} onChange={(e) => setNewEventDayIndex(Number(e.target.value))} className="bg-transparent outline-none cursor-pointer hover:text-white transition-colors appearance-none">
                     {days.map((day) => <option key={day.dayIndex} value={day.dayIndex} className="bg-gray-800">{day.label}</option>)}
                   </select>

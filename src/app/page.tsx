@@ -24,9 +24,7 @@ export const getDayIndex = (date: Date) => {
 export default function CalendarDashboard() {
   const { data: session, status } = useSession();
 
-  // ★ 新規追加：ビューモードのステート（day, week, month）
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
-  
   const [activeTab, setActiveTab] = useState<"todo" | "time">("todo");
   const [members, setMembers] = useState<any[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
@@ -58,8 +56,8 @@ export default function CalendarDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [todos, setTodos] = useState<any[]>([]);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   const [groups, setGroups] = useState<{id: string, name: string, memberIds: string[]}[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -73,9 +71,8 @@ export default function CalendarDashboard() {
 
   const [currentViewDate, setCurrentViewDate] = useState(new Date());
   const [currentMonthYear, setCurrentMonthYear] = useState("");
-  const [scrollTrigger, setScrollTrigger] = useState<{ direction: 'prev' | 'next', timestamp: number } | null>(null);
+  const [scrollTrigger, setScrollTrigger] = useState<{ direction: 'prev' | 'next' | 'today', timestamp: number } | null>(null);
 
-  // ★ 変更：土日も含めた前後60日（計120日分）を生成し、ビューに応じて使い分ける
   const { days, timeMin, timeMax, todayDate } = useMemo(() => {
     const today = new Date();
     const tempDays: any[] = [];
@@ -98,9 +95,9 @@ export default function CalendarDashboard() {
     maxDate.setHours(23, 59, 59, 999);
     
     return { days: tempDays, timeMin: minDate.toISOString(), timeMax: maxDate.toISOString(), todayDate: today.getDate() };
-  }, [currentViewDate]); // currentViewDateが変わるとカレンダーデータが再生成される
+  }, [currentViewDate]);
 
-  const hours = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+  const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
 
   useEffect(() => {
     const today = new Date();
@@ -108,12 +105,7 @@ export default function CalendarDashboard() {
     
     const fetchData = async () => {
       setIsLoadingData(true);
-      const { data: eventsData } = await supabase.from('events').select('*');
-      const formattedEvents = eventsData ? eventsData.map(e => ({
-        id: e.id, memberId: e.member_id, title: e.title, dayIndex: e.day_index, startHour: e.start_hour, duration: e.duration, isGoogle: false
-      })) : [];
-      setEvents(formattedEvents);
-
+      // ★ 変更：Supabaseからの予定取得を完全廃止し、Googleカレンダーのみから読み込むように統一
       const { data: todosData } = await supabase.from('todos').select('*').order('id', { ascending: true });
       if (todosData) setTodos(todosData);
 
@@ -121,7 +113,6 @@ export default function CalendarDashboard() {
       if (groupsData) {
         setGroups(groupsData.map(g => ({ id: g.id.toString(), name: g.name, memberIds: g.member_ids })));
       }
-
       setIsLoadingData(false);
     };
     fetchData();
@@ -170,23 +161,23 @@ export default function CalendarDashboard() {
             const end = new Date(item.end.dateTime);
             
             const evDayIndex = getDayIndex(start); 
-            const startHour = (start.getHours() - 9) + (start.getMinutes() / 60);
+            const startHour = start.getHours() + (start.getMinutes() / 60);
             const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
+            // ★ 変更：すべてGoogleの予定になったため、「📅」マークを削除
             return { 
-              id: item.id, memberId: member.id, title: `📅 ${item.summary || "予定あり"}`, 
+              id: item.id, memberId: member.id, title: item.summary || "予定あり", 
               dayIndex: evDayIndex, startHour, duration, isGoogle: true,
               colorHex: item.colorId ? GOOGLE_COLORS[item.colorId] : null
             };
-          }).filter((e: any) => e !== null && e.startHour >= 0 && e.startHour <= 9);
+          }).filter((e: any) => e !== null && e.startHour >= 0 && e.startHour <= 24);
         });
 
         const results = await Promise.all(eventPromises);
         allGoogleEvents = results.flat();
-        setEvents((prevEvents) => {
-          const supabaseEvents = prevEvents.filter(p => !p.isGoogle);
-          return [...supabaseEvents, ...allGoogleEvents];
-        });
+        
+        // ★ 変更：Supabaseの予定合成を廃止し、Googleの予定だけをセット
+        setEvents(allGoogleEvents);
       }
     } catch (error) {
       console.error(error);
@@ -199,24 +190,26 @@ export default function CalendarDashboard() {
     if (status === "authenticated" && session) syncGoogleData();
   }, [status, timeMin, timeMax]);
 
-  // ★ 変更：ビューに応じて前へ・次への挙動を賢く分岐
+  const handleToday = () => {
+    setCurrentViewDate(new Date());
+    setScrollTrigger({ direction: 'today', timestamp: Date.now() });
+  };
+
   const handlePrev = () => {
-    if (viewMode === 'week') {
+    if (viewMode === 'week' || viewMode === 'day') {
       setScrollTrigger({ direction: 'prev', timestamp: Date.now() });
     } else {
       const newDate = new Date(currentViewDate);
-      if (viewMode === 'day') newDate.setDate(currentViewDate.getDate() - 1);
-      else if (viewMode === 'month') newDate.setMonth(currentViewDate.getMonth() - 1);
+      newDate.setMonth(currentViewDate.getMonth() - 1);
       setCurrentViewDate(newDate);
     }
   };
   const handleNext = () => {
-    if (viewMode === 'week') {
+    if (viewMode === 'week' || viewMode === 'day') {
       setScrollTrigger({ direction: 'next', timestamp: Date.now() });
     } else {
       const newDate = new Date(currentViewDate);
-      if (viewMode === 'day') newDate.setDate(currentViewDate.getDate() + 1);
-      else if (viewMode === 'month') newDate.setMonth(currentViewDate.getMonth() + 1);
+      newDate.setMonth(currentViewDate.getMonth() + 1);
       setCurrentViewDate(newDate);
     }
   };
@@ -242,17 +235,14 @@ export default function CalendarDashboard() {
 
   const handleDeleteEvent = async (eventId: any, isGoogle: boolean, calendarId: string) => {
     if (!confirm("この予定を削除しますか？\n(Googleカレンダーからも削除されます)")) return;
-    if (isGoogle) {
-      const token = (session as any)?.accessToken;
-      try {
-        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) throw new Error("Google削除エラー");
-        setEvents(events.filter(ev => ev.id !== eventId));
-      } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
-    } else {
-      const { error } = await supabase.from('events').delete().eq('id', eventId);
-      if (!error) setEvents(events.filter(ev => ev.id !== eventId));
-    }
+    // ★ 変更：Googleカレンダーからの削除に統一
+    const token = (session as any)?.accessToken;
+    if (!token) return;
+    try {
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Google削除エラー");
+      setEvents(events.filter(ev => ev.id !== eventId));
+    } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
     setIsCreateEventModalOpen(false); setEditingEventId(null);
   };
 
@@ -291,42 +281,64 @@ export default function CalendarDashboard() {
       const targetTodo = todos.find((t) => t.id === draggedTodoId);
       const targetCalendarId = newEventMemberId || members[0]?.id || "";
       if (targetTodo && targetCalendarId) {
-        const { data: insertedEvent, error: insertError } = await supabase.from('events').insert({ member_id: targetCalendarId, title: targetTodo.title, day_index: dayIndex, start_hour: startHour, duration: 1 }).select().single();
-        if (!insertError) {
+        // ★ 変更：タスクからのドラッグ＆ドロップもGoogleに直接作成する
+        const token = (session as any)?.accessToken;
+        if (!token) return;
+
+        const h = Math.floor(startHour);
+        const m = Math.round((startHour % 1) * 60);
+        const y = Math.floor(dayIndex / 10000);
+        const mo = Math.floor((dayIndex % 10000) / 100) - 1;
+        const d = dayIndex % 100;
+        const startDt = new Date(y, mo, d);
+        startDt.setHours(h, m, 0, 0); 
+        const endDt = new Date(startDt.getTime() + 1 * 60 * 60 * 1000); 
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+        try {
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: targetTodo.title, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+          });
+          if (!res.ok) throw new Error("Google作成エラー");
+          const createdEvent = await res.json();
+
           await supabase.from('todos').delete().eq('id', draggedTodoId);
-          setEvents((prev) => [...prev, { id: insertedEvent.id, memberId: insertedEvent.member_id, title: insertedEvent.title, dayIndex: insertedEvent.day_index, startHour: insertedEvent.start_hour, duration: insertedEvent.duration, isGoogle: false }]);
+          setEvents((prev) => [...prev, { id: createdEvent.id, memberId: targetCalendarId, title: targetTodo.title, dayIndex: dayIndex, startHour: startHour, duration: 1, isGoogle: true, colorHex: createdEvent.colorId ? GOOGLE_COLORS[createdEvent.colorId] : null }]);
           setTodos((prev) => prev.filter((t) => t.id !== draggedTodoId));
           if (!selectedMemberIds.includes(targetCalendarId)) setSelectedMemberIds((prev) => [...prev, targetCalendarId]);
+        } catch(e) {
+          alert("Googleへの予定の作成に失敗しました。");
         }
       }
     } else if (dragType === "event") {
-      const eventId = e.dataTransfer.getData("eventId"); const isGoogle = e.dataTransfer.getData("isGoogle") === "true"; const memberId = e.dataTransfer.getData("memberId");
+      const eventId = e.dataTransfer.getData("eventId"); 
+      const memberId = e.dataTransfer.getData("memberId");
       const targetEvent = events.find(ev => ev.id == eventId);
       if (!targetEvent) return;
 
       const h = Math.floor(startHour);
       const m = Math.round((startHour % 1) * 60);
-      const targetDayInfo = days.find(d => d.dayIndex === dayIndex) || { date: new Date() };
+      const y = Math.floor(dayIndex / 10000);
+      const mo = Math.floor((dayIndex % 10000) / 100) - 1;
+      const d = dayIndex % 100;
+      const startDt = new Date(y, mo, d);
+      startDt.setHours(h, m, 0, 0); 
+      const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000); 
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
 
-      if (isGoogle) {
-        const token = (session as any)?.accessToken;
-        const startDt = new Date(targetDayInfo.date); 
-        startDt.setHours(9 + h, m, 0, 0); 
-        const endDt = new Date(startDt.getTime() + targetEvent.duration * 60 * 60 * 1000); 
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
+      const token = (session as any)?.accessToken;
+      if (!token) return;
 
-        try {
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
-            method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
-          });
-          if (!res.ok) throw new Error("Google更新エラー");
-          setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
-        } catch (error: any) { alert("Googleの予定の移動に失敗しました。"); }
-      } else {
-        const { error } = await supabase.from('events').update({ day_index: dayIndex, start_hour: startHour }).eq('id', eventId);
-        if (!error) setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
-      }
+      try {
+        // ★ 変更：予定の移動もGoogleへのPATCHに一本化
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(memberId)}/events/${encodeURIComponent(eventId)}`, {
+          method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+        });
+        if (!res.ok) throw new Error("Google更新エラー");
+        setEvents(prev => prev.map(ev => ev.id == eventId ? { ...ev, dayIndex, startHour } : ev));
+      } catch (error: any) { alert("Googleの予定の移動に失敗しました。"); }
     }
   };
 
@@ -351,7 +363,8 @@ export default function CalendarDashboard() {
 
   const handleEventClick = (event: any, e: React.MouseEvent) => {
     e.stopPropagation(); setEditingEventId(event.id); setEditingEventIsGoogle(event.isGoogle);
-    setNewEventTitle(event.title.replace("📅 ", "")); setNewEventMemberId(event.memberId);
+    // 「📅 」を外す処理も不要になったため、そのまま代入
+    setNewEventTitle(event.title); setNewEventMemberId(event.memberId);
     setNewEventDayIndex(event.dayIndex); setNewEventStartHour(event.startHour); setNewEventDuration(event.duration);
     setIsCreateEventModalOpen(true);
   };
@@ -359,7 +372,6 @@ export default function CalendarDashboard() {
   const handleCreateEvent = async () => {
     if (!newEventTitle || !newEventMemberId) return;
     
-    // YYYYMMDD の文字列から直接 Date を生成（モーダルから呼ばれた時用）
     const y = Math.floor(newEventDayIndex / 10000);
     const m = Math.floor((newEventDayIndex % 10000) / 100) - 1;
     const d = newEventDayIndex % 100;
@@ -367,29 +379,39 @@ export default function CalendarDashboard() {
     
     const h = Math.floor(newEventStartHour);
     const min = Math.round((newEventStartHour % 1) * 60);
-    startDt.setHours(9 + h, min, 0, 0);
+    startDt.setHours(h, min, 0, 0); 
     
     const endDt = new Date(startDt.getTime() + newEventDuration * 60 * 60 * 1000); 
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+    const token = (session as any)?.accessToken;
+    if (!token) {
+      alert("Googleカレンダーにアクセスできません。再度ログインしてください。");
+      return;
+    }
+
     if (editingEventId) {
-      if (editingEventIsGoogle) {
-        const token = (session as any)?.accessToken;
-        try {
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, {
-            method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
-          });
-          if (!res.ok) throw new Error("更新失敗");
-          setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: `📅 ${newEventTitle}`, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration } : ev));
-        } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
-      } else {
-        const { data, error } = await supabase.from('events').update({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration }).eq('id', editingEventId).select().single();
-        if (!error) setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: data.member_id, title: data.title, dayIndex: data.day_index, startHour: data.start_hour, duration: Number(data.duration) } : ev));
-      }
+      try {
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, {
+          method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+        });
+        if (!res.ok) throw new Error("更新失敗");
+        setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: newEventTitle, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration } : ev));
+      } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
     } else {
-      const { data, error } = await supabase.from('events').insert({ member_id: newEventMemberId, title: newEventTitle, day_index: newEventDayIndex, start_hour: newEventStartHour, duration: newEventDuration }).select().single();
-      if (!error) setEvents((prevEvents) => [...prevEvents, { id: data.id, memberId: data.member_id, title: data.title, dayIndex: data.day_index, startHour: data.start_hour, duration: Number(data.duration), isGoogle: false }]);
+      // ★ 変更：新規作成時、Google APIへのPOSTのみを実行し、Supabaseには保存しない
+      try {
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ summary: newEventTitle, start: { dateTime: startDt.toISOString(), timeZone }, end: { dateTime: endDt.toISOString(), timeZone } })
+        });
+        if (!res.ok) throw new Error("作成失敗");
+        const createdEvent = await res.json();
+        setEvents((prevEvents) => [...prevEvents, { id: createdEvent.id, memberId: newEventMemberId, title: newEventTitle, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration, isGoogle: true, colorHex: createdEvent.colorId ? GOOGLE_COLORS[createdEvent.colorId] : null }]);
+      } catch (e) {
+        alert("権限エラー：Googleカレンダーへの追加に失敗しました。");
+      }
     }
     setIsCreateEventModalOpen(false); setEditingEventId(null); setNewEventTitle("");
     if (!selectedMemberIds.includes(newEventMemberId)) setSelectedMemberIds((prev) => [...prev, newEventMemberId]);
@@ -423,7 +445,7 @@ export default function CalendarDashboard() {
         }
       }
       if (blockStart !== -1) {
-        freeSlots.push(`・${visibleDays[d].label} ${hours[blockStart]}〜19:00`);
+        freeSlots.push(`・${visibleDays[d].label} ${hours[blockStart]}〜23:00`);
       }
     }
     return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.slice(0, 5).join("\n")}\n\n▼ こちらのリンクからもそのままカレンダーへの登録（日程確定）が可能です：\nhttps://mincale.app/t/req-schedule-xyz\n\nご検討のほど、よろしくお願いいたします。`;
@@ -433,19 +455,20 @@ export default function CalendarDashboard() {
 
   return (
     <div className="flex h-screen w-full bg-white text-gray-900 overflow-hidden font-sans relative">
-      {(isSidebarOpen || isRightPanelOpen) && (
-        <div className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300" onClick={() => { setIsSidebarOpen(false); setIsRightPanelOpen(false); }} />
-      )}
       <Modals 
         isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen} getCommonFreeTimeText={getCommonFreeTimeText} handleCopyToClipboard={handleCopyToClipboard} isCopied={isCopied} isCreateEventModalOpen={isCreateEventModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen} handleCreateEvent={handleCreateEvent} newEventTitle={newEventTitle} setNewEventTitle={setNewEventTitle} newEventMemberId={newEventMemberId} setNewEventMemberId={setNewEventMemberId} members={members} newEventDayIndex={newEventDayIndex} setNewEventDayIndex={setNewEventDayIndex} days={days} newEventStartHour={newEventStartHour} setNewEventStartHour={setNewEventStartHour} hours={hours} newEventDuration={newEventDuration} setNewEventDuration={setNewEventDuration} editingEventId={editingEventId} setEditingEventId={setEditingEventId} editingEventIsGoogle={editingEventIsGoogle} handleDeleteEvent={handleDeleteEvent} isGroupModalOpen={isGroupModalOpen} setIsGroupModalOpen={setIsGroupModalOpen} newGroupName={newGroupName} setNewGroupName={setNewGroupName} newGroupMemberIds={newGroupMemberIds} setNewGroupMemberIds={setNewGroupMemberIds} handleSaveGroup={handleSaveGroup}
         isTaskEditModalOpen={isTaskEditModalOpen} setIsTaskEditModalOpen={setIsTaskEditModalOpen} editTaskTitle={editTaskTitle} setEditTaskTitle={setEditTaskTitle} editTaskProject={editTaskProject} setEditTaskProject={setEditTaskProject} handleUpdateTask={handleUpdateTask}
       />
+      
       <Sidebar 
         currentMonthYear={currentMonthYear} todayDate={todayDate} setNewEventTitle={setNewEventTitle} setNewEventDayIndex={setNewEventDayIndex} setNewEventStartHour={setNewEventStartHour} setNewEventDuration={setNewEventDuration} setIsCreateEventModalOpen={setIsCreateEventModalOpen} selectAllMembers={selectAllMembers} members={members} isLoadingData={isLoadingData} selectedMemberIds={selectedMemberIds} toggleMember={toggleMember} status={status} session={session} syncGoogleData={syncGoogleData} isSyncing={isSyncing} signIn={signIn} signOut={signOut} handlePrevWeek={handlePrev} handleNextWeek={handleNext} setEditingEventId={setEditingEventId} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} groups={groups} setIsGroupModalOpen={setIsGroupModalOpen} setSelectedMemberIds={setSelectedMemberIds} handleDeleteGroup={handleDeleteGroup} 
       />
+      
       <CalendarMain
         currentMonthYear={currentMonthYear} setCurrentMonthYear={setCurrentMonthYear} currentViewDate={currentViewDate} viewMode={viewMode} setViewMode={setViewMode} scrollTrigger={scrollTrigger} days={days} hours={hours} isLoadingData={isLoadingData} events={events} selectedMemberIds={selectedMemberIds} members={members} handleDragOver={handleDragOver} handleDrop={handleDrop} handleRangeSelect={handleRangeSelect} setIsScheduleModalOpen={setIsScheduleModalOpen} handlePrevWeek={handlePrev} handleNextWeek={handleNext} handleEventClick={handleEventClick} handleEventDragStart={handleEventDragStart} setIsSidebarOpen={setIsSidebarOpen} setIsRightPanelOpen={setIsRightPanelOpen}
+        handleToday={handleToday}
       />
+      
       <RightPanel 
         activeTab={activeTab} setActiveTab={setActiveTab} isLoadingData={isLoadingData} todos={todos} handleDragStart={handleDragStart} isAddingTask={isAddingTask} setIsAddingTask={setIsAddingTask} newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskProject={newTaskProject} setNewTaskProject={setNewTaskProject} handleAddTask={handleAddTask} isTracking={isTracking} activeTaskName={activeTaskName} trackedSeconds={trackedSeconds} formatTime={formatTime} toggleTracking={toggleTracking} handleDeleteTask={handleDeleteTask} isRightPanelOpen={isRightPanelOpen} setIsRightPanelOpen={setIsRightPanelOpen} openTaskEditModal={openTaskEditModal} 
       />

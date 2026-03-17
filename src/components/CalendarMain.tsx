@@ -25,43 +25,141 @@ interface CalendarMainProps {
   handleNextWeek: () => void;
   handleEventClick: (event: any, e: React.MouseEvent) => void; 
   handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => void;
-  setIsSidebarOpen: (isOpen: boolean) => void;
-  setIsRightPanelOpen: (isOpen: boolean) => void;
+  setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  handleToday: () => void;
 }
 
 export default function CalendarMain({
   currentMonthYear, setCurrentMonthYear, currentViewDate, viewMode, setViewMode, scrollTrigger, days, hours, isLoadingData, events, selectedMemberIds, members,
   handleDragOver, handleDrop, handleRangeSelect,
-  setIsScheduleModalOpen, handlePrevWeek, handleNextWeek, handleEventClick, handleEventDragStart, setIsSidebarOpen, setIsRightPanelOpen
+  setIsScheduleModalOpen, handlePrevWeek, handleNextWeek, handleEventClick, handleEventDragStart, setIsSidebarOpen, setIsRightPanelOpen, handleToday
 }: CalendarMainProps) {
   
   const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number, startHour: number } | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [selection, setSelection] = useState<{ dayIndex: number; colIndex: number; startHour: number; currentHour: number } | null>(null);
+  const [selection, setSelection] = useState<{ dayIndex: number; colIndex: number; memberId?: string; startHour: number; currentHour: number } | null>(null);
 
-  // ★ 初期マウント時やビュー切り替え時にスクロール位置を調整
+  const weekScrollContainerRef = useRef<HTMLDivElement>(null);
+  const weekGridRef = useRef<HTMLDivElement>(null);
+  
+  const dayScrollContainerRef = useRef<HTMLDivElement>(null);
+  const dayGridRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+
+  const monthScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // ==============================
+  // ▼ オーバーラップ（重なり）計算エンジン
+  // ==============================
+  const eventLayouts = useMemo(() => {
+    const layouts: Record<string, { column: number, totalColumns: number }> = {};
+    const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
+
+    if (viewMode === 'day') {
+      days.forEach(day => {
+        selectedMemberIds.forEach(memberId => {
+          const colEvents = visibleEvents.filter(e => e.dayIndex === day.dayIndex && e.memberId === memberId);
+          colEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
+          
+          let clusters: any[][] = [];
+          let currentCluster: any[] = [];
+          let clusterEnd = 0;
+
+          colEvents.forEach(ev => {
+            if (currentCluster.length === 0) {
+              currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
+            } else if (ev.startHour < clusterEnd) {
+              currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
+            } else {
+              clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
+            }
+          });
+          if (currentCluster.length > 0) clusters.push(currentCluster);
+
+          clusters.forEach(cluster => {
+            let columns: any[][] = [];
+            cluster.forEach(ev => {
+              let placed = false;
+              for (let i = 0; i < columns.length; i++) {
+                let lastEv = columns[i][columns[i].length - 1];
+                if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
+                  columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
+                }
+              }
+              if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
+            });
+            const totalCols = columns.length;
+            cluster.forEach(ev => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols; });
+          });
+        });
+      });
+    } else {
+      days.forEach(day => {
+        const dayEvents = visibleEvents.filter(e => e.dayIndex === day.dayIndex);
+        dayEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
+
+        let clusters: any[][] = [];
+        let currentCluster: any[] = [];
+        let clusterEnd = 0;
+
+        dayEvents.forEach(ev => {
+          if (currentCluster.length === 0) {
+            currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
+          } else if (ev.startHour < clusterEnd) {
+            currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
+          } else {
+            clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
+          }
+        });
+        if (currentCluster.length > 0) clusters.push(currentCluster);
+
+        clusters.forEach(cluster => {
+          let columns: any[][] = [];
+          cluster.forEach(ev => {
+            let placed = false;
+            for (let i = 0; i < columns.length; i++) {
+              let lastEv = columns[i][columns[i].length - 1];
+              if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
+                columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
+              }
+            }
+            if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
+          });
+          const totalCols = columns.length;
+          cluster.forEach(ev => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols; });
+        });
+      });
+    }
+    return layouts;
+  }, [events, selectedMemberIds, days, viewMode]);
+
+  // ==============================
+  // ▼ スクロール ＆ マウスイベント制御
+  // ==============================
+  
   useEffect(() => {
-    if (viewMode === 'week' && scrollContainerRef.current) {
-      const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(new Date()));
+    if (viewMode === 'week' && weekScrollContainerRef.current) {
+      const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
       if (targetColIndex !== -1) {
-        const targetScroll = Math.max(0, targetColIndex * 192 - 192);
-        scrollContainerRef.current.scrollTo({ left: targetScroll, behavior: 'auto' });
+        weekScrollContainerRef.current.scrollTo({ left: Math.max(0, targetColIndex * 192 - 192), behavior: 'auto' });
       }
     }
-  }, [viewMode]);
+  }, [viewMode, currentViewDate, days]);
 
-  // ★ 週ビューの前へ・次へスクロール
   useEffect(() => {
-    if (viewMode === 'week' && scrollTrigger && scrollContainerRef.current) {
-      const amount = scrollTrigger.direction === 'next' ? 192 * 7 : -192 * 7;
-      scrollContainerRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+    if (viewMode === 'week' && scrollTrigger && weekScrollContainerRef.current) {
+      if (scrollTrigger.direction === 'today') {
+        const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(new Date()));
+        if (targetColIndex !== -1) weekScrollContainerRef.current.scrollTo({ left: Math.max(0, targetColIndex * 192 - 192), behavior: 'smooth' });
+      } else {
+        const amount = scrollTrigger.direction === 'next' ? 192 * 7 : -192 * 7;
+        weekScrollContainerRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+      }
     }
-  }, [scrollTrigger, viewMode]);
+  }, [scrollTrigger, viewMode, days]);
 
-  const handleScroll = () => {
-    if (viewMode !== 'week' || !scrollContainerRef.current) return;
-    const scrollLeft = scrollContainerRef.current.scrollLeft;
+  const handleWeekScroll = () => {
+    if (viewMode !== 'week' || !weekScrollContainerRef.current) return;
+    const scrollLeft = weekScrollContainerRef.current.scrollLeft;
     const visibleColIndex = Math.max(0, Math.floor(scrollLeft / 192));
     if (days[visibleColIndex]) {
       const d = days[visibleColIndex].date;
@@ -69,303 +167,448 @@ export default function CalendarMain({
     }
   };
 
-  const eventLayouts = useMemo(() => {
-    const layouts: Record<string, { column: number, totalColumns: number }> = {};
-    const visibleEvents = events.filter(e => selectedMemberIds.includes(e.memberId));
+  useEffect(() => {
+    if (viewMode === 'day' && dayScrollContainerRef.current) {
+      const targetColIndex = days.findIndex(d => d.dayIndex === getDayIndex(currentViewDate));
+      if (targetColIndex !== -1) {
+        dayScrollContainerRef.current.scrollLeft = targetColIndex * dayScrollContainerRef.current.clientWidth;
+      }
+    }
+  }, [viewMode, currentViewDate, days]);
 
-    days.forEach(day => {
-      const dayEvents = visibleEvents.filter(e => e.dayIndex === day.dayIndex);
-      dayEvents.sort((a, b) => a.startHour - b.startHour || (b.startHour + b.duration) - (a.startHour + a.duration));
-
-      let clusters: any[][] = [];
-      let currentCluster: any[] = [];
-      let clusterEnd = 0;
-
-      dayEvents.forEach(ev => {
-        if (currentCluster.length === 0) {
-          currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
-        } else if (ev.startHour < clusterEnd) {
-          currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
-        } else {
-          clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
-        }
-      });
-      if (currentCluster.length > 0) clusters.push(currentCluster);
-
-      clusters.forEach(cluster => {
-        let columns: any[][] = [];
-        cluster.forEach(ev => {
-          let placed = false;
-          for (let i = 0; i < columns.length; i++) {
-            let lastEv = columns[i][columns[i].length - 1];
-            if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
-              columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
-            }
-          }
-          if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
-        });
-        const totalCols = columns.length;
-        cluster.forEach(ev => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols; });
-      });
-    });
-    return layouts;
-  }, [events, selectedMemberIds, days]);
+  const handleDayScroll = () => {
+    if (viewMode !== 'day' || !dayScrollContainerRef.current) return;
+    const width = dayScrollContainerRef.current.clientWidth;
+    if (width === 0) return;
+    const scrollLeft = dayScrollContainerRef.current.scrollLeft;
+    const visibleColIndex = Math.round(scrollLeft / width);
+    if (days[visibleColIndex]) {
+      const d = days[visibleColIndex].date;
+      setCurrentMonthYear(`${d.getFullYear()}年 ${d.getMonth() + 1}月`);
+    }
+  };
 
   useEffect(() => {
+    if (viewMode === 'month' && scrollTrigger && monthScrollContainerRef.current) {
+      if (scrollTrigger.direction === 'today') {
+        monthScrollContainerRef.current.scrollTo({ left: monthScrollContainerRef.current.clientWidth, behavior: 'smooth' });
+      }
+    }
+  }, [scrollTrigger, viewMode]);
+
+  const handleMonthScroll = () => {
+    if (viewMode !== 'month' || !monthScrollContainerRef.current) return;
+    const el = monthScrollContainerRef.current;
+    const width = el.clientWidth;
+    if (width === 0) return;
+
+    if (el.scrollLeft === 0) {
+      handlePrevWeek(); 
+    } else if (el.scrollLeft >= width * 2 - 10) {
+      handleNextWeek(); 
+    }
+  };
+
+  // 無段階ドラッグ作成のアニメーション＆マウス監視
+  useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (selection && gridRef.current) {
-        const rect = gridRef.current.getBoundingClientRect();
-        const y = e.clientY - rect.top;
-        const clampedY = Math.max(0, Math.min(y, rect.height));
-        setSelection(prev => prev ? { ...prev, currentHour: clampedY / 64 } : null);
+      if (selection) {
+        let gridEl = null;
+        if (viewMode === 'day') gridEl = dayGridRefs.current[selection.dayIndex];
+        else if (viewMode === 'week') gridEl = weekGridRef.current;
+
+        if (gridEl) {
+          const rect = gridEl.getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          const clampedY = Math.max(0, Math.min(y, rect.height));
+          setSelection(prev => prev ? { ...prev, currentHour: clampedY / 64 } : null);
+        }
       }
     };
     const handleMouseUp = () => {
       if (selection) {
         const start = Math.min(selection.startHour, selection.currentHour);
         const end = Math.max(selection.startHour, selection.currentHour);
-        let roundedDuration = Math.round((end - start) * 4) / 4;
-        if (roundedDuration < 0.25) roundedDuration = 1;
-
-        handleRangeSelect(selection.dayIndex, Math.round(start * 4) / 4, roundedDuration);
+        let duration = Math.round((end - start) * 4) / 4;
+        if (duration < 0.25) duration = 1;
+        handleRangeSelect(selection.dayIndex, Math.round(start * 4) / 4, duration);
         setSelection(null);
       }
     };
     if (selection) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [selection, handleRangeSelect]);
+  }, [selection, handleRangeSelect, viewMode]);
+
 
   // ==============================
-  // ▼ 1. 単日（デイリー）ビューの描画
+  // ▼ 1. 日別（デイリー）表示
   // ==============================
   const renderDayView = () => {
-    const targetDayIndex = getDayIndex(currentViewDate);
-    const targetDay = days.find(d => d.dayIndex === targetDayIndex) || days[0];
+    const activeMembers = members.filter(m => selectedMemberIds.includes(m.id));
 
     return (
-      <div className="flex-1 overflow-y-auto flex flex-col bg-white relative">
-        <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
-          <div className="w-16 flex-shrink-0 border-r border-gray-100"></div>
-          <div className="flex-1 py-3 text-center">
-            <span className={`text-sm font-medium ${targetDay.isToday ? 'text-orange-600 bg-orange-100 px-3 py-1 rounded-full' : 'text-gray-600'}`}>{targetDay.label}</span>
-          </div>
-        </div>
-
-        <div className="flex-1 relative" ref={gridRef}>
-          {selection && selection.dayIndex === targetDayIndex && (
-            <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
-                 style={{ left: `calc(4rem + 4px)`, width: `calc(100% - 4rem - 8px)`, top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` }}>
-              <div className="font-bold tracking-wide">新規予定</div>
-            </div>
-          )}
-
-          {hours.map((hour, hourIndex) => (
-            <div key={hourIndex} className="flex h-16 border-b border-gray-100">
-              <div className="w-16 flex-shrink-0 text-right pr-2 py-2 text-xs text-gray-400 border-r border-gray-100">{hour}</div>
-              <div 
-                className="flex-1 relative group cursor-crosshair hover:bg-gray-50/50"
-                onMouseDown={(e) => {
-                  if (!gridRef.current) return;
-                  setSelection({ dayIndex: targetDayIndex, colIndex: 0, startHour: (e.clientY - gridRef.current.getBoundingClientRect().top) / 64, currentHour: (e.clientY - gridRef.current.getBoundingClientRect().top) / 64 });
-                }}
-                onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: targetDayIndex, startHour: hourIndex }); }}
-                onDragLeave={() => setDragOverSlot(null)}
-                onDrop={(e) => { setDragOverSlot(null); handleDrop(e, targetDayIndex, hourIndex); }}
-              >
-                {events
-                  .filter((event) => event.dayIndex === targetDayIndex && Math.floor(event.startHour) === hourIndex)
-                  .filter((event) => selectedMemberIds.includes(event.memberId))
-                  .map((event, idx) => {
-                    const member = members.find((m) => m.id === event.memberId);
-                    const layout = eventLayouts[`${event.id}-${event.memberId}`] || { column: 0, totalColumns: 1 };
-                    return (
-                      <div 
-                        key={event.id} draggable={true} 
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
-                        onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
-                        onClick={(e) => handleEventClick(event, e)}
-                        className="absolute rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
-                        style={{ top: `calc(${(event.startHour % 1) * 100}% + 2px)`, height: `calc(${event.duration * 100}% - 4px)`, left: `calc(${(layout.column * (100 / layout.totalColumns))}% + 2px)`, width: `calc(${100 / layout.totalColumns}% - 4px)`, backgroundColor: event.colorHex || member?.colorHex || "#f97316" }} 
-                      >
-                        <div className="font-semibold truncate">{event.title}</div>
-                      </div>
-                    );
-                  })}
+      <div 
+        className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-white relative"
+        ref={dayScrollContainerRef}
+        onScroll={handleDayScroll}
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {days.map((day) => (
+          <div key={day.dayIndex} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white">
+            
+            {/* ヘッダー */}
+            <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
+              <div className="w-16 shrink-0 border-r border-gray-100 bg-white flex flex-col items-center justify-center py-2">
+                <span className={`text-2xl font-light ${day.isToday ? 'text-blue-600' : 'text-gray-700'}`}>{day.date.getDate()}</span>
+                <span className={`text-xs ${day.isToday ? 'text-blue-600 font-bold' : 'text-gray-500'}`}>{["日","月","火","水","木","金","土"][day.date.getDay()]}</span>
+              </div>
+              <div className="flex-1 flex overflow-hidden">
+                {activeMembers.map(member => (
+                  <div key={member.id} className="flex-1 min-w-[120px] py-2 border-r border-gray-100 flex flex-col items-center justify-center">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs mb-1 shadow-sm" style={{ backgroundColor: member.colorHex }}>{member.initials}</div>
+                    <span className="text-[11px] font-semibold text-gray-700 truncate px-2 w-full text-center">{member.name}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+
+            {/* タイムグリッド */}
+            <div className="flex-1 overflow-y-auto relative flex" ref={el => dayGridRefs.current[day.dayIndex] = el}>
+              <div className="w-16 shrink-0 border-r border-gray-100 bg-white z-20">
+                {hours.map((hour, i) => <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-50">{hour}</div>)}
+              </div>
+
+              <div className="flex-1 flex relative">
+                {/* ★ 復旧：日別表示のドラッグプレビュー（青枠） */}
+                {selection && selection.dayIndex === day.dayIndex && selection.memberId && (
+                  <div 
+                    className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
+                    style={{
+                      left: `${(activeMembers.findIndex(m => m.id === selection.memberId) / activeMembers.length) * 100}%`,
+                      width: `${100 / activeMembers.length}%`,
+                      top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`,
+                      height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px`,
+                    }}
+                  >
+                     <div className="font-bold tracking-wide">新規予定</div>
+                     <div className="text-[10px] opacity-90 mt-0.5">
+                       {(() => {
+                         const totalMinutes = Math.round(Math.min(selection.startHour, selection.currentHour) * 60);
+                         const h = Math.floor(totalMinutes / 60); const m = totalMinutes % 60;
+                         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                       })()} から作成
+                     </div>
+                  </div>
+                )}
+
+                {activeMembers.map((member) => (
+                  <div key={member.id} className="flex-1 min-w-[120px] border-r border-gray-50 relative group">
+                    {/* ★ 復旧：背景グリッドセルでのドラッグ開始・ドロップ受付 */}
+                    {hours.map((_, i) => (
+                      <div 
+                        key={i} className={`h-16 border-b border-gray-50 cursor-crosshair hover:bg-gray-50/30 transition-colors ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
+                        onMouseDown={(e) => {
+                          const rect = dayGridRefs.current[day.dayIndex]?.getBoundingClientRect();
+                          if (!rect) return;
+                          const exactHour = (e.clientY - rect.top) / 64;
+                          setSelection({ dayIndex: day.dayIndex, memberId: member.id, startHour: exactHour, currentHour: exactHour, colIndex: 0 });
+                        }}
+                        onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: i }); }}
+                        onDragLeave={() => setDragOverSlot(null)}
+                        onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, i); }}
+                      />
+                    ))}
+                    
+                    {/* ★ 復旧：既存の予定ブロックのドラッグ移動（DnD）対応 */}
+                    {events
+                      .filter(ev => ev.dayIndex === day.dayIndex && ev.memberId === member.id)
+                      .map((event, idx) => {
+                        const layoutKey = `${event.id}-${event.memberId}`;
+                        const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
+                        const widthPct = 100 / layout.totalColumns;
+                        const leftPct = (layout.column * widthPct);
+
+                        return (
+                          <div 
+                            key={`${event.id}-${idx}`}
+                            draggable={true} 
+                            onMouseDown={(e) => e.stopPropagation()} // 新規作成との競合防止
+                            onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
+                            onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
+                            onClick={(e) => handleEventClick(event, e)}
+                            className="absolute rounded-lg px-2 py-1 text-[11px] text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 cursor-grab active:cursor-grabbing"
+                            style={{ 
+                              top: `${event.startHour * 64 + 1}px`, 
+                              height: `${event.duration * 64 - 2}px`, 
+                              left: `calc(${leftPct}% + 1px)`,
+                              width: `calc(${widthPct}% - 2px)`,
+                              backgroundColor: event.colorHex || member.colorHex 
+                            }}
+                          >
+                            <div className="font-bold truncate">{event.title}</div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   };
 
+
   // ==============================
-  // ▼ 2. 週（ウィークリー）ビューの描画
+  // ▼ 2. 週別（ウィークリー）表示
   // ==============================
   const renderWeekView = () => (
-    <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative" ref={scrollContainerRef} onScroll={handleScroll}>
+    <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative" ref={weekScrollContainerRef} onScroll={handleWeekScroll}>
       <div className="flex flex-col min-w-max">
+        
+        {/* ヘッダー */}
         <div className="flex border-b border-gray-200 sticky top-0 bg-white z-40">
-          <div className="w-16 flex-shrink-0 sticky left-0 bg-white z-50 border-r border-gray-100"></div>
+          <div className="w-16 shrink-0 sticky left-0 bg-white z-50 border-r border-gray-100"></div>
           {days.map((day) => (
-            <div key={day.dayIndex} className={`w-48 flex-shrink-0 py-3 text-center border-r border-gray-100 ${day.isToday ? 'bg-orange-50/30' : ''}`}>
-              <span className={`text-sm font-medium ${day.isToday ? 'text-orange-600 bg-orange-100 px-3 py-1 rounded-full' : 'text-gray-600'}`}>{day.label}</span>
+            <div key={day.dayIndex} className={`w-48 shrink-0 py-3 text-center border-r border-gray-100 ${day.isToday ? 'bg-blue-50/30' : ''}`}>
+              <span className={`text-sm font-medium ${day.isToday ? 'text-blue-600 bg-blue-100 px-3 py-1 rounded-full' : 'text-gray-600'}`}>{day.label}</span>
             </div>
           ))}
         </div>
 
-        <div className="flex-1 relative" ref={gridRef}>
-          {selection && (
-            <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
-                 style={{ left: `calc(4rem + ${selection.colIndex * 192}px + 4px)`, width: `calc(192px - 8px)`, top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` }}>
-              <div className="font-bold tracking-wide">新規予定</div>
-            </div>
-          )}
+        {/* タイムグリッド */}
+        <div className="flex-1 flex relative" ref={weekGridRef}>
+          <div className="w-16 shrink-0 sticky left-0 bg-white z-30 border-r border-gray-100 flex flex-col">
+            {hours.map((hour, i) => (
+              <div key={i} className="h-16 text-right pr-2 py-2 text-[10px] text-gray-400 border-b border-gray-100">{hour}</div>
+            ))}
+          </div>
 
-          {hours.map((hour, hourIndex) => (
-            <div key={hourIndex} className="flex h-16 border-b border-gray-100">
-              <div className="w-16 flex-shrink-0 sticky left-0 bg-white z-30 text-right pr-2 py-2 text-xs text-gray-400 border-r border-gray-100">{hour}</div>
-              {days.map((day, colIndex) => (
+          {days.map((day, colIndex) => (
+            <div key={day.dayIndex} className={`w-48 shrink-0 border-r border-gray-100 relative ${day.isToday ? 'bg-blue-50/10' : ''}`}>
+              
+              {/* ★ 復旧：背景グリッドセルでのドラッグ開始・ドロップ受付 */}
+              {hours.map((_, i) => (
                 <div 
-                  key={day.dayIndex} 
-                  className={`w-48 flex-shrink-0 border-r border-gray-100 relative group transition-all duration-150 cursor-crosshair ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === hourIndex ? 'bg-orange-100/60 ring-2 ring-orange-500 ring-inset z-20 shadow-inner' : 'hover:bg-gray-50/50'} ${day.isToday ? 'bg-orange-50/10' : ''}`}
+                  key={i} 
+                  className={`h-16 border-b border-gray-100 cursor-crosshair hover:bg-gray-50/50 ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'bg-blue-100/60 ring-2 ring-blue-500 ring-inset z-20 shadow-inner' : ''}`}
                   onMouseDown={(e) => {
-                    if (!gridRef.current) return;
-                    const exactHour = (e.clientY - gridRef.current.getBoundingClientRect().top) / 64; 
+                    if (!weekGridRef.current) return;
+                    const rect = weekGridRef.current.getBoundingClientRect();
+                    const exactHour = (e.clientY - rect.top) / 64; 
                     setSelection({ dayIndex: day.dayIndex, colIndex, startHour: exactHour, currentHour: exactHour });
                   }}
-                  onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: hourIndex }); }}
+                  onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: i }); }}
                   onDragLeave={() => setDragOverSlot(null)}
-                  onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, hourIndex); }}
-                >
-                  {events
-                    .filter((event) => event.dayIndex === day.dayIndex && Math.floor(event.startHour) === hourIndex)
-                    .filter((event) => selectedMemberIds.includes(event.memberId))
-                    .map((event, idx) => {
-                      const member = members.find((m) => m.id === event.memberId);
-                      const layout = eventLayouts[`${event.id}-${event.memberId}`] || { column: 0, totalColumns: 1 };
-                      return (
-                        <div 
-                          key={`${event.id}-${event.memberId}-${idx}`} draggable={true} 
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
-                          onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
-                          onClick={(e) => handleEventClick(event, e)}
-                          className="absolute rounded-lg px-2 py-1.5 text-xs text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-95 cursor-grab active:cursor-grabbing z-10 hover:z-20 border border-white/20" 
-                          style={{ top: `calc(${(event.startHour % 1) * 100}% + 2px)`, height: `calc(${event.duration * 100}% - 4px)`, left: `calc(${(layout.column * (100 / layout.totalColumns))}% + 2px)`, width: `calc(${100 / layout.totalColumns}% - 4px)`, backgroundColor: event.colorHex || member?.colorHex || "#f97316" }} 
-                        >
-                          <div className="font-semibold truncate">{event.title}</div>
-                        </div>
-                      );
-                    })}
-                </div>
+                  onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, i); }}
+                />
               ))}
+
+              {/* ★ 復旧：既存の予定ブロックのドラッグ移動（DnD）対応 */}
+              {events
+                .filter(ev => ev.dayIndex === day.dayIndex && selectedMemberIds.includes(ev.memberId))
+                .map((event, idx) => {
+                  const member = members.find(m => m.id === event.memberId);
+                  const layoutKey = `${event.id}-${event.memberId}`;
+                  const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
+                  const widthPct = 100 / layout.totalColumns;
+                  const leftPct = (layout.column * widthPct);
+
+                  return (
+                    <div 
+                      key={`${event.id}-${idx}`}
+                      draggable={true} 
+                      onMouseDown={(e) => e.stopPropagation()} // 新規作成との競合防止
+                      onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
+                      onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
+                      onClick={(e) => handleEventClick(event, e)}
+                      className="absolute rounded-lg px-2 py-1.5 text-[11px] text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 cursor-grab active:cursor-grabbing"
+                      style={{ 
+                        top: `${event.startHour * 64 + 1}px`, 
+                        height: `${event.duration * 64 - 2}px`, 
+                        left: `calc(${leftPct}% + 1px)`, 
+                        width: `calc(${widthPct}% - 2px)`,
+                        backgroundColor: event.colorHex || member?.colorHex || "#f97316" 
+                      }} 
+                    >
+                      <div className="font-semibold truncate">{event.title}</div>
+                      <div className="text-[9px] opacity-90 truncate mt-0.5 flex items-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white mr-1 opacity-80"></span>{member?.name || "カレンダー"}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           ))}
+
+          {/* ★ 復旧：週別表示のドラッグプレビュー（青枠） */}
+          {selection && viewMode === 'week' && (
+            <div className="absolute bg-blue-500/90 rounded-lg shadow-lg pointer-events-none border border-blue-400/50 z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
+                 style={{ 
+                   left: `calc(4rem + ${selection.colIndex * 192}px + 2px)`, 
+                   width: `calc(192px - 4px)`, 
+                   top: `${Math.min(selection.startHour, selection.currentHour) * 64}px`, 
+                   height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * 64}px` 
+                 }}>
+              <div className="font-bold tracking-wide">新規予定</div>
+              <div className="text-[10px] opacity-90 mt-0.5">
+                {(() => {
+                  const totalMinutes = Math.round(Math.min(selection.startHour, selection.currentHour) * 60);
+                  const h = Math.floor(totalMinutes / 60); const m = totalMinutes % 60;
+                  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                })()} から作成
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 
+
   // ==============================
-  // ▼ 3. 月（マンスリー）ビューの描画
+  // ▼ 3. 月別（マンスリー）表示
   // ==============================
   const renderMonthView = () => {
-    const year = currentViewDate.getFullYear();
-    const month = currentViewDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - startDate.getDay()); // 日曜始まりのグリッドを計算
+    const baseDate = currentViewDate;
+    const monthsData = [-1, 0, 1].map(offset => {
+      const targetMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + offset, 1);
+      const year = targetMonth.getFullYear();
+      const month = targetMonth.getMonth();
+      const startDate = new Date(year, month, 1);
+      startDate.setDate(startDate.getDate() - startDate.getDay());
 
-    const calendarDays = [];
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i);
-      calendarDays.push(d);
-    }
+      const calendarDays = [];
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        calendarDays.push(d);
+      }
+      return { year, month, calendarDays, label: `${year}年 ${month + 1}月` };
+    });
 
     return (
-      <div className="flex-1 flex flex-col bg-white overflow-hidden">
-        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 shrink-0">
-          {['日', '月', '火', '水', '木', '金', '土'].map(w => (
-            <div key={w} className="py-2 text-center text-xs font-medium text-gray-500 border-r border-gray-100 last:border-0">{w}</div>
-          ))}
-        </div>
-        <div className="flex-1 grid grid-cols-7 grid-rows-6">
-          {calendarDays.map((d, i) => {
-            const isCurrentMonth = d.getMonth() === month;
-            const dayIdx = getDayIndex(d);
-            const isToday = dayIdx === getDayIndex(new Date());
-            const dayEvents = events.filter(e => e.dayIndex === dayIdx && selectedMemberIds.includes(e.memberId));
+      <div 
+        className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-gray-50" 
+        ref={monthScrollContainerRef} 
+        onScroll={handleMonthScroll} 
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {monthsData.map((mData, mIdx) => (
+          <div key={mIdx} className="min-w-full flex-shrink-0 snap-start flex flex-col h-full bg-white border-r border-gray-200">
+            <div className="grid grid-cols-7 border-b border-gray-200 bg-white shrink-0">
+              {['日', '月', '火', '水', '木', '金', '土'].map(w => (
+                <div key={w} className="py-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest border-r border-gray-100 last:border-0">{w}</div>
+              ))}
+            </div>
+            <div className="flex-1 grid grid-cols-7 grid-rows-6 border-l border-gray-100">
+              {mData.calendarDays.map((d, i) => {
+                const isCurrentMonth = d.getMonth() === mData.month;
+                const dayIdx = getDayIndex(d);
+                const isToday = dayIdx === getDayIndex(new Date());
+                const dayEvents = events.filter(e => e.dayIndex === dayIdx && selectedMemberIds.includes(e.memberId));
+                
+                dayEvents.sort((a, b) => a.startHour - b.startHour);
+                
+                const maxVisible = 4;
+                const visibleEvents = dayEvents.slice(0, maxVisible);
+                const hiddenCount = dayEvents.length - maxVisible;
 
-            return (
-              <div 
-                key={i} 
-                className={`border-b border-r border-gray-100 p-1 flex flex-col cursor-pointer hover:bg-gray-50/80 transition-colors ${isCurrentMonth ? 'bg-white' : 'bg-gray-50/30'}`}
-                onClick={() => handleRangeSelect(dayIdx, 0, 1)} // 月ビューではクリックで朝9時の枠として作成
-                onDragOver={(e) => handleDragOver(e)}
-                onDrop={(e) => handleDrop(e, dayIdx, 0)}
-              >
-                <div className={`text-xs text-center mb-1 w-6 h-6 mx-auto rounded-full flex items-center justify-center ${isToday ? 'bg-orange-500 text-white font-bold shadow-sm' : isCurrentMonth ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
-                  {d.getDate()}
-                </div>
-                <div className="flex-1 overflow-y-auto space-y-1 no-scrollbar">
-                  {dayEvents.map((e, evIdx) => {
-                    const member = members.find(m => m.id === e.memberId);
-                    const bgColor = e.colorHex || member?.colorHex || "#f97316";
-                    return (
-                      <div 
-                        key={evIdx} 
-                        className="text-[10px] text-white px-1.5 py-0.5 rounded truncate shadow-sm hover:brightness-110 active:scale-95 transition-all"
-                        style={{ backgroundColor: bgColor }}
-                        onClick={(evt) => handleEventClick(e, evt)}
-                      >
-                        {/* 小数の時間を XX:XX に戻して表示 */}
-                        {e.startHour ? `${Math.floor(e.startHour + 9)}:${Math.round((e.startHour % 1) * 60).toString().padStart(2, '0')} ` : ''}{e.title}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+                return (
+                  <div 
+                    key={i} 
+                    className={`border-b border-r border-gray-100 p-1 flex flex-col relative hover:bg-gray-50 transition-colors group ${!isCurrentMonth && 'bg-gray-50/40'}`}
+                    onClick={() => handleRangeSelect(dayIdx, 0, 1)}
+                    onDragOver={(e) => handleDragOver(e)} // ★ 復旧：月別表示でのドロップ対応
+                    onDrop={(e) => handleDrop(e, dayIdx, 0)}
+                  >
+                    <div className={`text-[11px] w-6 h-6 mx-auto rounded-full flex items-center justify-center mb-1 ${isToday ? 'bg-blue-600 text-white font-bold' : isCurrentMonth ? 'text-gray-700 font-medium' : 'text-gray-300'}`}>
+                      {d.getDate() === 1 ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate()}
+                    </div>
+                    
+                    <div className="flex-1 flex flex-col gap-0.5 overflow-hidden">
+                      {visibleEvents.map((e, evIdx) => {
+                        const member = members.find(m => m.id === e.memberId);
+                        const bgColor = e.colorHex || member?.colorHex || "#f97316";
+                        return (
+                          <div 
+                            key={evIdx} 
+                            draggable={true} // ★ 復旧：月別表示でのドラッグ対応
+                            onDragStart={(evt) => { evt.currentTarget.style.opacity = '0.6'; handleEventDragStart(evt, e.id, e.isGoogle, e.memberId); }}
+                            onDragEnd={(evt) => { evt.currentTarget.style.opacity = '1'; }}
+                            className="text-[10px] px-1.5 py-0.5 rounded-[4px] truncate cursor-pointer hover:brightness-90 text-white font-medium shadow-sm transition-all"
+                            style={{ backgroundColor: bgColor }}
+                            onClick={(evt) => { evt.stopPropagation(); handleEventClick(e, evt); }}
+                          >
+                            <span className="font-semibold mr-1">
+                              {e.startHour != null ? `${Math.floor(e.startHour).toString().padStart(2, '0')}:${Math.round((e.startHour % 1) * 60).toString().padStart(2, '0')}` : ''}
+                            </span>
+                            {e.title}
+                          </div>
+                        );
+                      })}
+                      {hiddenCount > 0 && (
+                        <div className="text-[10px] font-bold text-gray-500 pl-1.5 py-0.5 hover:bg-gray-100 rounded cursor-pointer mt-0.5">
+                          他 {hiddenCount} 件
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     );
-  }
+  };
 
-  // ★ ヘッダーの年月表示をビューに合わせて賢く切り替え
-  const displayMonthYear = viewMode === 'week' ? currentMonthYear : `${currentViewDate.getFullYear()}年 ${currentViewDate.getMonth() + 1}月`;
+  const displayMonthYear = `${currentViewDate.getFullYear()}年 ${currentViewDate.getMonth() + 1}月`;
 
   return (
-    <main className="flex-1 flex flex-col min-w-0 z-0 relative w-full select-none">
-      <header className="h-16 flex items-center justify-between px-4 md:px-6 border-b border-gray-200 bg-white">
-        <div className="flex items-center space-x-2 md:space-x-4">
-          <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"><Menu className="w-5 h-5 text-gray-700" /></button>
+    <main className="flex-1 flex flex-col min-w-0 z-0 relative w-full select-none bg-white">
+      <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200">
+        <div className="flex items-center space-x-4 md:space-x-6">
+          <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><Menu className="w-5 h-5 text-gray-700" /></button>
           
-          <button className="text-lg md:text-xl font-bold text-gray-800 w-32 text-left">{displayMonthYear}</button>
-          
-          <div className="flex items-center space-x-1 md:ml-2">
-            <button onClick={handlePrevWeek} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
-            <button onClick={handleNextWeek} className="p-1 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-xl font-semibold text-gray-800 tracking-tight min-w-[130px]">{displayMonthYear}</h1>
+            <div className="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200">
+              <button onClick={handlePrevWeek} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={handleNextWeek} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+            <button onClick={handleToday} className="px-3 py-1.5 text-sm font-bold border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 transition-all shadow-sm bg-white ml-2">
+              今日
+            </button>
           </div>
-          
-          {/* ★ 新規追加：日・週・月の切り替えトグルボタン */}
-          <div className="hidden md:flex items-center space-x-1 bg-gray-100 rounded-md p-1 ml-4 shadow-inner">
-            <button onClick={() => setViewMode('day')} className={`px-3 py-1 text-sm rounded shadow-sm font-medium transition-colors ${viewMode === 'day' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 shadow-none'}`}>日</button>
-            <button onClick={() => setViewMode('week')} className={`px-3 py-1 text-sm rounded shadow-sm font-medium transition-colors ${viewMode === 'week' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 shadow-none'}`}>週</button>
-            <button onClick={() => setViewMode('month')} className={`px-3 py-1 text-sm rounded shadow-sm font-medium transition-colors ${viewMode === 'month' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 shadow-none'}`}>月</button>
+
+          <div className="hidden md:flex items-center bg-gray-100 rounded-lg p-1 border border-gray-200">
+            {["day", "week", "month"].map((mode) => (
+              <button 
+                key={mode} onClick={() => setViewMode(mode as any)}
+                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === mode ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+              >
+                {mode === "day" ? "日" : mode === "week" ? "週" : "月"}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex items-center space-x-2 md:space-x-4">
-          <div className="hidden md:block relative"><Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" /><input type="text" placeholder="予定を検索..." className="pl-9 pr-4 py-2 w-48 lg:w-64 bg-gray-100 border-transparent rounded-lg text-sm focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all" /></div>
-          <button onClick={() => setIsScheduleModalOpen(true)} className="bg-white border border-gray-200 text-gray-800 px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700 transition-all shadow-sm flex items-center group"><LinkIcon className="w-4 h-4 md:mr-2 text-gray-400 group-hover:text-orange-500 transition-colors" /><span className="hidden md:inline">日程調整リンク</span></button>
-          <button onClick={() => setIsRightPanelOpen(true)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"><ListTodo className="w-5 h-5 text-gray-700" /></button>
+
+        <div className="flex items-center space-x-4">
+          <div className="hidden lg:block relative group">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500" />
+            <input type="text" placeholder="予定、メンバーを検索" className="pl-9 pr-4 py-2 w-64 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all" />
+          </div>
+          <button onClick={() => setIsScheduleModalOpen(true)} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center">
+            <LinkIcon className="w-3.5 h-3.5 mr-2" />
+            日程調整
+          </button>
+          <button onClick={() => setIsRightPanelOpen(prev => !prev)} className="p-2 hover:bg-gray-100 rounded-lg"><ListTodo className="w-5 h-5 text-gray-700" /></button>
         </div>
       </header>
 
-      {/* ★ ビューモードに応じてレンダリングを完全に切り替え */}
+      {/* ビューの切り替え */}
       {viewMode === 'month' ? renderMonthView() : viewMode === 'day' ? renderDayView() : renderWeekView()}
       
     </main>
