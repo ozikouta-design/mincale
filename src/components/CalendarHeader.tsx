@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, Menu, ListTodo, Plus } from "lucide-react";
+import { Search, Link as LinkIcon, ChevronLeft, ChevronRight, Menu, ListTodo } from "lucide-react";
 
 interface CalendarHeaderProps {
   displayMonthYear: string; viewMode: "day" | "week" | "month"; setViewMode: (mode: "day" | "week" | "month") => void;
@@ -16,7 +16,6 @@ export default function CalendarHeader({
   return (
     <header className="h-14 md:h-16 flex items-center justify-between px-3 md:px-6 border-b border-gray-200 overflow-x-auto no-scrollbar shrink-0 bg-white">
       <div className="flex items-center space-x-2 md:space-x-6 shrink-0">
-        {/* ★ 修正：トグル式で開閉できるようにする */}
         <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-lg transition-colors" title="サイドバーを開閉"><Menu className="w-5 h-5 text-gray-700" /></button>
         
         <div className="flex items-center space-x-1 md:space-x-3">
@@ -48,11 +47,8 @@ export default function CalendarHeader({
         <button onClick={() => setIsScheduleModalOpen(true)} className="hidden md:flex text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all items-center shrink-0 border border-gray-200 bg-white shadow-sm hover:bg-gray-50">
           <LinkIcon className="w-3.5 h-3.5 mr-1.5" />リンク発行
         </button>
-        
-        {/* ★ 修正：ボタンの名称を「予定調整」に変更 */}
-        <button onClick={() => setIsCreateEventModalOpen(true)} className="text-white px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs font-bold shadow-sm transition-all flex items-center shrink-0 hover:brightness-110" style={{ backgroundColor: accentColor }}>
-          <Plus className="w-3.5 h-3.5 mr-1" />予定調整
-        </button>
+
+        {/* ここにあった「予定調整」ボタンを削除しました */}
 
         <button onClick={() => setIsRightPanelOpen(prev => !prev)} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-lg shrink-0" title="右パネルを開閉"><ListTodo className="w-5 h-5 text-gray-700" /></button>
       </div>

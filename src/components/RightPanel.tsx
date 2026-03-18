@@ -1,138 +1,206 @@
-import React from "react";
-import { CheckSquare, Plus, Trash2, X, Pencil, Settings, Check } from "lucide-react";
+import React, { useState } from "react";
+import { X, ListTodo, Settings, Plus, GripVertical, CheckCircle2, Circle, Trash2, Pencil, Folder, Calendar as CalendarIcon, Save } from "lucide-react";
 
 interface RightPanelProps {
-  activeTab: "todo" | "settings"; setActiveTab: (tab: "todo" | "settings") => void; isLoadingData: boolean; todos: any[]; handleDragStart: (e: React.DragEvent<HTMLDivElement>, todoId: number) => void; isAddingTask: boolean; setIsAddingTask: (isAdding: boolean) => void; newTaskTitle: string; setNewTaskTitle: (title: string) => void; newTaskProject: string; setNewTaskProject: (project: string) => void; handleAddTask: (e: React.FormEvent) => void; handleDeleteTask: (taskId: number, e: React.MouseEvent) => void; isRightPanelOpen: boolean; setIsRightPanelOpen: (isOpen: boolean) => void; openTaskEditModal: (todo: any) => void; handleToggleTodo: (taskId: number, currentStatus: boolean, e: React.MouseEvent) => void; accentColor: string; setAccentColor: (color: string) => void; hourHeight: number; setHourHeight: (height: number) => void;
-  bookingDuration: number; setBookingDuration: (v: number) => void; bookingStartHour: number; setBookingStartHour: (v: number) => void; bookingEndHour: number; setBookingEndHour: (v: number) => void; bookingDays: number[]; setBookingDays: (v: number[]) => void; bookingLeadTime: number; setBookingLeadTime: (v: number) => void; weekStartDay: number; setWeekStartDay: (v: number) => void; handleSaveBookingSettings: () => void;
+  isRightPanelOpen: boolean; setIsRightPanelOpen: (isOpen: boolean) => void;
+  activeTab: "todo" | "settings"; setActiveTab: (tab: "todo" | "settings") => void;
+  todos: any[]; isAddingTask: boolean; setIsAddingTask: (isAdding: boolean) => void;
+  newTaskTitle: string; setNewTaskTitle: (title: string) => void;
+  newTaskProject: string; setNewTaskProject: (project: string) => void;
+  newTaskDueDate: string; setNewTaskDueDate: (date: string) => void; 
+  handleAddTask: (e: React.FormEvent) => void;
+  handleDragStart: (e: React.DragEvent<HTMLDivElement>, todoId: number) => void;
+  openTaskEditModal: (todo: any) => void;
+  handleInlineUpdateTask: (taskId: number, title: string, project: string, dueDate: string) => void; 
+  handleToggleTodo: (taskId: number, currentStatus: boolean, e: React.MouseEvent) => void;
+  handleDeleteTask: (taskId: number, e: React.MouseEvent) => void;
+  accentColor: string;
+  // ★ 修正：タイトルPropsを追加
+  bookingTitle: string; setBookingTitle: (v: string) => void;
+  bookingDuration: number; setBookingDuration: (v: number) => void;
+  bookingStartHour: number; setBookingStartHour: (v: number) => void;
+  bookingEndHour: number; setBookingEndHour: (v: number) => void;
+  bookingDays: number[]; setBookingDays: (v: number[]) => void;
+  bookingLeadTime: number; setBookingLeadTime: (v: number) => void;
+  weekStartDay: number; setWeekStartDay: (v: number) => void;
+  handleSaveBookingSettings: () => void;
 }
 
 export default function RightPanel({
-  activeTab, setActiveTab, isLoadingData, todos, handleDragStart, isAddingTask, setIsAddingTask, newTaskTitle, setNewTaskTitle, newTaskProject, setNewTaskProject, handleAddTask, handleDeleteTask, isRightPanelOpen, setIsRightPanelOpen, openTaskEditModal, handleToggleTodo, accentColor, setAccentColor, hourHeight, setHourHeight, bookingDuration, setBookingDuration, bookingStartHour, setBookingStartHour, bookingEndHour, setBookingEndHour, bookingDays, setBookingDays, bookingLeadTime, setBookingLeadTime, weekStartDay, setWeekStartDay, handleSaveBookingSettings
+  isRightPanelOpen, setIsRightPanelOpen, activeTab, setActiveTab,
+  todos, isAddingTask, setIsAddingTask, newTaskTitle, setNewTaskTitle, newTaskProject, setNewTaskProject, newTaskDueDate, setNewTaskDueDate, handleAddTask, handleDragStart, openTaskEditModal, handleInlineUpdateTask, handleToggleTodo, handleDeleteTask, accentColor,
+  bookingTitle, setBookingTitle, // ★ 追加
+  bookingDuration, setBookingDuration, bookingStartHour, setBookingStartHour, bookingEndHour, setBookingEndHour, bookingDays, setBookingDays, bookingLeadTime, setBookingLeadTime, weekStartDay, setWeekStartDay, handleSaveBookingSettings
 }: RightPanelProps) {
-  
-  const sortedTodos = [...todos].sort((a, b) => (a.is_completed === b.is_completed ? 0 : a.is_completed ? 1 : -1));
+
+  const incompleteTodos = todos.filter(t => !t.is_completed);
+  const completedTodos = todos.filter(t => t.is_completed);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editProject, setEditProject] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+
+  const startInlineEdit = (todo: any) => { setEditingId(todo.id); setEditTitle(todo.title); setEditProject(todo.project || ""); setEditDueDate(todo.due_date || ""); };
+  const saveInlineEdit = () => { if (!editTitle.trim()) return; handleInlineUpdateTask(editingId as number, editTitle, editProject, editDueDate); setEditingId(null); };
+
+  const getDaysLeft = (dueDateStr: string) => {
+    if (!dueDateStr) return null;
+    const due = new Date(dueDateStr); due.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { text: "期限切れ", color: "text-red-600 bg-red-50 border-red-100" };
+    if (diffDays === 0) return { text: "今日まで", color: "text-orange-600 bg-orange-50 border-orange-100" };
+    if (diffDays <= 3) return { text: `あと${diffDays}日`, color: "text-amber-600 bg-amber-50 border-amber-100" };
+    return { text: `あと${diffDays}日`, color: "text-blue-600 bg-blue-50 border-blue-100" };
+  };
 
   return (
-    <aside className={`fixed md:relative z-40 inset-y-0 right-0 h-full flex-shrink-0 bg-white border-l border-gray-200 flex flex-col transition-all duration-300 ease-in-out ${isRightPanelOpen ? "w-80 translate-x-0" : "w-0 translate-x-full overflow-hidden border-none"}`}>
+    <aside className={`fixed md:relative z-40 inset-y-0 right-0 h-full flex-shrink-0 bg-[#f8f9fa] border-l border-gray-200 flex flex-col transition-all duration-300 ease-in-out shadow-2xl md:shadow-none ${isRightPanelOpen ? "w-80 translate-x-0" : "w-0 translate-x-full overflow-hidden border-none"}`}>
       
-      {/* ★ 右パネルのタブ横に閉じるボタンを常時表示 */}
-      <div className="flex items-center justify-between border-b border-gray-200 min-h-[64px]">
-        <div className="flex flex-1 whitespace-nowrap px-2 h-full">
-          <button onClick={() => setActiveTab("todo")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "todo" ? "border-b-2" : "text-gray-500 hover:bg-gray-50"}`} style={activeTab === "todo" ? { color: accentColor, borderColor: accentColor } : {}}>
-            <CheckSquare className="w-4 h-4 mr-2 hidden sm:block" />ToDo
-          </button>
-          <button onClick={() => setActiveTab("settings")} className={`flex-1 flex items-center justify-center py-4 text-sm font-medium transition-colors ${activeTab === "settings" ? "border-b-2" : "text-gray-500 hover:bg-gray-50"}`} style={activeTab === "settings" ? { color: accentColor, borderColor: accentColor } : {}}>
-            <Settings className="w-4 h-4 mr-2 hidden sm:block" />表示設定
-          </button>
+      <div className="bg-white border-b border-gray-200 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center space-x-1 bg-gray-100 p-1 rounded-xl">
+            <button onClick={() => setActiveTab("todo")} className={`flex items-center px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === "todo" ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`} style={activeTab === "todo" ? { color: accentColor } : {}}>
+              <ListTodo className="w-4 h-4 mr-1.5" />ToDo
+            </button>
+            <button onClick={() => setActiveTab("settings")} className={`flex items-center px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === "settings" ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`} style={activeTab === "settings" ? { color: accentColor } : {}}>
+              <Settings className="w-4 h-4 mr-1.5" />設定
+            </button>
+          </div>
+          <button onClick={() => setIsRightPanelOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full transition-colors" title="閉じる"><X className="w-5 h-5" /></button>
         </div>
-        <button onClick={() => setIsRightPanelOpen(false)} className="p-4 text-gray-400 hover:bg-gray-100 transition-colors border-l border-gray-100" title="右パネルを閉じる"><X className="w-5 h-5" /></button>
       </div>
 
-      <div className="p-4 flex-1 overflow-y-auto bg-[#f5f5f7] relative whitespace-nowrap">
-        {isLoadingData && <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#f5f5f7]/80 backdrop-blur-sm"><div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: accentColor }}></div></div>}
-        
-        {activeTab === "todo" ? (
-          <div className="space-y-3">
-            <p className="text-xs text-gray-500 mb-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm border-l-4 whitespace-normal" style={{ borderLeftColor: accentColor }}>💡 タスクをカレンダーにドラッグして予定化できます</p>
-            {!isLoadingData && todos.length === 0 && <div className="text-center py-8 text-sm text-gray-400">すべてのタスクが完了しました 🎉</div>}
-            
-            {sortedTodos.map((todo) => (
-              <div key={todo.id} draggable={!todo.is_completed} onDragStart={(e) => { e.currentTarget.style.opacity = '0.5'; handleDragStart(e, todo.id); }} onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; }} className={`bg-white p-3 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group flex items-start ${todo.is_completed ? 'opacity-60 bg-gray-50' : 'cursor-grab active:cursor-grabbing'}`}>
-                <button onClick={(e) => handleToggleTodo(todo.id, todo.is_completed, e)} className={`w-5 h-5 mt-0.5 mr-3 rounded border flex items-center justify-center transition-colors shrink-0 ${todo.is_completed ? 'text-white' : 'border-gray-300 hover:border-gray-400'}`} style={todo.is_completed ? { backgroundColor: accentColor, borderColor: accentColor } : {}}>
-                  {todo.is_completed && <Check className="w-3.5 h-3.5" />}
-                </button>
-                <div className="flex-1 overflow-hidden">
-                  <div className="flex justify-between items-start mb-1.5">
-                    <h3 className={`text-sm font-medium leading-tight flex-1 pr-2 truncate ${todo.is_completed ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{todo.title}</h3>
-                    <div className="flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={(e) => { e.stopPropagation(); openTaskEditModal(todo); }} className="text-gray-400 hover:text-blue-500 p-1.5 rounded-md hover:bg-blue-50 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={(e) => handleDeleteTask(todo.id, e)} className="text-gray-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        {activeTab === "todo" && (
+          <div className="space-y-6">
+            <div>
+              {!isAddingTask ? (
+                <button onClick={() => setIsAddingTask(true)} className="w-full flex items-center justify-center py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-bold text-gray-500 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-all"><Plus className="w-4 h-4 mr-1.5" />タスクを追加</button>
+              ) : (
+                <form onSubmit={handleAddTask} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <input type="text" autoFocus value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="タスクを入力..." className="w-full text-sm font-bold text-gray-800 placeholder-gray-400 outline-none mb-3" />
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex-1 flex items-center bg-gray-50 rounded-lg p-2 border border-gray-100 focus-within:border-blue-300 transition-colors"><Folder className="w-4 h-4 text-gray-400 mr-2 shrink-0" /><input type="text" value={newTaskProject} onChange={(e) => setNewTaskProject(e.target.value)} placeholder="プロジェクト" className="w-full text-xs bg-transparent outline-none text-gray-700" /></div>
+                    <div className="flex-1 flex items-center bg-gray-50 rounded-lg p-2 border border-gray-100 focus-within:border-blue-300 transition-colors"><CalendarIcon className="w-4 h-4 text-gray-400 mr-2 shrink-0" /><input type="date" value={newTaskDueDate} onChange={(e) => setNewTaskDueDate(e.target.value)} className="w-full text-xs bg-transparent outline-none text-gray-700 cursor-pointer" /></div>
                   </div>
-                  <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md pointer-events-none">{todo.project || "一般タスク"}</span>
-                </div>
+                  <div className="flex justify-end space-x-2">
+                    <button type="button" onClick={() => setIsAddingTask(false)} className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">キャンセル</button>
+                    <button type="submit" disabled={!newTaskTitle.trim()} className="px-4 py-1.5 text-xs font-bold text-white rounded-lg shadow-sm disabled:opacity-50 transition-colors" style={{ backgroundColor: accentColor }}>追加</button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              <h3 className="text-xs font-bold text-gray-500 tracking-wider flex items-center justify-between">未完了 <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-[10px]">{incompleteTodos.length}</span></h3>
+              {incompleteTodos.map(todo => {
+                const daysLeft = getDaysLeft(todo.due_date);
+                return editingId === todo.id ? (
+                  <div key={todo.id} className="bg-blue-50/50 p-3 rounded-xl border border-blue-200 w-full animate-in fade-in duration-200 shadow-inner">
+                    <input type="text" autoFocus value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full text-sm font-bold bg-white border border-gray-200 p-2 rounded-lg outline-none focus:border-blue-400 mb-2 shadow-sm" placeholder="タスク名" />
+                    <div className="flex gap-2 mb-3">
+                      <div className="flex-1 flex items-center bg-white border border-gray-200 rounded-lg p-1.5 shadow-sm"><Folder className="w-3.5 h-3.5 text-gray-400 mx-1 shrink-0" /><input type="text" value={editProject} onChange={(e) => setEditProject(e.target.value)} placeholder="プロジェクト" className="w-full text-xs outline-none text-gray-700" /></div>
+                      <div className="flex-1 flex items-center bg-white border border-gray-200 rounded-lg p-1.5 shadow-sm"><CalendarIcon className="w-3.5 h-3.5 text-gray-400 mx-1 shrink-0" /><input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} className="w-full text-xs outline-none text-gray-700" /></div>
+                    </div>
+                    <div className="flex justify-end gap-2"><button onClick={() => setEditingId(null)} className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-200 rounded-lg transition-colors">キャンセル</button><button onClick={saveInlineEdit} disabled={!editTitle.trim()} className="px-4 py-1.5 text-xs font-bold text-white rounded-lg disabled:opacity-50 shadow-sm transition-all hover:brightness-110" style={{ backgroundColor: accentColor }}>保存</button></div>
+                  </div>
+                ) : (
+                  <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo.id)} className="group bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all cursor-grab active:cursor-grabbing flex gap-3 relative overflow-hidden">
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: accentColor }}></div>
+                    <div className="flex flex-col items-center mt-0.5 shrink-0"><button onClick={(e) => handleToggleTodo(todo.id, todo.is_completed, e)} className="text-gray-300 hover:text-blue-500 transition-colors"><Circle className="w-5 h-5" /></button><GripVertical className="w-4 h-4 text-gray-300 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" /></div>
+                    <div className="flex-1 min-w-0"><p className="text-sm font-bold text-gray-800 break-words leading-snug">{todo.title}</p><div className="flex items-center gap-2 mt-2 flex-wrap">{todo.project && <span className="text-[10px] text-gray-500 flex items-center bg-gray-100 px-1.5 py-0.5 rounded"><Folder className="w-3 h-3 mr-1" />{todo.project}</span>}{daysLeft && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${daysLeft.color}`}>{daysLeft.text}</span>}</div></div>
+                    <div className="flex flex-col items-end space-y-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"><button onClick={() => startInlineEdit(todo)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md"><Pencil className="w-3.5 h-3.5" /></button><button onClick={(e) => handleDeleteTask(todo.id, e)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 className="w-3.5 h-3.5" /></button></div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {completedTodos.length > 0 && (
+              <div className="space-y-2.5 pt-4 border-t border-gray-200">
+                <h3 className="text-xs font-bold text-gray-400 tracking-wider flex items-center justify-between">完了済み <span className="bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full text-[10px]">{completedTodos.length}</span></h3>
+                {completedTodos.map(todo => (
+                  <div key={todo.id} className="group bg-gray-50 rounded-xl p-3 border border-gray-100 flex gap-3 opacity-70 hover:opacity-100 transition-all">
+                    <button onClick={(e) => handleToggleTodo(todo.id, todo.is_completed, e)} className="text-green-500 mt-0.5 shrink-0"><CheckCircle2 className="w-5 h-5" /></button>
+                    <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-500 line-through break-words leading-snug">{todo.title}</p><div className="flex items-center gap-2 mt-1.5 flex-wrap">{todo.project && <span className="text-[10px] text-gray-400 flex items-center"><Folder className="w-3 h-3 mr-1" />{todo.project}</span>}</div></div>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"><button onClick={(e) => handleDeleteTask(todo.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 className="w-4 h-4" /></button></div>
+                  </div>
+                ))}
               </div>
-            ))}
-            
-            {isAddingTask ? (
-              <form onSubmit={handleAddTask} className="bg-white p-3 rounded-xl border shadow-sm mt-4 animate-in fade-in slide-in-from-top-2" style={{ borderColor: accentColor }}>
-                <input type="text" autoFocus value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="タスク名を入力..." className="w-full text-sm border-none focus:ring-0 p-0 mb-2 outline-none text-gray-800" />
-                <input type="text" value={newTaskProject} onChange={(e) => setNewTaskProject(e.target.value)} placeholder="プロジェクト名 (任意)" className="w-full text-xs text-gray-500 border-none focus:ring-0 p-0 mb-3 outline-none" />
-                <div className="flex justify-end space-x-2"><button type="button" onClick={() => setIsAddingTask(false)} className="text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors px-2 py-1">キャンセル</button><button type="submit" className="text-xs font-medium text-white px-3 py-1.5 rounded-md transition-colors shadow-sm hover:brightness-110" style={{ backgroundColor: accentColor }}>保存する</button></div>
-              </form>
-            ) : (
-              <button onClick={() => setIsAddingTask(true)} className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:bg-white transition-colors flex items-center justify-center mt-4 font-medium" style={{ color: accentColor }}><Plus className="w-4 h-4 mr-1" />タスクを追加</button>
             )}
           </div>
-        ) : (
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm whitespace-normal space-y-8">
+        )}
+
+        {activeTab === "settings" && (
+          <div className="space-y-6 pb-8">
             <div>
-              <h3 className="text-xs font-bold text-gray-500 mb-3 flex items-center"><span className="w-1.5 h-4 rounded-full mr-2" style={{ backgroundColor: accentColor }}></span>テーマカラー</h3>
-              <div className="flex flex-wrap gap-3">
-                {['#2563eb', '#f97316', '#10b981', '#8b5cf6', '#ec4899', '#3f3f46'].map(color => (
-                  <button key={color} onClick={() => setAccentColor(color)} className={`w-8 h-8 rounded-full shadow-sm border-2 transition-transform ${accentColor === color ? 'border-gray-800 scale-110' : 'border-transparent hover:scale-105'}`} style={{ backgroundColor: color }} />
-                ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-gray-500 mb-3 flex items-center"><span className="w-1.5 h-4 rounded-full mr-2" style={{ backgroundColor: accentColor }}></span>カレンダーの表示間隔</h3>
-              <div className="flex space-x-2">
-                {[{label: 'スリム', val: 48}, {label: '標準', val: 64}, {label: 'ゆったり', val: 80}].map(opt => (
-                  <button key={opt.val} onClick={() => setHourHeight(opt.val)} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${hourHeight === opt.val ? 'text-white' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`} style={hourHeight === opt.val ? { backgroundColor: accentColor, borderColor: accentColor } : {}}>{opt.label}</button>
-                ))}
+              <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2">表示設定</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5">週の始まり</label>
+                  <select value={weekStartDay} onChange={(e) => setWeekStartDay(Number(e.target.value))} className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 transition-colors shadow-sm">
+                    <option value={0}>日曜日</option><option value={1}>月曜日</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            <div className="pt-6 border-t border-gray-100">
-              <h3 className="text-xs font-bold text-gray-500 mb-4 flex items-center"><span className="w-1.5 h-4 rounded-full mr-2" style={{ backgroundColor: accentColor }}></span>公開予約ページの設定</h3>
+            <div>
+              <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2">公開予約ページの設定</h3>
               <div className="space-y-4">
+                {/* ★ 修正：タイトル入力を追加 */}
                 <div>
-                  <label className="block text-[11px] text-gray-500 font-bold mb-1">時間幅（1枠あたり）</label>
-                  <select value={bookingDuration} onChange={e => setBookingDuration(Number(e.target.value))} className="w-full text-sm border border-gray-200 rounded-lg p-2 outline-none">
-                    {Array.from({length: 8}, (_, i) => (i + 1) * 15).map(m => <option key={m} value={m}>{m}分</option>)}
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5">予約ページのタイトル</label>
+                  <input type="text" value={bookingTitle} onChange={(e) => setBookingTitle(e.target.value)} placeholder="例: ミーティングの予約" className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 transition-colors shadow-sm" />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5">1枠の所要時間 (分)</label>
+                  <select value={bookingDuration} onChange={(e) => setBookingDuration(Number(e.target.value))} className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 transition-colors shadow-sm">
+                    <option value={15}>15分</option><option value={30}>30分</option><option value={45}>45分</option><option value={60}>60分</option><option value={90}>90分</option><option value={120}>120分</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-[11px] text-gray-500 font-bold mb-1">予約の受付期限</label>
-                  <select value={bookingLeadTime} onChange={e => setBookingLeadTime(Number(e.target.value))} className="w-full text-sm border border-gray-200 rounded-lg p-2 outline-none">
-                    <option value={0}>直前までOK</option><option value={12}>12時間前まで</option><option value={24}>24時間前(翌日)まで</option><option value={48}>2日後以降</option><option value={72}>3日後以降</option><option value={168}>1週間後以降</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] text-gray-500 font-bold mb-1">対応時間帯（開始〜終了）</label>
-                  <div className="flex items-center space-x-2">
-                    <select value={bookingStartHour} onChange={e => setBookingStartHour(Number(e.target.value))} className="flex-1 text-sm border border-gray-200 rounded-lg p-2 outline-none">
-                      {Array.from({length: 24}, (_, i) => <option key={i} value={i}>{i}:00</option>)}
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5">受付開始時間</label>
+                    <select value={bookingStartHour} onChange={(e) => setBookingStartHour(Number(e.target.value))} className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 shadow-sm">
+                      {Array.from({ length: 24 }).map((_, i) => ( <option key={i} value={i}>{`${i}:00`}</option> ))}
                     </select>
-                    <span className="text-gray-400">〜</span>
-                    <select value={bookingEndHour} onChange={e => setBookingEndHour(Number(e.target.value))} className="flex-1 text-sm border border-gray-200 rounded-lg p-2 outline-none">
-                      {Array.from({length: 24}, (_, i) => <option key={i} value={i}>{i}:00</option>)}
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5">受付終了時間</label>
+                    <select value={bookingEndHour} onChange={(e) => setBookingEndHour(Number(e.target.value))} className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 shadow-sm">
+                      {Array.from({ length: 24 }).map((_, i) => ( <option key={i} value={i}>{`${i}:00`}</option> ))}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[11px] text-gray-500 font-bold mb-1.5">対応する曜日</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-2">受付する曜日</label>
                   <div className="flex flex-wrap gap-2">
-                    {['日', '月', '火', '水', '木', '金', '土'].map((day, i) => (
-                      <label key={i} className="flex items-center space-x-1 cursor-pointer">
-                        <input type="checkbox" checked={bookingDays.includes(i)} onChange={(e) => { if (e.target.checked) setBookingDays([...bookingDays, i]); else setBookingDays(bookingDays.filter(d => d !== i)); }} className="accent-blue-500 w-4 h-4" style={{ accentColor: accentColor }} />
-                        <span className="text-xs text-gray-700 pr-1">{day}</span>
-                      </label>
+                    {[{ label: "日", val: 0 }, { label: "月", val: 1 }, { label: "火", val: 2 }, { label: "水", val: 3 }, { label: "木", val: 4 }, { label: "金", val: 5 }, { label: "土", val: 6 }].map((day) => (
+                      <button key={day.val} onClick={() => { if (bookingDays.includes(day.val)) setBookingDays(bookingDays.filter(d => d !== day.val)); else setBookingDays([...bookingDays, day.val].sort()); }}
+                        className={`w-8 h-8 rounded-full text-xs font-bold transition-all shadow-sm ${bookingDays.includes(day.val) ? 'text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`} style={bookingDays.includes(day.val) ? { backgroundColor: accentColor } : {}}>
+                        {day.label}
+                      </button>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[11px] text-gray-500 font-bold mb-1">カレンダーの週の始まり</label>
-                  <select value={weekStartDay} onChange={e => setWeekStartDay(Number(e.target.value))} className="w-full text-sm border border-gray-200 rounded-lg p-2 outline-none">
-                    <option value={0}>日曜日</option><option value={1}>月曜日</option>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5">予約の締め切り</label>
+                  <select value={bookingLeadTime} onChange={(e) => setBookingLeadTime(Number(e.target.value))} className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 transition-colors shadow-sm">
+                    <option value={1}>1時間前まで</option><option value={12}>12時間前まで</option><option value={24}>1日前（24h）まで</option><option value={48}>2日前まで</option><option value={168}>1週間前まで</option>
                   </select>
                 </div>
-                <button onClick={handleSaveBookingSettings} className="w-full py-2.5 mt-2 text-white text-xs font-bold rounded-lg transition-colors shadow-sm hover:brightness-110" style={{ backgroundColor: accentColor }}>予約設定を保存する</button>
+                <button onClick={handleSaveBookingSettings} className="w-full flex items-center justify-center py-3 mt-4 text-sm font-bold text-white rounded-xl shadow-sm hover:brightness-110 transition-all" style={{ backgroundColor: accentColor }}>
+                  <Save className="w-4 h-4 mr-2" />設定を保存する
+                </button>
               </div>
             </div>
-
           </div>
         )}
+
       </div>
     </aside>
   );

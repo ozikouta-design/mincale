@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { X, CheckCircle, Clock, Calendar as CalendarIcon, AlignLeft, Trash2, Pencil, MapPin } from "lucide-react";
+import { X, CheckCircle, Clock, Calendar as CalendarIcon, AlignLeft, Trash2, Pencil, MapPin, RefreshCw } from "lucide-react";
+import { GOOGLE_COLORS } from "@/hooks/useCalendarLogic";
 
 interface ModalsProps {
   isScheduleModalOpen: boolean; setIsScheduleModalOpen: (isOpen: boolean) => void;
   isCreateEventModalOpen: boolean; setIsCreateEventModalOpen: (isOpen: boolean) => void;
-  isGroupModalOpen: boolean; handleCloseGroupModal: () => void; // ★ 変更
+  isGroupModalOpen: boolean; handleCloseGroupModal: () => void;
   isTaskEditModalOpen: boolean; setIsTaskEditModalOpen: (isOpen: boolean) => void;
   editingEventId: any; editingEventIsGoogle: boolean;
   newEventTitle: string; setNewEventTitle: (title: string) => void;
@@ -14,6 +15,8 @@ interface ModalsProps {
   newEventDuration: number; setNewEventDuration: (d: number) => void;
   newEventLocation: string; setNewEventLocation: (loc: string) => void;
   newEventDescription: string; setNewEventDescription: (desc: string) => void;
+  newEventColor: string; setNewEventColor: (v: string) => void;
+  newEventRecurrence: string; setNewEventRecurrence: (v: string) => void;
   handleCreateEvent: () => void; handleDeleteEvent: (id: any, isG: boolean, mId: string) => void;
   members: any[];
   newGroupName: string; setNewGroupName: (name: string) => void;
@@ -22,7 +25,10 @@ interface ModalsProps {
   editTaskTitle: string; setEditTaskTitle: (t: string) => void;
   editTaskProject: string; setEditTaskProject: (p: string) => void;
   handleUpdateTask: () => void;
-  isCopied: boolean; handleCopyToClipboard: () => void; getCommonFreeTimeText: () => string;
+  
+  // ★ 修正：シグネチャを (text?: string) => void に変更
+  isCopied: boolean; handleCopyToClipboard: (text?: string) => void; getCommonFreeTimeText: () => string;
+  
   accentColor: string;
   selectedEventDetails: any; setSelectedEventDetails: (d: any) => void;
   eventPopupPosition: { x: number, y: number } | null;
@@ -36,6 +42,7 @@ export default function Modals({
   newEventMemberId, setNewEventMemberId, newEventDayIndex, setNewEventDayIndex,
   newEventStartHour, setNewEventStartHour, newEventDuration, setNewEventDuration,
   newEventLocation, setNewEventLocation, newEventDescription, setNewEventDescription,
+  newEventColor, setNewEventColor, newEventRecurrence, setNewEventRecurrence,
   handleCreateEvent, handleDeleteEvent, members,
   newGroupName, setNewGroupName, newGroupMemberIds, setNewGroupMemberIds, handleSaveGroup,
   editTaskTitle, setEditTaskTitle, editTaskProject, setEditTaskProject, handleUpdateTask,
@@ -77,13 +84,19 @@ export default function Modals({
               <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-5 flex-1 overflow-y-auto">
-              <p className="text-sm text-gray-600 mb-4 font-medium">選択中のメンバーの空き時間を元に、以下のテキストを生成しました。</p>
+              <p className="text-sm text-gray-600 mb-4 font-medium">選択中のメンバーの空き時間を元に、以下のテキストを生成しました。自由に編集できます。</p>
               <div className="relative group">
-                <textarea readOnly value={scheduleText} className="w-full h-48 p-4 text-sm border border-gray-200 rounded-xl bg-gray-50 text-gray-700 outline-none resize-none focus:ring-2 focus:ring-blue-100 transition-all font-mono" />
+                {/* ★ 修正：readOnlyを外し、onChangeを追加 */}
+                <textarea 
+                  value={scheduleText} 
+                  onChange={(e) => setScheduleText(e.target.value)}
+                  className="w-full h-48 p-4 text-sm border border-gray-200 rounded-xl bg-gray-50 text-gray-700 outline-none resize-none focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all font-mono" 
+                />
               </div>
             </div>
             <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end">
-              <button onClick={handleCopyToClipboard} className="px-6 py-2.5 text-white text-sm font-bold rounded-xl flex items-center shadow-sm hover:brightness-110 transition-all" style={{ backgroundColor: isCopied ? "#10b981" : accentColor }}>
+              {/* ★ 修正：編集されたテキストを渡してコピーする */}
+              <button onClick={() => handleCopyToClipboard(scheduleText)} className="px-6 py-2.5 text-white text-sm font-bold rounded-xl flex items-center shadow-sm hover:brightness-110 transition-all" style={{ backgroundColor: isCopied ? "#10b981" : accentColor }}>
                 {isCopied ? <><CheckCircle className="w-4 h-4 mr-2" />コピーしました！</> : "テキストをコピー"}
               </button>
             </div>
@@ -99,17 +112,43 @@ export default function Modals({
               <h2 className="text-base font-bold text-gray-800">{editingEventId ? "予定を編集" : "新しい予定"}</h2>
               <button onClick={() => setIsCreateEventModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-5 space-y-5 overflow-y-auto flex-1">
+            <div className="p-5 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
               <div>
                 <input type="text" autoFocus value={newEventTitle} onChange={(e) => setNewEventTitle(e.target.value)} placeholder="タイトルを追加" className="w-full p-2 text-xl font-bold border-b border-gray-200 outline-none focus:border-blue-500 placeholder-gray-300 transition-colors" />
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="w-5 h-5 text-gray-400 shrink-0" />
-                <input type="date" value={dateStr} onChange={handleDateChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
+                <input type="date" value={dateStr} onChange={handleDateChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 w-full" />
                 <input type="time" value={startTimeStr} onChange={handleStartTimeChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
                 <span className="text-gray-400">-</span>
                 <input type="time" value={endTimeStr} onChange={handleEndTimeChange} className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" />
               </div>
+              
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-gray-400 shrink-0" />
+                <select value={newEventRecurrence} onChange={(e) => setNewEventRecurrence(e.target.value)} className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none bg-white focus:border-blue-500">
+                  <option value="none">繰り返さない</option>
+                  <option value="daily">毎日</option>
+                  <option value="weekly">毎週</option>
+                  <option value="monthly">毎月</option>
+                </select>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <div className="w-5 h-5 shrink-0 mt-1"></div>
+                <div>
+                  <div className="text-xs font-bold text-gray-500 mb-2">予定の色</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setNewEventColor("")} className={`w-6 h-6 rounded-full border transition-all hover:scale-110 flex items-center justify-center ${newEventColor === "" ? 'border-gray-800 ring-2 ring-gray-200 scale-110' : 'border-gray-300 bg-gray-100'}`} title="デフォルト色">
+                      {newEventColor === "" && <div className="w-2.5 h-2.5 bg-gray-800 rounded-full"></div>}
+                    </button>
+                    {Object.entries(GOOGLE_COLORS).map(([id, color]) => (
+                      <button key={id} type="button" onClick={() => setNewEventColor(id)} style={{ backgroundColor: color }} className={`w-6 h-6 rounded-full border transition-all hover:scale-110 ${newEventColor === id ? 'border-gray-800 ring-2 ring-gray-200 scale-110' : 'border-transparent shadow-sm'}`} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
                 <CalendarIcon className="w-5 h-5 text-gray-400 shrink-0" />
                 <select value={newEventMemberId} onChange={(e) => setNewEventMemberId(e.target.value)} className="w-full p-2.5 text-sm border border-gray-200 rounded-xl outline-none bg-white focus:border-blue-500">
@@ -138,7 +177,6 @@ export default function Modals({
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleCloseGroupModal}></div>
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-4 border-b border-gray-100">
-              {/* ★ タイトルも動的に変更 */}
               <h2 className="text-base font-bold text-gray-800">{newGroupName ? "グループを編集" : "グループを作成"}</h2>
               <button onClick={handleCloseGroupModal} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
