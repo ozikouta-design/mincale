@@ -35,42 +35,57 @@ export default function PublicBookingPage() {
       try {
         let data = null;
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(hostId);
-        if (isUUID) { const { data: idData } = await supabase.from('profiles').select('*').eq('id', hostId).single(); data = idData; }
-        if (!data) { const { data: emailData } = await supabase.from('profiles').select('*').ilike('email', `${hostId}%`).limit(1).single(); data = emailData; }
+        
+        if (isUUID) { 
+          // UUIDの場合はIDで検索
+          const { data: idData } = await supabase.from('profiles').select('*').eq('id', hostId).single(); 
+          data = idData; 
+        } else {
+          // UUIDでない場合は、新設した slug カラムで完全一致検索（406エラー回避のため）
+          const { data: slugData } = await supabase.from('profiles').select('*').eq('slug', hostId).single();
+          data = slugData;
+        }
 
         if (data) {
           setHostSettings({
-            id: data.id || data.email || hostId, email: data.email || "",
-            name: data.email ? data.email.split('@')[0] : "ホスト", title: data.booking_title || "ミーティングの予約",
-            duration: data.booking_duration || 30, startHour: data.booking_start_hour || 10, endHour: data.booking_end_hour || 18,
-            days: data.booking_days || [1,2,3,4,5], leadTime: data.booking_lead_time || 24, weekStartDay: data.week_start_day || 0,
+            id: data.id || data.email || hostId, 
+            email: data.email || "",
+            name: data.name || data.email.split('@')[0], 
+            title: data.booking_title || "ミーティングの予約",
+            duration: data.booking_duration || 30, 
+            startHour: data.booking_start_hour || 10, 
+            endHour: data.booking_end_hour || 18,
+            days: data.booking_days || [1,2,3,4,5], 
+            leadTime: data.booking_lead_time || 24, 
+            weekStartDay: data.week_start_day || 0,
           });
-        } else { setIsLoadingCalendar(false); }
-      } catch (err) { console.error("ホスト取得エラー:", err); setIsLoadingCalendar(false); }
+        }
+      } catch (err) { 
+        console.error("ホスト取得エラー:", err); 
+      } finally {
+        setIsLoadingCalendar(false); 
+      }
     };
     fetchHost();
   }, [hostId]);
 
   useEffect(() => {
-    // ★変更：isBackgroundフラグを追加（裏側でこっそり更新する時は画面をチラつかせない）
     const fetchAvailability = async (isBackground: boolean = false) => {
       if (!hostSettings) return;
-      const targetId = hostSettings.id || hostSettings.email;
-      if (!targetId) { 
-        if (!isBackground) setIsLoadingCalendar(false); 
-        return; 
-      }
+      const targetId = hostSettings.id;
 
       if (!isBackground) setIsLoadingCalendar(true);
       try {
         const startDt = new Date(gridStartDate); startDt.setHours(0,0,0,0);
         const endDt = new Date(gridStartDate); endDt.setDate(endDt.getDate() + 30); endDt.setHours(23,59,59,999);
 
-        const { data, error } = await supabase.from('bookings').select('start_time, end_time').eq('profile_id', targetId).gte('start_time', startDt.toISOString()).lte('start_time', endDt.toISOString());
+        // Supabase上の既存予約を取得
+        const { data: bookingData, error } = await supabase.from('bookings').select('start_time, end_time').eq('profile_id', targetId).gte('start_time', startDt.toISOString()).lte('start_time', endDt.toISOString());
         if (error) throw error;
         
-        let allBusySlots = data ? data.map(b => ({ start: b.start_time, end: b.end_time })) : [];
+        let allBusySlots = bookingData ? bookingData.map(b => ({ start: b.start_time, end: b.end_time })) : [];
 
+        // Googleカレンダーの空き状況を取得
         if (hostSettings.email) {
           try {
             const res = await fetch('/api/availability', {
@@ -101,15 +116,12 @@ export default function PublicBookingPage() {
       }
     };
 
-    // 初回の読み込み
     fetchAvailability();
 
-    // ★追加1：30秒に1回、裏側で自動的にカレンダーの空き状況を再チェックする（ポーリング）
     const intervalId = setInterval(() => {
       fetchAvailability(true);
     }, 30000);
 
-    // ★追加2：ユーザーが別のタブ（Googleカレンダーなど）から戻ってきた瞬間に即座に更新する
     const handleFocus = () => {
       fetchAvailability(true);
     };
@@ -174,13 +186,8 @@ export default function PublicBookingPage() {
 
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDate || !selectedTime) return alert("カレンダーから日時を選択してください。");
+    if (!selectedDate || !selectedTime) return alert("日時を選択してください。");
     if (!guestName.trim() || !guestEmail.trim()) return alert("お名前とメールアドレスを入力してください。");
-    if (meetingType === 'zoom' && !zoomUrl.trim()) return alert("Zoom URLを入力してください。");
-    if (meetingType === 'inperson' && !location.trim()) return alert("希望の場所・住所を入力してください。");
-    if (meetingType === 'other' && !otherDetails.trim()) return alert("開催方法の詳細を入力してください。");
-    const targetProfileId = hostSettings?.id || hostSettings?.email;
-    if (!targetProfileId) return alert("ホストの情報が取得できませんでした。");
 
     setIsSubmitting(true);
     const [hours, minutes] = selectedTime.split(':').map(Number);
@@ -192,7 +199,7 @@ export default function PublicBookingPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hostId: targetProfileId,
+          hostId: hostSettings?.id,
           hostEmail: hostSettings?.email,
           guestName,
           guestEmail,
@@ -207,12 +214,14 @@ export default function PublicBookingPage() {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "予約の送信に失敗しました");
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "予約に失敗しました");
+      }
 
       setIsSuccess(true);
     } catch (err: any) { 
-      alert(`エラーが発生しました: ${err.message}`); 
+      alert(`エラー: ${err.message}`); 
     } finally { 
       setIsSubmitting(false); 
     }
@@ -240,7 +249,6 @@ export default function PublicBookingPage() {
     <div className="min-h-screen bg-gray-50 flex justify-center py-6 md:py-12 px-3 md:px-6 font-sans text-gray-800">
       <div className="w-full max-w-6xl bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-hidden flex flex-col min-h-[600px] animate-in fade-in zoom-in-95 duration-300">
         
-        {/* === 上部ヘッダー（ホスト情報） === */}
         <div className="p-6 md:p-8 border-b border-gray-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-6 shrink-0 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 opacity-60 pointer-events-none"></div>
           
@@ -260,10 +268,8 @@ export default function PublicBookingPage() {
           </div>
         </div>
 
-        {/* === メインコンテンツ === */}
         <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/30">
           
-          {/* STEP 1: マトリックスUI */}
           {step === 1 && (
             <div className="p-4 md:p-8 flex flex-col h-full animate-in fade-in slide-in-from-bottom-4 duration-300">
               
@@ -306,35 +312,28 @@ export default function PublicBookingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {timeSlots.length === 0 ? (
-                        <tr><td colSpan={16} className="py-20 text-gray-400 font-bold text-sm">設定された時間枠がありません</td></tr>
-                      ) : (
-                        timeSlots.map((time, rowIdx) => (
-                          <tr key={time} className="border-b border-gray-100 last:border-0 hover:bg-blue-50/20 transition-colors group">
-                            <td className="p-2 border-r border-gray-200 text-xs font-bold text-gray-500 bg-gray-50/50 sticky left-0 z-10 group-hover:bg-blue-50/50 transition-colors">{time}</td>
-                            
-                            {displayDays.map((d, colIdx) => {
-                              const available = isSlotAvailable(d, time);
-                              const isSat = d.getDay() === 6; const isSun = d.getDay() === 0;
-                              return (
-                                <td key={colIdx} className={`p-1 border-r border-gray-100 last:border-0 ${isSat ? 'bg-blue-50/20' : isSun ? 'bg-red-50/20' : ''}`}>
-                                  {available ? (
-                                    <button onClick={() => { setSelectedDate(d); setSelectedTime(time); setStep(2); }} className="w-full h-10 flex items-center justify-center rounded-lg hover:bg-blue-100 hover:scale-110 active:scale-95 transition-all text-blue-500 hover:text-blue-600 cursor-pointer">
-                                      <span className="text-xl font-bold leading-none">◎</span>
-                                    </button>
-                                  ) : (
-                                    <div className="w-full h-10 flex items-center justify-center rounded-lg text-gray-200">
-                                      <span className="text-lg font-bold leading-none">×</span>
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            })}
-
-                            <td className="p-2 border-l border-gray-200 text-xs font-bold text-gray-500 bg-gray-50/50 sticky right-0 z-10 group-hover:bg-blue-50/50 transition-colors">{time}</td>
-                          </tr>
-                        ))
-                      )}
+                      {timeSlots.map((time, rowIdx) => (
+                        <tr key={time} className="border-b border-gray-100 last:border-0 hover:bg-blue-50/20 transition-colors group">
+                          <td className="p-2 border-r border-gray-200 text-xs font-bold text-gray-500 bg-gray-50/50 sticky left-0 z-10 group-hover:bg-blue-50/50 transition-colors">{time}</td>
+                          {displayDays.map((d, colIdx) => {
+                            const available = isSlotAvailable(d, time);
+                            return (
+                              <td key={colIdx} className="p-1 border-r border-gray-100 last:border-0">
+                                {available ? (
+                                  <button onClick={() => { setSelectedDate(d); setSelectedTime(time); setStep(2); }} className="w-full h-10 flex items-center justify-center rounded-lg hover:bg-blue-100 hover:scale-110 active:scale-95 transition-all text-blue-500 hover:text-blue-600 cursor-pointer">
+                                    <span className="text-xl font-bold leading-none">◎</span>
+                                  </button>
+                                ) : (
+                                  <div className="w-full h-10 flex items-center justify-center rounded-lg text-gray-200">
+                                    <span className="text-lg font-bold leading-none">×</span>
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 border-l border-gray-200 text-xs font-bold text-gray-500 bg-gray-50/50 sticky right-0 z-10 group-hover:bg-blue-50/50 transition-colors">{time}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -342,7 +341,6 @@ export default function PublicBookingPage() {
             </div>
           )}
 
-          {/* STEP 2: ゲスト情報入力フォーム */}
           {step === 2 && selectedTime && selectedDate && (
             <div className="p-4 md:p-8 flex-1 overflow-y-auto custom-scrollbar flex justify-center animate-in slide-in-from-right-8 duration-300">
               <div className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 p-6 md:p-8 shadow-sm">
@@ -365,10 +363,11 @@ export default function PublicBookingPage() {
                   <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
                     <label className="block text-sm font-black text-gray-700 mb-3 flex items-center"><Video className="w-4 h-4 mr-2 text-blue-500" />開催方法 <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">必須</span></label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                      <button type="button" onClick={() => setMeetingType('meet')} className={`py-3 text-xs font-bold rounded-xl border-2 transition-all ${meetingType === 'meet' ? 'border-blue-500 bg-white text-blue-600 shadow-sm' : 'border-gray-200 text-gray-500 hover:bg-white'}`}>Google Meet</button>
-                      <button type="button" onClick={() => setMeetingType('zoom')} className={`py-3 text-xs font-bold rounded-xl border-2 transition-all ${meetingType === 'zoom' ? 'border-blue-500 bg-white text-blue-600 shadow-sm' : 'border-gray-200 text-gray-500 hover:bg-white'}`}>Zoom</button>
-                      <button type="button" onClick={() => setMeetingType('inperson')} className={`py-3 text-xs font-bold rounded-xl border-2 transition-all ${meetingType === 'inperson' ? 'border-blue-500 bg-white text-blue-600 shadow-sm' : 'border-gray-200 text-gray-500 hover:bg-white'}`}>対面</button>
-                      <button type="button" onClick={() => setMeetingType('other')} className={`py-3 text-xs font-bold rounded-xl border-2 transition-all ${meetingType === 'other' ? 'border-blue-500 bg-white text-blue-600 shadow-sm' : 'border-gray-200 text-gray-500 hover:bg-white'}`}>その他</button>
+                      {['meet', 'zoom', 'inperson', 'other'].map((type) => (
+                        <button key={type} type="button" onClick={() => setMeetingType(type as any)} className={`py-3 text-xs font-bold rounded-xl border-2 transition-all ${meetingType === type ? 'border-blue-500 bg-white text-blue-600 shadow-sm' : 'border-gray-200 text-gray-500 hover:bg-white'}`}>
+                          {type === 'meet' ? 'Google Meet' : type === 'zoom' ? 'Zoom' : type === 'inperson' ? '対面' : 'その他'}
+                        </button>
+                      ))}
                     </div>
                     {meetingType === 'zoom' && ( <div className="relative animate-in fade-in slide-in-from-top-1"><LinkIcon className="w-4 h-4 absolute left-4 top-3.5 text-gray-400" /><input type="url" value={zoomUrl} onChange={(e) => setZoomUrl(e.target.value)} placeholder="Zoom URLをご記入ください" required className="w-full bg-white border-2 border-gray-200 rounded-xl pl-11 pr-4 py-3 outline-none focus:border-blue-500 font-bold text-sm shadow-sm" /></div> )}
                     {meetingType === 'inperson' && ( <div className="relative animate-in fade-in slide-in-from-top-1"><MapPin className="w-4 h-4 absolute left-4 top-3.5 text-gray-400" /><input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="希望の場所・住所" required className="w-full bg-white border-2 border-gray-200 rounded-xl pl-11 pr-4 py-3 outline-none focus:border-blue-500 font-bold text-sm shadow-sm" /></div> )}
@@ -387,17 +386,12 @@ export default function PublicBookingPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-black text-gray-700 mb-2 flex items-center"><Phone className="w-4 h-4 mr-2 text-gray-400" />電話番号 <span className="ml-2 text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">任意</span></label>
-                    <input type="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3.5 outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-gray-800" placeholder="090-1234-5678" />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-black text-gray-700 mb-2 flex items-center"><MessageSquare className="w-4 h-4 mr-2 text-gray-400" />共有事項・アジェンダ <span className="ml-2 text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">任意</span></label>
+                    <label className="block text-sm font-black text-gray-700 mb-2 flex items-center"><MessageSquare className="w-4 h-4 mr-2 text-gray-400" />共有事項 <span className="ml-2 text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">任意</span></label>
                     <textarea rows={4} value={guestNotes} onChange={(e) => setGuestNotes(e.target.value)} className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3.5 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none font-medium text-sm text-gray-800" placeholder="事前に伝えておきたいことがあればご記入ください" />
                   </div>
                   
                   <div className="pt-6 border-t border-gray-100">
-                    <button type="submit" disabled={isSubmitting || !guestName || !guestEmail} className="w-full py-4.5 rounded-xl text-white font-black text-lg shadow-lg hover:brightness-110 hover:-translate-y-1 active:translate-y-0 transition-all flex justify-center items-center disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: accentColor }}>
+                    <button type="submit" disabled={isSubmitting || !guestName || !guestEmail} className="w-full py-4.5 rounded-xl text-white font-black text-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex justify-center items-center disabled:opacity-50" style={{ backgroundColor: accentColor }}>
                       {isSubmitting ? <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : "予約を確定する"}
                     </button>
                   </div>
