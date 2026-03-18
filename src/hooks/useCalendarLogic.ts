@@ -146,7 +146,8 @@ export function useCalendarLogic() {
         const { data: profileData } = await supabase
           .from("profiles").select("*").eq("email", session.user.email).single();
         if (profileData) {
-          setProfileId(profileData.id || profileData.email);
+          // ★ 修正: データベースの slug を最優先で取得する
+          setProfileId(profileData.slug || profileData.id || profileData.email);
           if (profileData.booking_title) setBookingTitle(profileData.booking_title);
           if (profileData.booking_duration) setBookingDuration(profileData.booking_duration);
           if (profileData.booking_start_hour != null) setBookingStartHour(profileData.booking_start_hour);
@@ -276,7 +277,13 @@ export function useCalendarLogic() {
     }
 
     if (freeSlots.length === 0) freeSlots.push("※現在ご提示できる直近の空き日程がありません。恐れ入りますがリンクからカレンダーをご確認ください。");
-    const userSlug = session?.user?.email ? session.user.email.split("@")[0] : profileId;
+    
+    // ★ 修正: データベースのslugを優先し、無い場合はドットや記号を自動排除したslugを生成する
+    const fallbackSlug = session?.user?.email 
+      ? session.user.email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') 
+      : "";
+    const userSlug = profileId || fallbackSlug;
+    
     const bookingUrl = typeof window !== "undefined" ? `${window.location.origin}/t/${userSlug}` : `https://mincale.app/t/${userSlug}`;
     return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.join("\n")}\n\n▼ こちらの専用リンクから、ご都合の良い時間を直接ご予約いただけます：\n${bookingUrl}\n\nご検討のほど、よろしくお願いいたします。`;
   };
