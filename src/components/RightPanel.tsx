@@ -15,7 +15,6 @@ interface RightPanelProps {
   handleToggleTodo: (taskId: number, currentStatus: boolean, e: React.MouseEvent) => void;
   handleDeleteTask: (taskId: number, e: React.MouseEvent) => void;
   accentColor: string;
-  // ★ 修正：タイトルPropsを追加
   bookingTitle: string; setBookingTitle: (v: string) => void;
   bookingDuration: number; setBookingDuration: (v: number) => void;
   bookingStartHour: number; setBookingStartHour: (v: number) => void;
@@ -24,13 +23,17 @@ interface RightPanelProps {
   bookingLeadTime: number; setBookingLeadTime: (v: number) => void;
   weekStartDay: number; setWeekStartDay: (v: number) => void;
   handleSaveBookingSettings: () => void;
+  
+  // ★ 追加：Haptics用のProps
+  isHapticsEnabled: boolean; toggleHaptics: (enabled: boolean) => void;
 }
 
 export default function RightPanel({
   isRightPanelOpen, setIsRightPanelOpen, activeTab, setActiveTab,
   todos, isAddingTask, setIsAddingTask, newTaskTitle, setNewTaskTitle, newTaskProject, setNewTaskProject, newTaskDueDate, setNewTaskDueDate, handleAddTask, handleDragStart, openTaskEditModal, handleInlineUpdateTask, handleToggleTodo, handleDeleteTask, accentColor,
-  bookingTitle, setBookingTitle, // ★ 追加
-  bookingDuration, setBookingDuration, bookingStartHour, setBookingStartHour, bookingEndHour, setBookingEndHour, bookingDays, setBookingDays, bookingLeadTime, setBookingLeadTime, weekStartDay, setWeekStartDay, handleSaveBookingSettings
+  bookingTitle, setBookingTitle,
+  bookingDuration, setBookingDuration, bookingStartHour, setBookingStartHour, bookingEndHour, setBookingEndHour, bookingDays, setBookingDays, bookingLeadTime, setBookingLeadTime, weekStartDay, setWeekStartDay, handleSaveBookingSettings,
+  isHapticsEnabled, toggleHaptics // ★ 受け取る
 }: RightPanelProps) {
 
   const incompleteTodos = todos.filter(t => !t.is_completed);
@@ -135,6 +138,21 @@ export default function RightPanel({
 
         {activeTab === "settings" && (
           <div className="space-y-6 pb-8">
+            {/* ★ 追加：スマホ用のHaptics（触覚フィードバック）トグル設定 */}
+            <div>
+              <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2">操作設定</h3>
+              <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div>
+                  <div className="text-xs font-bold text-gray-800 mb-0.5">触覚フィードバック (振動)</div>
+                  <div className="text-[10px] font-medium text-gray-500 leading-tight">タスクのドラッグや予定の保存時に<br/>スマホを短く振動させます</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input type="checkbox" className="sr-only peer" checked={isHapticsEnabled} onChange={(e) => toggleHaptics(e.target.checked)} />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all shadow-inner" style={isHapticsEnabled ? { backgroundColor: accentColor } : {}}></div>
+                </label>
+              </div>
+            </div>
+
             <div>
               <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2">表示設定</h3>
               <div className="space-y-4">
@@ -150,12 +168,10 @@ export default function RightPanel({
             <div>
               <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2">公開予約ページの設定</h3>
               <div className="space-y-4">
-                {/* ★ 修正：タイトル入力を追加 */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1.5">予約ページのタイトル</label>
                   <input type="text" value={bookingTitle} onChange={(e) => setBookingTitle(e.target.value)} placeholder="例: ミーティングの予約" className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 transition-colors shadow-sm" />
                 </div>
-                
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1.5">1枠の所要時間 (分)</label>
                   <select value={bookingDuration} onChange={(e) => setBookingDuration(Number(e.target.value))} className="w-full bg-white border border-gray-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 transition-colors shadow-sm">
@@ -193,7 +209,7 @@ export default function RightPanel({
                     <option value={1}>1時間前まで</option><option value={12}>12時間前まで</option><option value={24}>1日前（24h）まで</option><option value={48}>2日前まで</option><option value={168}>1週間前まで</option>
                   </select>
                 </div>
-                <button onClick={handleSaveBookingSettings} className="w-full flex items-center justify-center py-3 mt-4 text-sm font-bold text-white rounded-xl shadow-sm hover:brightness-110 transition-all" style={{ backgroundColor: accentColor }}>
+                <button onClick={handleSaveBookingSettings} className="w-full flex items-center justify-center py-3 mt-4 text-sm font-bold text-white rounded-xl shadow-sm hover:brightness-110 active:scale-95 transition-all" style={{ backgroundColor: accentColor }}>
                   <Save className="w-4 h-4 mr-2" />設定を保存する
                 </button>
               </div>

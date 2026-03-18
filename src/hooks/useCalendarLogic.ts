@@ -37,7 +37,35 @@ export function useCalendarLogic() {
 
   const [profileId, setProfileId] = useState<string>("");
 
-  useEffect(() => { if (typeof window !== "undefined" && window.innerWidth >= 768) { setIsSidebarOpen(true); setIsRightPanelOpen(true); } }, []);
+  // ★ 追加：触覚フィードバックのオンオフ状態（デバイスごとに記憶）
+  const [isHapticsEnabled, setIsHapticsEnabled] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("mincale_haptics");
+      if (stored !== null) setIsHapticsEnabled(stored === "true");
+    }
+    if (typeof window !== "undefined" && window.innerWidth >= 768) { 
+      setIsSidebarOpen(true); setIsRightPanelOpen(true); 
+    } 
+  }, []);
+
+  // ★ 追加：Haptics（振動）を鳴らす関数
+  const triggerHaptic = () => {
+    if (isHapticsEnabled && typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(15); // 15ミリ秒だけ「ブルッ」と震わせる
+    }
+  };
+
+  const toggleHaptics = (enabled: boolean) => {
+    setIsHapticsEnabled(enabled);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mincale_haptics", String(enabled));
+      if (enabled && window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(15); // オンにした時にお試しで震わせる
+      }
+    }
+  };
 
   const { days, months, timeMin, timeMax, todayDate } = useMemo(() => {
     const today = new Date(); const tempDays: any[] = []; const tempMonths: any[] = [];
@@ -73,22 +101,18 @@ export function useCalendarLogic() {
   const handleSaveBookingSettings = async () => {
     if (!session?.user?.email) return;
     const { error } = await supabase.from('profiles').update({ booking_title: bookingTitle, booking_duration: bookingDuration, booking_start_hour: bookingStartHour, booking_end_hour: bookingEndHour, booking_days: bookingDays, booking_lead_time: bookingLeadTime, week_start_day: weekStartDay }).eq('email', session.user.email);
-    if (!error) alert("公開予約ページの設定を保存しました！"); else alert("設定の保存に失敗しました。");
+    if (!error) { alert("設定を保存しました！"); triggerHaptic(); } else alert("設定の保存に失敗しました。");
   };
 
   const syncGoogleData = async () => {
     if (!session) return;
     setIsSyncing(true);
-    
-    let allEvents: any[] = [];
-    let fetchedMembers: any[] = [];
-    let defaultPrimaryId = "";
+    let allEvents: any[] = []; let fetchedMembers: any[] = []; let defaultPrimaryId = "";
 
     if ((session as any).accessToken) {
       try {
         const token = (session as any).accessToken; 
         const calListRes = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", { headers: { Authorization: `Bearer ${token}` } });
-        
         if (calListRes.ok) {
           const calListData = await calListRes.json();
           if (calListData.items && calListData.items.length > 0) {
@@ -99,14 +123,12 @@ export function useCalendarLogic() {
     }
 
     if (fetchedMembers.length === 0) {
-      defaultPrimaryId = 'all';
-      fetchedMembers = [{ id: 'all', name: 'マイカレンダー', colorHex: accentColor, initials: 'マ', primary: true }];
+      defaultPrimaryId = 'all'; fetchedMembers = [{ id: 'all', name: 'マイカレンダー', colorHex: accentColor, initials: 'マ', primary: true }];
     }
     setMembers(fetchedMembers);
     setSelectedMemberIds(prev => {
       const validIds = prev.filter(id => fetchedMembers.some(m => m.id === id));
-      if (validIds.length === 0) return fetchedMembers.map(m => m.id);
-      return validIds;
+      if (validIds.length === 0) return fetchedMembers.map(m => m.id); return validIds;
     });
     setNewEventMemberId(prev => prev ? prev : (defaultPrimaryId || fetchedMembers[0].id));
 
@@ -123,29 +145,27 @@ export function useCalendarLogic() {
             return { id: item.id, memberId: member.id, title: item.summary || "予定あり", dayIndex: evDayIndex, startHour, duration, isGoogle: true, colorHex: item.colorId ? GOOGLE_COLORS[item.colorId] : null, colorId: item.colorId || "", recurrence: item.recurrence ? item.recurrence[0] : "none", location: item.location || "", description: item.description || "" };
           }).filter((e: any) => e !== null && e.startHour >= 0 && e.startHour <= 24);
         });
-        const results = await Promise.all(eventPromises); 
-        allEvents = results.flat(); 
+        const results = await Promise.all(eventPromises); allEvents = results.flat(); 
       } catch(e) { console.error(e); }
     }
 
-    setEvents(allEvents);
-    setIsSyncing(false);
+    setEvents(allEvents); setIsSyncing(false);
   };
 
   useEffect(() => { if (status === "authenticated" && session) syncGoogleData(); }, [status, timeMin, timeMax]);
 
-  const openTaskEditModal = (todo: any) => { setEditingTaskId(todo.id); setEditTaskTitle(todo.title); setEditTaskProject(todo.project); setIsTaskEditModalOpen(true); };
-  const handleUpdateTask = async () => { if (!editingTaskId || !editTaskTitle.trim()) return; const { data, error } = await supabase.from('todos').update({ title: editTaskTitle, project: editTaskProject || "一般タスク" }).eq('id', editingTaskId).select().single(); if (!error && data) { setTodos(todos.map(t => t.id === editingTaskId ? data : t)); setIsTaskEditModalOpen(false); setEditingTaskId(null); } };
+  const openTaskEditModal = (todo: any) => { setEditingTaskId(todo.id); setEditTaskTitle(todo.title); setEditTaskProject(todo.project); setIsTaskEditModalOpen(true); triggerHaptic(); };
+  const handleUpdateTask = async () => { if (!editingTaskId || !editTaskTitle.trim()) return; const { data, error } = await supabase.from('todos').update({ title: editTaskTitle, project: editTaskProject || "一般タスク" }).eq('id', editingTaskId).select().single(); if (!error && data) { setTodos(todos.map(t => t.id === editingTaskId ? data : t)); setIsTaskEditModalOpen(false); setEditingTaskId(null); triggerHaptic(); } };
   const handleInlineUpdateTask = async (taskId: number, title: string, project: string, dueDate: string) => { const { data, error } = await supabase.from('todos').update({ title, project: project || "一般タスク", due_date: dueDate || null }).eq('id', taskId).select().single(); if (!error && data) setTodos(todos.map(t => t.id === taskId ? data : t)); };
-  const handleDeleteTask = async (taskId: number, e: React.MouseEvent) => { e.stopPropagation(); const { error } = await supabase.from('todos').delete().eq('id', taskId); if (!error) setTodos(todos.filter(t => t.id !== taskId)); };
-  const handleToggleTodo = async (taskId: number, currentStatus: boolean, e: React.MouseEvent) => { e.stopPropagation(); const { data, error } = await supabase.from('todos').update({ is_completed: !currentStatus }).eq('id', taskId).select().single(); if (!error && data) setTodos(todos.map(t => t.id === taskId ? data : t)); };
+  const handleDeleteTask = async (taskId: number, e: React.MouseEvent) => { e.stopPropagation(); const { error } = await supabase.from('todos').delete().eq('id', taskId); if (!error) { setTodos(todos.filter(t => t.id !== taskId)); triggerHaptic(); } };
+  const handleToggleTodo = async (taskId: number, currentStatus: boolean, e: React.MouseEvent) => { e.stopPropagation(); const { data, error } = await supabase.from('todos').update({ is_completed: !currentStatus }).eq('id', taskId).select().single(); if (!error && data) { setTodos(todos.map(t => t.id === taskId ? data : t)); triggerHaptic(); } };
 
   const handleDeleteEvent = async (eventId: any, isGoogle: boolean, calendarId: string) => {
     if (!confirm("この予定を削除しますか？\n(Googleカレンダーからも削除されます)")) return;
     const token = (session as any)?.accessToken; if (!token) return;
     try {
       const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error("Google削除エラー"); setEvents(events.filter(ev => ev.id !== eventId));
+      if (!res.ok) throw new Error("Google削除エラー"); setEvents(events.filter(ev => ev.id !== eventId)); triggerHaptic();
     } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
     setIsCreateEventModalOpen(false); setEditingEventId(null); setSelectedEventDetails(null);
   };
@@ -153,6 +173,7 @@ export function useCalendarLogic() {
   const handleEventResize = async (eventId: any, newDuration: number, memberId: string) => {
     const targetEvent = events.find(ev => ev.id === eventId); if (!targetEvent) return;
     setEvents(prev => prev.map(ev => ev.id === eventId ? { ...ev, duration: newDuration } : ev));
+    triggerHaptic(); // ★ 変更確定時にもブルッとさせる
     const token = (session as any)?.accessToken; if (!token) return;
     const h = Math.floor(targetEvent.startHour); const m = Math.round((targetEvent.startHour % 1) * 60); 
     const y = Math.floor(targetEvent.dayIndex / 10000); const mo = Math.floor((targetEvent.dayIndex % 10000) / 100) - 1; const d = targetEvent.dayIndex % 100;
@@ -163,37 +184,41 @@ export function useCalendarLogic() {
     } catch (error: any) { alert("Googleの予定の変更に失敗しました。"); }
   };
 
-  const toggleMember = (id: string) => setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]);
-  const toggleSelectAllMembers = () => { if (selectedMemberIds.length === members.length && members.length > 0) { setSelectedMemberIds([]); } else { setSelectedMemberIds(members.map(m => m.id)); } };
+  const toggleMember = (id: string) => { triggerHaptic(); setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]); };
+  const toggleSelectAllMembers = () => { triggerHaptic(); if (selectedMemberIds.length === members.length && members.length > 0) { setSelectedMemberIds([]); } else { setSelectedMemberIds(members.map(m => m.id)); } };
 
-  const handleCreateGroupClick = () => { setEditingGroupId(null); setNewGroupName(""); setNewGroupMemberIds([]); setIsGroupModalOpen(true); };
-  const handleEditGroupClick = (group: any, e: React.MouseEvent) => { e.stopPropagation(); setEditingGroupId(group.id); setNewGroupName(group.name); setNewGroupMemberIds(group.memberIds); setIsGroupModalOpen(true); };
+  const handleCreateGroupClick = () => { setEditingGroupId(null); setNewGroupName(""); setNewGroupMemberIds([]); setIsGroupModalOpen(true); triggerHaptic(); };
+  const handleEditGroupClick = (group: any, e: React.MouseEvent) => { e.stopPropagation(); setEditingGroupId(group.id); setNewGroupName(group.name); setNewGroupMemberIds(group.memberIds); setIsGroupModalOpen(true); triggerHaptic(); };
   const handleCloseGroupModal = () => { setIsGroupModalOpen(false); setEditingGroupId(null); setNewGroupName(""); setNewGroupMemberIds([]); };
   
   const handleSaveGroup = async () => { 
     if (!newGroupName.trim() || newGroupMemberIds.length === 0 || !session?.user?.email) return; 
     if (editingGroupId) {
       const { data, error } = await supabase.from('groups').update({ name: newGroupName, member_ids: newGroupMemberIds }).eq('id', parseInt(editingGroupId, 10)).select().single();
-      if (!error && data) { setGroups(groups.map(g => g.id.toString() === editingGroupId ? { id: data.id.toString(), name: data.name, memberIds: data.member_ids } : g)); }
+      if (!error && data) { setGroups(groups.map(g => g.id.toString() === editingGroupId ? { id: data.id.toString(), name: data.name, memberIds: data.member_ids } : g)); triggerHaptic(); }
     } else {
       const { data, error } = await supabase.from('groups').insert({ name: newGroupName, member_ids: newGroupMemberIds, user_email: session.user.email }).select().single(); 
-      if (!error && data) { setGroups([...groups, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]); } 
+      if (!error && data) { setGroups([...groups, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]); triggerHaptic(); } 
     }
     handleCloseGroupModal();
   };
-  const handleDeleteGroup = async (groupId: string, e: React.MouseEvent) => { e.stopPropagation(); const { error } = await supabase.from('groups').delete().eq('id', parseInt(groupId, 10)); if (!error) { setGroups(groups.filter(g => g.id !== groupId)); } };
+  const handleDeleteGroup = async (groupId: string, e: React.MouseEvent) => { e.stopPropagation(); const { error } = await supabase.from('groups').delete().eq('id', parseInt(groupId, 10)); if (!error) { setGroups(groups.filter(g => g.id !== groupId)); triggerHaptic(); } };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, todoId: number) => { 
     e.dataTransfer.setData("type", "todo"); e.dataTransfer.setData("todoId", todoId.toString()); 
     if (window.innerWidth < 768) setIsRightPanelOpen(false);
+    triggerHaptic(); // ★ ドラッグ開始でブルッ
   };
   const handleEventDragStart = (e: React.DragEvent<HTMLDivElement>, eventId: any, isGoogle: boolean, memberId: string) => { 
     e.dataTransfer.setData("type", "event"); e.dataTransfer.setData("eventId", eventId.toString()); e.dataTransfer.setData("isGoogle", isGoogle.toString()); e.dataTransfer.setData("memberId", memberId); 
+    triggerHaptic(); // ★ ドラッグ開始でブルッ
   };
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
   
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, dayIndex: number, startHour: number) => {
     e.preventDefault(); const dragType = e.dataTransfer.getData("type");
+    triggerHaptic(); // ★ ドロップ成功でブルッ
+
     if (dragType === "todo") {
       const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10); const targetTodo = todos.find((t) => t.id === draggedTodoId); const targetCalendarId = newEventMemberId || members[0]?.id || "";
       if (targetTodo && targetCalendarId) {
@@ -228,6 +253,7 @@ export function useCalendarLogic() {
     setNewEventDayIndex(dayIndex); setNewEventStartHour(startHour); setNewEventDuration(duration); 
     setNewEventColor(""); setNewEventRecurrence("none");
     setIsCreateEventModalOpen(true); 
+    triggerHaptic();
   };
   
   const handleEventClick = (event: any, e: React.MouseEvent) => { 
@@ -235,6 +261,7 @@ export function useCalendarLogic() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setEventPopupPosition({ x: rect.left + rect.width / 2, y: rect.top });
     setSelectedEventDetails(event);
+    triggerHaptic();
   };
 
   const handleEditEventClick = () => {
@@ -260,6 +287,7 @@ export function useCalendarLogic() {
     
     setSelectedEventDetails(null); 
     setIsCreateEventModalOpen(true); 
+    triggerHaptic();
   };
 
   const handleCreateEvent = async () => {
@@ -282,11 +310,13 @@ export function useCalendarLogic() {
       try {
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events/${encodeURIComponent(editingEventId)}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(eventBody) });
         if (!res.ok) throw new Error("更新失敗"); setEvents((prev) => prev.map((ev) => ev.id === editingEventId ? { ...ev, memberId: newEventMemberId, title: newEventTitle, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration, colorHex: newEventColor ? GOOGLE_COLORS[newEventColor] : null, colorId: newEventColor, recurrence: eventBody.recurrence ? eventBody.recurrence[0] : "none", location: newEventLocation, description: newEventDescription } : ev));
+        triggerHaptic();
       } catch (e) { alert("権限エラー：ログアウトして再度Googleでログインし直してください。"); }
     } else {
       try {
         const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(newEventMemberId)}/events`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(eventBody) });
         if (!res.ok) throw new Error("作成失敗"); const createdEvent = await res.json(); setEvents((prevEvents) => [...prevEvents, { id: createdEvent.id, memberId: newEventMemberId, title: newEventTitle, dayIndex: newEventDayIndex, startHour: newEventStartHour, duration: newEventDuration, isGoogle: true, colorHex: createdEvent.colorId ? GOOGLE_COLORS[createdEvent.colorId] : null, colorId: createdEvent.colorId || "", recurrence: createdEvent.recurrence ? createdEvent.recurrence[0] : "none", location: newEventLocation, description: newEventDescription }]);
+        triggerHaptic();
       } catch (e) { alert("権限エラー：Googleカレンダーへの追加に失敗しました。"); }
     }
     setIsCreateEventModalOpen(false); setEditingEventId(null); setNewEventTitle(""); setNewEventLocation(""); setNewEventDescription(""); setNewEventColor(""); setNewEventRecurrence("none");
@@ -299,107 +329,71 @@ export function useCalendarLogic() {
     const { data, error } = await supabase.from('todos').insert({ title: newTaskTitle, project: newTaskProject || "一般タスク", due_date: newTaskDueDate || null, user_email: session.user.email }).select().single(); 
     if (!error) setTodos([...todos, data]); 
     setNewTaskTitle(""); setNewTaskProject(""); setNewTaskDueDate(""); setIsAddingTask(false); 
+    triggerHaptic();
   };
 
   const getCommonFreeTimeText = () => {
     const freeSlots: string[] = []; 
     const now = new Date();
     const minBookingTime = new Date(now.getTime() + bookingLeadTime * 60 * 60 * 1000);
-    
     const visibleDays = days.filter(d => d.dayIndex >= getDayIndex(now) && bookingDays.includes(d.date.getDay()));
-    
     let addedDaysCount = 0;
     
     for (let d = 0; d < visibleDays.length; d++) {
       if (addedDaysCount >= 5) break; 
-
       const dt = visibleDays[d].date;
       const dateStr = `${dt.getMonth()+1}/${dt.getDate()}(${['日','月','火','水','木','金','土'][dt.getDay()]})`;
-      
       let currentMin = bookingStartHour * 60;
       const endMin = bookingEndHour * 60;
-      
       let dayFreeBlocks = [];
       let currentBlockStart = -1;
       let currentBlockEnd = -1;
 
       while (currentMin < endMin) {
         if (currentMin + bookingDuration > endMin) break;
-        
-        const h = Math.floor(currentMin / 60); 
-        const m = currentMin % 60;
+        const h = Math.floor(currentMin / 60); const m = currentMin % 60;
         const slotStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), h, m, 0);
-        
         let isOccupied = false;
         
-        if (slotStart <= minBookingTime) {
-          isOccupied = true;
-        } else {
+        if (slotStart <= minBookingTime) { isOccupied = true; } else {
           for (const event of events) { 
             if (selectedMemberIds.includes(event.memberId) && event.dayIndex === visibleDays[d].dayIndex) { 
-               const evStartH = event.startHour;
-               const evEndH = event.startHour + event.duration;
-               const slotStartH = currentMin / 60;
-               const slotEndH = (currentMin + bookingDuration) / 60;
-               
-               if (slotStartH < evEndH && slotEndH > evStartH) {
-                 isOccupied = true; break;
-               }
+               const evStartH = event.startHour; const evEndH = event.startHour + event.duration;
+               const slotStartH = currentMin / 60; const slotEndH = (currentMin + bookingDuration) / 60;
+               if (slotStartH < evEndH && slotEndH > evStartH) { isOccupied = true; break; }
             } 
           }
         }
-        
         if (!isOccupied) {
-          if (currentBlockStart === -1) {
-            currentBlockStart = currentMin;
-            currentBlockEnd = currentMin + bookingDuration;
-          } else {
-            currentBlockEnd = currentMin + bookingDuration;
-          }
+          if (currentBlockStart === -1) { currentBlockStart = currentMin; currentBlockEnd = currentMin + bookingDuration; } 
+          else { currentBlockEnd = currentMin + bookingDuration; }
         } else {
           if (currentBlockStart !== -1) {
-            const sH = Math.floor(currentBlockStart / 60).toString().padStart(2, '0');
-            const sM = (currentBlockStart % 60).toString().padStart(2, '0');
-            const eH = Math.floor(currentBlockEnd / 60).toString().padStart(2, '0');
-            const eM = (currentBlockEnd % 60).toString().padStart(2, '0');
-            dayFreeBlocks.push(`${sH}:${sM}〜${eH}:${eM}`);
-            currentBlockStart = -1;
+            const sH = Math.floor(currentBlockStart / 60).toString().padStart(2, '0'); const sM = (currentBlockStart % 60).toString().padStart(2, '0');
+            const eH = Math.floor(currentBlockEnd / 60).toString().padStart(2, '0'); const eM = (currentBlockEnd % 60).toString().padStart(2, '0');
+            dayFreeBlocks.push(`${sH}:${sM}〜${eH}:${eM}`); currentBlockStart = -1;
           }
         }
-        
         currentMin += bookingDuration;
       }
-      
       if (currentBlockStart !== -1) {
-        const sH = Math.floor(currentBlockStart / 60).toString().padStart(2, '0');
-        const sM = (currentBlockStart % 60).toString().padStart(2, '0');
-        const eH = Math.floor(currentBlockEnd / 60).toString().padStart(2, '0');
-        const eM = (currentBlockEnd % 60).toString().padStart(2, '0');
+        const sH = Math.floor(currentBlockStart / 60).toString().padStart(2, '0'); const sM = (currentBlockStart % 60).toString().padStart(2, '0');
+        const eH = Math.floor(currentBlockEnd / 60).toString().padStart(2, '0'); const eM = (currentBlockEnd % 60).toString().padStart(2, '0');
         dayFreeBlocks.push(`${sH}:${sM}〜${eH}:${eM}`);
       }
-      
-      if (dayFreeBlocks.length > 0) {
-        freeSlots.push(`・${dateStr} ${dayFreeBlocks.join(', ')}`);
-        addedDaysCount++;
-      }
+      if (dayFreeBlocks.length > 0) { freeSlots.push(`・${dateStr} ${dayFreeBlocks.join(', ')}`); addedDaysCount++; }
     }
-    
-    if (freeSlots.length === 0) {
-       freeSlots.push("※現在ご提示できる直近の空き日程がありません。恐れ入りますがリンクからカレンダーをご確認ください。");
-    }
-
+    if (freeSlots.length === 0) { freeSlots.push("※現在ご提示できる直近の空き日程がありません。恐れ入りますがリンクからカレンダーをご確認ください。"); }
     const userSlug = session?.user?.email ? session.user.email.split('@')[0] : profileId;
     const bookingUrl = typeof window !== 'undefined' ? `${window.location.origin}/t/${userSlug}` : `https://mincale.app/t/${userSlug}`;
     
     return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.join("\n")}\n\n▼ こちらの専用リンクから、ご都合の良い時間を直接ご予約いただけます：\n${bookingUrl}\n\nご検討のほど、よろしくお願いいたします。`;
   };
 
-  // ★ 修正：テキストを受け取ってコピーできるように変更
   const handleCopyToClipboard = async (textToCopy?: string) => { 
     try { 
       await navigator.clipboard.writeText(textToCopy !== undefined ? textToCopy : getCommonFreeTimeText()); 
-      setIsCopied(true); 
-      setTimeout(() => setIsCopied(false), 2000); 
+      setIsCopied(true); triggerHaptic(); setTimeout(() => setIsCopied(false), 2000); 
     } catch (err) {} 
   };
 
@@ -422,6 +416,7 @@ export function useCalendarLogic() {
     bookingTitle, setBookingTitle,
     bookingDuration, setBookingDuration, bookingStartHour, setBookingStartHour, bookingEndHour, setBookingEndHour, bookingDays, setBookingDays, bookingLeadTime, setBookingLeadTime, weekStartDay, setWeekStartDay, handleSaveBookingSettings,
     days, months, timeMin, timeMax, todayDate, hours,
+    isHapticsEnabled, toggleHaptics, // ★ 追加：Hapticsのステートと切り替え関数
     syncGoogleData, 
     handleToday: () => {}, handlePrevWeek: () => {}, handleNextWeek: () => {},
     openTaskEditModal, handleUpdateTask, handleDeleteTask, handleToggleTodo, handleDeleteEvent, handleEventResize,
