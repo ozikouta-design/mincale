@@ -17,7 +17,7 @@ const handler = NextAuth({
       },
     }),
   ],
-  // ★ 追加：明示的にsecretを指定してクラッシュを防ぐ
+  // 明示的にsecretを指定してクラッシュを防ぐ
   secret: process.env.NEXTAUTH_SECRET,
   
   callbacks: {
@@ -25,7 +25,6 @@ const handler = NextAuth({
       console.log("=== 🔑 Googleログインコールバック開始 ===");
       
       try {
-        // ★ 変更：初期化を関数の「中」に移動し、確実に環境変数を読み込む
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
         
@@ -37,8 +36,16 @@ const handler = NextAuth({
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         
         if (account && user.email) {
-          const defaultSlug = user.email.split("@")[0].replace(/\./g, '-');          
-          // 1. プロフィールの保存
+          // ★ 安全なslug（URL）を自動生成するロジック
+          // 英数字以外をハイフンに変換し、URLとして不適切な形式を徹底的に排除
+          const rawSlug = user.email.split("@")[0];
+          const safeSlug = rawSlug
+            .toLowerCase()                 // 小文字に統一
+            .replace(/[^a-z0-9]/g, '-')    // 英数字以外（ドットや記号）をすべてハイフンに置換
+            .replace(/-+/g, '-')           // 連続するハイフンを1つにまとめる
+            .replace(/^-|-$/g, '');        // 先頭と末尾のハイフンを削除
+
+          // 1. プロフィールの保存（既存のslugがあれば維持、なければ生成したsafeSlugを使用）
           const { data: existing, error: fetchErr } = await supabaseAdmin
             .from("profiles")
             .select("slug")
@@ -52,12 +59,12 @@ const handler = NextAuth({
           const { error: upsertErr } = await supabaseAdmin.from("profiles").upsert({
             email: user.email,
             name: user.name,
-            slug: existing?.slug || defaultSlug,
+            slug: existing?.slug || safeSlug,
           });
 
           if (upsertErr) console.error("❌ プロフィール保存エラー:", upsertErr);
 
-          // 2. トークンの保存（地下金庫へ）
+          // 2. トークンの保存（リフレッシュトークンを保存）
           if (account.refresh_token) {
             const { error: tokenErr } = await supabaseAdmin.from("user_tokens").upsert({
               email: user.email,
