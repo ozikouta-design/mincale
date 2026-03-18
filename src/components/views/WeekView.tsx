@@ -8,13 +8,16 @@ interface WeekViewProps {
   handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void; handleEventClick: (ev: any, e: React.MouseEvent) => void;
   weekScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleWeekScroll: () => void; weekGridRef: React.RefObject<HTMLDivElement | null>;
   resizingEvent: any; setResizingEvent: (evt: any) => void; weekStartDay: number;
+  // ★ 追加: タッチドラッグ開始ハンドラ
+  handleTouchEventDragStart?: (eventId: any, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => void;
 }
 
 export default function WeekView({
   days, hours, currentHourExact, accentColor, hourHeight, dayWidth,
   selectedMemberIds, members, events, eventLayouts,
   selection, setSelection, dragOverSlot, setDragOverSlot, handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
-  weekScrollContainerRef, handleWeekScroll, weekGridRef, resizingEvent, setResizingEvent, weekStartDay
+  weekScrollContainerRef, handleWeekScroll, weekGridRef, resizingEvent, setResizingEvent, weekStartDay,
+  handleTouchEventDragStart,
 }: WeekViewProps) {
   return (
     <div className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative snap-x snap-mandatory scroll-pl-16" ref={weekScrollContainerRef} onScroll={handleWeekScroll} style={{ scrollbarWidth: 'none' }}>
@@ -56,16 +59,37 @@ export default function WeekView({
               {events.filter(ev => ev.dayIndex === day.dayIndex && selectedMemberIds.includes(ev.memberId)).map((event, idx) => {
                 const member = members.find(m => m.id === event.memberId); const layoutKey = `${event.id}-${event.memberId}`; const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 }; const widthPct = 100 / layout.totalColumns; const leftPct = (layout.column * widthPct);
                 const isResizing = resizingEvent?.eventId === event.id; const displayDuration = isResizing ? resizingEvent.currentDuration : event.duration;
+                const eventColor = event.colorHex || member?.colorHex || accentColor;
                 
                 return (
-                  <div key={`${event.id}-${idx}`} draggable={!isResizing} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }} onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }} onClick={(e) => { if (!isResizing) handleEventClick(event, e); }} 
+                  <div key={`${event.id}-${idx}`}
+                    draggable={!isResizing}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
+                    onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; setDragOverSlot(null); }}
+                    onClick={(e) => { if (!isResizing) handleEventClick(event, e); }}
+                    // ★ 追加: タッチドラッグ開始
+                    onTouchStart={(e) => {
+                      if (isResizing) return;
+                      e.stopPropagation();
+                      const touch = e.touches[0];
+                      handleTouchEventDragStart?.(event.id, event.isGoogle, event.memberId, touch.clientX, touch.clientY, event.title, eventColor);
+                    }}
                     className={`absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'} flex flex-col items-start`} 
-                    style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: event.colorHex || member?.colorHex || accentColor }}>
+                    style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: eventColor }}>
                     
-                    {/* ★ 修正：truncateを外し、break-words whitespace-normal overflow-hidden で折り返し表示を復元 */}
                     <div className="font-semibold text-[10px] md:text-[11px] leading-tight break-words whitespace-normal w-full overflow-hidden">{event.title}</div>
                     
-                    <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/20 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId }); }} />
+                    {/* ★ 修正: onMouseDown + onTouchStart でリサイズ開始 */}
+                    <div
+                      className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize hover:bg-black/20 z-20 touch-none"
+                      onMouseDown={(e) => { e.stopPropagation(); setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId }); }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault(); // スクロール抑制
+                        setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.touches[0].clientY, currentDuration: event.duration, memberId: event.memberId });
+                      }}
+                    />
                   </div>
                 );
               })}
