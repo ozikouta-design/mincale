@@ -37,8 +37,7 @@ const handler = NextAuth({
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         
         if (account && user.email) {
-          const defaultSlug = user.email.split("@")[0]; 
-          
+          const defaultSlug = user.email.split("@")[0].replace(/\./g, '-');          
           // 1. プロフィールの保存
           const { data: existing, error: fetchErr } = await supabaseAdmin
             .from("profiles")
