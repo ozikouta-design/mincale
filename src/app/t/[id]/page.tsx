@@ -52,23 +52,73 @@ export default function PublicBookingPage() {
   }, [hostId]);
 
   useEffect(() => {
-    const fetchAvailability = async () => {
+    // ★変更：isBackgroundフラグを追加（裏側でこっそり更新する時は画面をチラつかせない）
+    const fetchAvailability = async (isBackground: boolean = false) => {
       if (!hostSettings) return;
       const targetId = hostSettings.id || hostSettings.email;
-      if (!targetId) { setIsLoadingCalendar(false); return; }
+      if (!targetId) { 
+        if (!isBackground) setIsLoadingCalendar(false); 
+        return; 
+      }
 
-      setIsLoadingCalendar(true);
+      if (!isBackground) setIsLoadingCalendar(true);
       try {
         const startDt = new Date(gridStartDate); startDt.setHours(0,0,0,0);
         const endDt = new Date(gridStartDate); endDt.setDate(endDt.getDate() + 30); endDt.setHours(23,59,59,999);
 
         const { data, error } = await supabase.from('bookings').select('start_time, end_time').eq('profile_id', targetId).gte('start_time', startDt.toISOString()).lte('start_time', endDt.toISOString());
         if (error) throw error;
-        if (data) setBusySlots(data.map(b => ({ start: b.start_time, end: b.end_time })));
-      } catch (err) { console.error("空き時間取得エラー:", err); } 
-      finally { setIsLoadingCalendar(false); }
+        
+        let allBusySlots = data ? data.map(b => ({ start: b.start_time, end: b.end_time })) : [];
+
+        if (hostSettings.email) {
+          try {
+            const res = await fetch('/api/availability', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                hostEmail: hostSettings.email, 
+                timeMin: startDt.toISOString(), 
+                timeMax: endDt.toISOString() 
+              })
+            });
+            if (res.ok) {
+              const result = await res.json();
+              if (result.busy && Array.isArray(result.busy)) {
+                allBusySlots = [...allBusySlots, ...result.busy];
+              }
+            }
+          } catch (apiErr) {
+            console.error("Google空き時間取得エラー:", apiErr);
+          }
+        }
+
+        setBusySlots(allBusySlots);
+      } catch (err) { 
+        console.error("空き時間取得エラー:", err); 
+      } finally { 
+        if (!isBackground) setIsLoadingCalendar(false); 
+      }
     };
+
+    // 初回の読み込み
     fetchAvailability();
+
+    // ★追加1：30秒に1回、裏側で自動的にカレンダーの空き状況を再チェックする（ポーリング）
+    const intervalId = setInterval(() => {
+      fetchAvailability(true);
+    }, 30000);
+
+    // ★追加2：ユーザーが別のタブ（Googleカレンダーなど）から戻ってきた瞬間に即座に更新する
+    const handleFocus = () => {
+      fetchAvailability(true);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [gridStartDate, hostSettings]);
 
   const displayDays = useMemo(() => {
@@ -137,7 +187,6 @@ export default function PublicBookingPage() {
     const startDt = new Date(selectedDate); startDt.setHours(hours, minutes, 0, 0);
     const endDt = new Date(startDt.getTime() + (hostSettings?.duration || 30) * 60000);
 
-    // ★ 修正：APIを呼び出して、Googleカレンダー同期とメール送信を実行！
     try {
       const res = await fetch('/api/book', {
         method: 'POST',
