@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, memo } from "react";
+import React, { useState, useEffect, memo } from "react";
 import {
   X, ListTodo, Settings, Plus, GripVertical, CheckCircle2, Circle,
-  Trash2, Pencil, Folder, Calendar as CalendarIcon, Save, Zap, RefreshCw,
+  Trash2, Pencil, Folder, Calendar as CalendarIcon, Save, Zap, RefreshCw, Bell,
 } from "lucide-react";
 import { useCalendar } from "@/context/CalendarContext";
 import { Todo } from "@/types";
+import toast from "react-hot-toast";
 
 const RightPanel = memo(function RightPanel() {
   const {
@@ -39,6 +40,33 @@ const RightPanel = memo(function RightPanel() {
   const [editTitle, setEditTitle] = useState("");
   const [editProject, setEditProject] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
+
+  // ★ 通知用ステート
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [notifyTiming, setNotifyTiming] = useState(10);
+
+  useEffect(() => {
+    // 通知権限の初期確認
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setPushEnabled(Notification.permission === "granted");
+    }
+  }, []);
+
+  const handlePushToggle = async (checked: boolean) => {
+    if (checked && "Notification" in window) {
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") {
+        setPushEnabled(true);
+        toast.success("通知をオンにしました");
+        new Notification("みんカレ", { body: "通知が有効になりました" });
+      } else {
+        toast.error("ブラウザ設定で通知がブロックされています");
+        setPushEnabled(false);
+      }
+    } else {
+      setPushEnabled(false);
+    }
+  };
 
   const startInlineEdit = (todo: Todo) => {
     setEditingId(todo.id);
@@ -183,6 +211,36 @@ const RightPanel = memo(function RightPanel() {
 
         {activeTab === "settings" && (
           <div className="space-y-6 pb-8">
+            {/* ★ 追加：通知設定セクション */}
+            <div>
+              <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2 flex items-center">
+                <Bell className="w-4 h-4 mr-1.5 text-blue-500" />アプリ通知設定
+              </h3>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-xs font-bold text-gray-800 mb-0.5">プッシュ通知</p>
+                    <p className="text-[10px] text-gray-500 leading-tight">予定が近づくと通知します</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={pushEnabled} onChange={(e) => handlePushToggle(e.target.checked)} />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all shadow-inner" style={pushEnabled ? { backgroundColor: accentColor } : {}}></div>
+                  </label>
+                </div>
+                {pushEnabled && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 mb-2">通知タイミング</p>
+                    <select value={notifyTiming} onChange={(e) => setNotifyTiming(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg focus:border-blue-500 p-2 font-medium outline-none">
+                      <option value={5}>5分前</option>
+                      <option value={10}>10分前</option>
+                      <option value={30}>30分前</option>
+                      <option value={60}>1時間前</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div>
               <h3 className="text-sm font-black text-gray-800 mb-4 border-b border-gray-200 pb-2 flex items-center">
                 <Zap className="w-4 h-4 mr-1.5 text-yellow-500" />パフォーマンス設定
@@ -198,7 +256,6 @@ const RightPanel = memo(function RightPanel() {
                   </select>
                   <p className="text-[10px] text-gray-400 mt-2 leading-tight">一度に読み込む期間を短くすると表示速度が向上します。</p>
                 </div>
-                {/* ★ 「今すぐ再同期」ボタン */}
                 <button
                   onClick={() => syncGoogleData()}
                   disabled={isSyncing}
