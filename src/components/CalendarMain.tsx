@@ -26,16 +26,22 @@ const CalendarMain = memo(function CalendarMain() {
   const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number; startHour: number } | null>(null);
   const [selection, setSelection] = useState<{ dayIndex: number; colIndex: number; memberId?: string; startHour: number; currentHour: number } | null>(null);
   const [resizingEvent, setResizingEvent] = useState<{ eventId: string; initialDuration: number; startY: number; currentDuration: number; memberId: string } | null>(null);
+  
+  // ★変更: isPending（長押し待機中）というステータスを追加
   const [touchDragInfo, setTouchDragInfo] = useState<{
     eventId: string; memberId: string; isGoogle: boolean;
     ghostX: number; ghostY: number; title: string; color: string;
     isDragging: boolean; initX: number; initY: number;
+    isPending: boolean; 
   } | null>(null);
 
   const mainWrapperRef = useRef<HTMLDivElement>(null);
   const weekScrollContainerRef = useRef<HTMLDivElement>(null);
   const dayScrollContainerRef = useRef<HTMLDivElement>(null);
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // ★追加: 長押し判定用のタイマー
+  const touchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -79,12 +85,20 @@ const CalendarMain = memo(function CalendarMain() {
 
   const handleTouchEventDragStart = useCallback(
     (eventId: string, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => {
-      setTouchDragInfo({ eventId, memberId, isGoogle, ghostX: clientX, ghostY: clientY, title, color, isDragging: false, initX: clientX, initY: clientY });
+      // 最初は Pending（待機状態）として登録
+      setTouchDragInfo({ eventId, memberId, isGoogle, ghostX: clientX, ghostY: clientY, title, color, isDragging: false, initX: clientX, initY: clientY, isPending: true });
+
+      // ★ 400ms の長押しで Pending を解除し、ドラッグモードに移行する
+      touchTimerRef.current = setTimeout(() => {
+        setTouchDragInfo((prev) => prev ? { ...prev, isPending: false } : null);
+        // 長押し成功の合図として軽く振動させる
+        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(30);
+      }, 400);
     },
     []
   );
 
-  // ★ イベントのレイアウト計算（重なり検知）
+  // イベントのレイアウト計算（重なり検知）
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number; totalColumns: number }> = {};
     const visibleEvents = events.filter((e) => selectedMemberIds.includes(e.memberId) && !e.isAllDay);
@@ -156,7 +170,6 @@ const CalendarMain = memo(function CalendarMain() {
     }
   };
 
-  // 初期スクロール位置
   useEffect(() => {
     const DEFAULT_SCROLL_HOUR = 9;
     const align = () => {
@@ -200,7 +213,6 @@ const CalendarMain = memo(function CalendarMain() {
     if (months[idx]) setCurrentMonthYear(`${months[idx].year}年 ${months[idx].month + 1}月`);
   };
 
-  // マウス + タッチ（リサイズ / 範囲選択）
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (resizingEvent) {
@@ -252,22 +264,43 @@ const CalendarMain = memo(function CalendarMain() {
     };
   }, [selection, resizingEvent, handleRangeSelect, handleEventResize, hourHeight]);
 
-  // タッチドラッグ（イベント移動）
+  // ★変更: タッチドラッグ（イベント移動）のロジック
   useEffect(() => {
     if (!touchDragInfo) return;
+
     const DRAG_THRESHOLD = 8;
+
     const onTouchMoveDrag = (e: TouchEvent) => {
       const touch = e.touches[0];
       const dx = touch.clientX - touchDragInfo.initX;
       const dy = touch.clientY - touchDragInfo.initY;
-      if (!touchDragInfo.isDragging && Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
-      e.preventDefault();
+
+      // ★ 長押し判定中（Pending）の処理
+      if (touchDragInfo.isPending) {
+        // 指が一定以上動いたら「スクロール目的」と判定してドラッグ準備をキャンセル
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+          if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+          setTouchDragInfo(null);
+        }
+        return; // preventDefault() を呼ばないので、ネイティブのスクロールが通常通り機能する
+      }
+
+      // ★ 長押し完了後（ドラッグモード）の処理
+      e.preventDefault(); // ここで画面のスクロールを完全に止める
       const slot = getSlotFromTouch(touch.clientX, touch.clientY);
       if (slot) setDragOverSlot({ dayIndex: slot.dayIndex, startHour: Math.floor(slot.startHour) });
       setTouchDragInfo((prev) => prev ? { ...prev, ghostX: touch.clientX, ghostY: touch.clientY, isDragging: true } : null);
     };
+
     const onTouchEndDrag = (e: TouchEvent) => {
-      if (!touchDragInfo.isDragging) { setTouchDragInfo(null); setDragOverSlot(null); return; }
+      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+
+      if (!touchDragInfo.isDragging) {
+        setTouchDragInfo(null);
+        setDragOverSlot(null);
+        return;
+      }
+
       const touch = e.changedTouches[0];
       const slot = getSlotFromTouch(touch.clientX, touch.clientY);
       if (slot) {
@@ -281,11 +314,21 @@ const CalendarMain = memo(function CalendarMain() {
       setTouchDragInfo(null);
       setDragOverSlot(null);
     };
+
+    const onTouchCancelDrag = () => {
+      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+      setTouchDragInfo(null);
+      setDragOverSlot(null);
+    };
+
     window.addEventListener("touchmove", onTouchMoveDrag, { passive: false });
     window.addEventListener("touchend", onTouchEndDrag);
+    window.addEventListener("touchcancel", onTouchCancelDrag);
+
     return () => {
       window.removeEventListener("touchmove", onTouchMoveDrag);
       window.removeEventListener("touchend", onTouchEndDrag);
+      window.removeEventListener("touchcancel", onTouchCancelDrag);
     };
   }, [touchDragInfo, getSlotFromTouch, handleDrop]);
 
