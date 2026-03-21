@@ -77,11 +77,25 @@ export function useDragDropLogic({
       if (dragType === "todo") {
         const draggedTodoId = parseInt(e.dataTransfer.getData("todoId"), 10);
         const targetTodo = todos.find((t) => t.id === draggedTodoId);
-        const targetCalendarId = newEventMemberId || members[0]?.id || "";
-        if (!targetTodo || !targetCalendarId) return;
+
+        // ★ primaryカレンダー（email）を最優先フォールバックに追加
+        const primaryMember = members.find((m) => m.primary) || members[0];
+        const targetCalendarId = newEventMemberId || primaryMember?.id || "";
+
+        if (!targetTodo) {
+          toast.error("タスクが見つかりません（再読み込みしてください）");
+          return;
+        }
+        if (!targetCalendarId) {
+          toast.error("保存先カレンダーが見つかりません。Googleでログインし直してください");
+          return;
+        }
 
         const accessToken = session?.accessToken;
-        if (!accessToken) return;
+        if (!accessToken) {
+          toast.error("認証が切れています。一度ログアウト→再ログインしてください");
+          return;
+        }
 
         const h = Math.floor(startHour);
         const m = Math.round((startHour % 1) * 60);

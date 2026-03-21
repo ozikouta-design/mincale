@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import toast from "react-hot-toast";
 import { getDayIndex } from "@/app/page";
 import CalendarHeader from "./CalendarHeader";
 import DayView from "./views/DayView";
@@ -69,16 +70,21 @@ const CalendarMain = memo(function CalendarMain() {
 
   const getSlotFromTouch = useCallback(
     (clientX: number, clientY: number): { dayIndex: number; colIndex: number; startHour: number } | null => {
+      // monthビューはtimeグリッドを持たないため非対応
+      if (viewMode === "month") return null;
       const scrollRef = viewMode === "week" ? weekScrollContainerRef : dayScrollContainerRef;
       if (!scrollRef.current) return null;
       const rect = scrollRef.current.getBoundingClientRect();
       const colWidth = viewMode === "week" ? weekDayWidth : singleDayWidth;
       const relX = clientX - rect.left + scrollRef.current.scrollLeft - TIME_AXIS_WIDTH_PX;
       const relY = clientY - rect.top + scrollRef.current.scrollTop - CALENDAR_HEADER_HEIGHT;
-      if (relX < 0 || relY < 0) return null;
-      const colIndex = Math.floor(relX / colWidth);
+      // ★ 少しの余裕（16px）を持たせる: ヘッダーぎりぎりやサイドバーぎりぎりでも拾えるように
+      if (relX < -16 || relY < -16) return null;
+      const clampedRelX = Math.max(0, relX);
+      const clampedRelY = Math.max(0, relY);
+      const colIndex = Math.floor(clampedRelX / colWidth);
       if (colIndex < 0 || colIndex >= days.length) return null;
-      const startHour = Math.max(0, Math.min(23.75, relY / hourHeight));
+      const startHour = Math.max(0, Math.min(23.75, clampedRelY / hourHeight));
       return { dayIndex: days[colIndex].dayIndex, colIndex, startHour: Math.round(startHour * 4) / 4 };
     },
     [viewMode, weekDayWidth, singleDayWidth, days, hourHeight]
@@ -496,7 +502,6 @@ const CalendarMain = memo(function CalendarMain() {
       const touch = e.changedTouches[0];
       const slot = getSlotFromTouch(touch.clientX, touch.clientY);
       if (slot && todoTouchDrag) {
-        // マウスのdropイベントを模倣してtodo→eventに変換
         const { todoId } = todoTouchDrag;
         const fake = {
           preventDefault: () => {},
@@ -505,6 +510,9 @@ const CalendarMain = memo(function CalendarMain() {
           },
         } as unknown as React.DragEvent<HTMLDivElement>;
         handleDrop(fake, slot.dayIndex, slot.startHour);
+      } else if (todoTouchDrag && !slot) {
+        // ★ カレンダーの時間グリッド外にドロップされた場合
+        toast.error("カレンダーの時間帯にドロップしてください");
       }
       setTodoTouchDrag(null);
       setDragOverSlot(null);
