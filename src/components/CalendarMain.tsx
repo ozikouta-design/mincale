@@ -532,6 +532,8 @@ const CalendarMain = memo(function CalendarMain() {
       window.removeEventListener("touchcancel", onCancel);
     };
   }, [todoTouchDrag, getSlotFromTouch, handleDrop, setTodoTouchDrag]);
+
+  return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative select-none bg-white">
       <CalendarHeader
         displayMonthYear={currentMonthYear}
