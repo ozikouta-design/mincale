@@ -50,6 +50,15 @@ export function useCalendarLogic() {
     triggerHaptic();
   };
 
+  // ---------- Todo タッチドラッグ（iPhone長押し→カレンダードロップ）----------
+  const [todoTouchDrag, setTodoTouchDrag] = useState<{
+    todoId: number;
+    title: string;
+    ghostX: number;
+    ghostY: number;
+    isDragging: boolean;
+  } | null>(null);
+
   // ---------- UI state ----------
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const [activeTab, setActiveTab] = useState<"todo" | "settings">("todo");
@@ -330,6 +339,7 @@ export function useCalendarLogic() {
     handleCreateGroupClick, handleEditGroupClick,
     handleCloseGroupModal, handleSaveGroup, handleDeleteGroup,
     getCommonFreeTimeText, handleCopyToClipboard,
+    todoTouchDrag, setTodoTouchDrag,
     ...todoLogic,
     ...eventLogic,
     ...dragDropLogic,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, memo } from "react";
+import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import {
   X, ListTodo, Settings, Plus, GripVertical, CheckCircle2, Circle,
   Trash2, Pencil, Folder, Calendar as CalendarIcon, Save, Zap, RefreshCw, Bell,
@@ -28,6 +28,7 @@ const RightPanel = memo(function RightPanel() {
     bookingLeadTime, setBookingLeadTime,
     weekStartDay, setWeekStartDay,
     handleSaveBookingSettings,
+    todoTouchDrag, setTodoTouchDrag,
     isHapticsEnabled, toggleHaptics,
     syncMonths, handleSyncMonthsChange,
     syncGoogleData, isSyncing,
@@ -44,6 +45,50 @@ const RightPanel = memo(function RightPanel() {
   // ★ 通知用ステート
   const [pushEnabled, setPushEnabled] = useState(false);
   const [notifyTiming, setNotifyTiming] = useState(10);
+
+  // ★ Todo長押しドラッグ用タイマー ref
+  const todoLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const todoTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const LONG_PRESS_MS = 500;
+
+  /** Todo カードへの長押し開始 */
+  const handleTodoTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>, todo: Todo) => {
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+
+    todoLongPressTimerRef.current = setTimeout(() => {
+      // バイブレーション
+      if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(40);
+      setTodoTouchDrag({
+        todoId: todo.id,
+        title: todo.title,
+        ghostX: startX,
+        ghostY: startY,
+        isDragging: true,
+      });
+      // パネルを自動クローズして、カレンダーへドロップしやすくする
+      setIsRightPanelOpen(false);
+    }, LONG_PRESS_MS);
+  }, [setTodoTouchDrag, setIsRightPanelOpen]);
+
+  /** 長押し前にキャンセル（指を動かしたとき） */
+  const handleTodoTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>, startX: number, startY: number) => {
+    if (!todoLongPressTimerRef.current) return;
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(todoLongPressTimerRef.current);
+      todoLongPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTodoTouchEnd = useCallback(() => {
+    if (todoLongPressTimerRef.current) {
+      clearTimeout(todoLongPressTimerRef.current);
+      todoLongPressTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     // 通知権限の初期確認
@@ -163,8 +208,35 @@ const RightPanel = memo(function RightPanel() {
                     </div>
                   </div>
                 ) : (
-                  <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo.id)} className="group bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all cursor-grab active:cursor-grabbing flex gap-3 relative overflow-hidden">
+                  <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo.id)}
+                    onTouchStart={(e) => {
+                      // ★ iPhone長押し: タッチ開始時にタッチ座標を記録してタイマー起動
+                      const touch = e.touches[0];
+                      const sx = touch.clientX, sy = touch.clientY;
+                      todoTouchStartRef.current = { x: sx, y: sy };
+                      if (todoLongPressTimerRef.current) clearTimeout(todoLongPressTimerRef.current);
+                      todoLongPressTimerRef.current = setTimeout(() => {
+                        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(40);
+                        setTodoTouchDrag({ todoId: todo.id, title: todo.title, ghostX: sx, ghostY: sy, isDragging: true });
+                        setIsRightPanelOpen(false);
+                      }, LONG_PRESS_MS);
+                    }}
+                    onTouchMove={(e) => {
+                      if (!todoLongPressTimerRef.current) return;
+                      const t = e.touches[0];
+                      const start = todoTouchStartRef.current;
+                      if (start && (Math.abs(t.clientX - start.x) > 10 || Math.abs(t.clientY - start.y) > 10)) {
+                        clearTimeout(todoLongPressTimerRef.current);
+                        todoLongPressTimerRef.current = null;
+                      }
+                    }}
+                    onTouchEnd={handleTodoTouchEnd}
+                    className="group bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all cursor-grab active:cursor-grabbing flex gap-3 relative overflow-hidden select-none">
+                    {/* ★ 長押しヒントバー */}
                     <div className="absolute left-0 top-0 bottom-0 w-1.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: accentColor }} />
+                    <div className="absolute top-1 right-1 opacity-0 group-active:opacity-100 md:hidden transition-opacity">
+                      <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">長押しでドラッグ</span>
+                    </div>
                     <div className="flex flex-col items-center mt-0.5 shrink-0">
                       <button onClick={(e) => handleToggleTodo(todo.id, todo.is_completed, e)} className="text-gray-300 hover:text-blue-500 transition-colors"><Circle className="w-5 h-5" /></button>
                       <GripVertical className="w-4 h-4 text-gray-300 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" />

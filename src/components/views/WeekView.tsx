@@ -3,6 +3,7 @@ import {
   TIME_AXIS_WIDTH_PX, 
   CALENDAR_HEADER_HEIGHT 
 } from "@/constants/calendar";
+import { useTouchAxisScroll } from "@/hooks/useTouchAxisScroll";
 
 interface WeekViewProps {
   days: any[]; hours: string[]; currentHourExact: number; accentColor: string; hourHeight: number; dayWidth: number;
@@ -22,6 +23,10 @@ export default function WeekView({
   weekScrollContainerRef, handleWeekScroll, resizingEvent, setResizingEvent, weekStartDay,
   handleTouchEventDragStart,
 }: WeekViewProps) {
+
+  // ★iPhone対応: 上下なら上下、左右なら左右に軸をロック
+  useTouchAxisScroll(weekScrollContainerRef);
+
   return (
     <div 
       className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative snap-x snap-mandatory scroll-pl-16" 
@@ -101,6 +106,7 @@ export default function WeekView({
                 
                 return (
                   <div key={`${event.id}-${idx}`}
+                    data-no-axis-lock
                     draggable={!isResizing}
                     onMouseDown={(e) => e.stopPropagation()}
                     onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
@@ -112,7 +118,7 @@ export default function WeekView({
                       const touch = e.touches[0];
                       handleTouchEventDragStart?.(event.id, event.isGoogle, event.memberId, touch.clientX, touch.clientY, event.title, eventColor);
                     }}
-                    className={`absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'} flex flex-col items-start`} 
+                    className={`calendar-event absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'} flex flex-col items-start`} 
                     style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: eventColor }}>
                     
                     <div className="font-semibold text-[10px] md:text-[11px] leading-tight break-words whitespace-normal w-full overflow-hidden">{event.title}</div>

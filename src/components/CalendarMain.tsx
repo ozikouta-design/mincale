@@ -21,6 +21,7 @@ const CalendarMain = memo(function CalendarMain() {
     handleEventClick, handleEventDragStart, handleEventResize,
     setIsSidebarOpen, setIsRightPanelOpen,
     accentColor, hourHeight, weekStartDay,
+    todoTouchDrag, setTodoTouchDrag,
   } = useCalendar();
 
   const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number; startHour: number } | null>(null);
@@ -389,7 +390,51 @@ const CalendarMain = memo(function CalendarMain() {
     };
   }, [touchDragInfo, getSlotFromTouch, handleDrop]);
 
-  return (
+  // ★機能3: TodoカードのiPhone長押しドラッグ → カレンダーへドロップ
+  useEffect(() => {
+    if (!todoTouchDrag?.isDragging) return;
+
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      setTodoTouchDrag((prev) => prev ? { ...prev, ghostX: touch.clientX, ghostY: touch.clientY } : null);
+      const slot = getSlotFromTouch(touch.clientX, touch.clientY);
+      if (slot) setDragOverSlot({ dayIndex: slot.dayIndex, startHour: Math.floor(slot.startHour) });
+      else setDragOverSlot(null);
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      const touch = e.changedTouches[0];
+      const slot = getSlotFromTouch(touch.clientX, touch.clientY);
+      if (slot && todoTouchDrag) {
+        // マウスのdropイベントを模倣してtodo→eventに変換
+        const { todoId } = todoTouchDrag;
+        const fake = {
+          preventDefault: () => {},
+          dataTransfer: {
+            getData: (k: string) => ({ type: "todo", todoId: todoId.toString() } as Record<string, string>)[k] ?? "",
+          },
+        } as unknown as React.DragEvent<HTMLDivElement>;
+        handleDrop(fake, slot.dayIndex, slot.startHour);
+      }
+      setTodoTouchDrag(null);
+      setDragOverSlot(null);
+    };
+
+    const onCancel = () => {
+      setTodoTouchDrag(null);
+      setDragOverSlot(null);
+    };
+
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchcancel", onCancel);
+    return () => {
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      window.removeEventListener("touchcancel", onCancel);
+    };
+  }, [todoTouchDrag, getSlotFromTouch, handleDrop, setTodoTouchDrag]);
     <main className="flex-1 flex flex-col min-w-0 z-0 relative select-none bg-white">
       <CalendarHeader
         displayMonthYear={currentMonthYear}
@@ -460,6 +505,27 @@ const CalendarMain = memo(function CalendarMain() {
           }}
         >
           {touchDragInfo.title}
+        </div>
+      )}
+
+      {/* ★ TodoカードのiPhone長押しドラッグ中のゴーストカード */}
+      {todoTouchDrag?.isDragging && (
+        <div
+          className="fixed pointer-events-none z-[9999] rounded-xl px-3 py-2 text-white text-xs shadow-2xl border border-white/30 flex items-center gap-1.5"
+          style={{
+            left: todoTouchDrag.ghostX - 60,
+            top: todoTouchDrag.ghostY - 20,
+            backgroundColor: "#1d4ed8",
+            opacity: 0.92,
+            transform: "scale(1.06) rotate(-1.5deg)",
+            maxWidth: 160,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          <span className="text-[10px]">📋</span>
+          <span className="font-bold truncate">{todoTouchDrag.title}</span>
         </div>
       )}
     </main>

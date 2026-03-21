@@ -3,6 +3,7 @@ import {
   TIME_AXIS_WIDTH_PX, 
   CALENDAR_HEADER_HEIGHT 
 } from "@/constants/calendar";
+import { useTouchAxisScroll } from "@/hooks/useTouchAxisScroll";
 
 interface DayViewProps {
   days: any[]; hours: string[]; currentHourExact: number; accentColor: string; hourHeight: number;
@@ -22,6 +23,9 @@ export default function DayView({
   handleTouchEventDragStart,
 }: DayViewProps) {
   
+  // ★iPhone対応: 上下なら上下、左右なら左右に軸をロック
+  useTouchAxisScroll(dayScrollContainerRef);
+
   const activeMembers = selectedMemberIds.length > 0 ? members.filter(m => selectedMemberIds.includes(m.id)) : [{ id: 'all', name: 'マイカレンダー', colorHex: accentColor, initials: 'マ' }];
 
   return (
@@ -117,6 +121,7 @@ export default function DayView({
 
                     return (
                       <div key={`${event.id}-${idx}`}
+                        data-no-axis-lock
                         draggable={!isResizing}
                         onMouseDown={(e) => e.stopPropagation()}
                         onDragStart={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.transform = 'scale(0.95)'; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
@@ -128,7 +133,7 @@ export default function DayView({
                           const touch = e.touches[0];
                           handleTouchEventDragStart?.(event.id, event.isGoogle, event.memberId, touch.clientX, touch.clientY, event.title, eventColor);
                         }}
-                        className={`absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'} flex flex-col items-start`}
+                        className={`calendar-event absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 ${!isResizing && 'cursor-grab active:cursor-grabbing'} flex flex-col items-start`}
                         style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: eventColor }}>
                         
                         <div className="font-bold text-[10px] md:text-[11px] leading-tight break-words whitespace-normal w-full overflow-hidden">{event.title}</div>
