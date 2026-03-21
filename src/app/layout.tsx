@@ -10,6 +10,15 @@ export const metadata: Metadata = {
   title: "みんカレ",
   description: "直感的なマトリックスUIで、Googleカレンダーと完全同期する最強の日程調整アプリ",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "32x32", type: "image/x-icon" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
