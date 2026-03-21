@@ -14,17 +14,18 @@ interface DayViewProps {
   dayScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleDayScroll: () => void; 
   resizingEvent: any; setResizingEvent: (evt: any) => void; singleDayWidth: number;
   handleTouchEventDragStart?: (eventId: any, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => void;
+  selectionActive?: boolean; // ★ 新規予定枠ドラッグ中はスクロール軸ロックを無効化
 }
 
 export default function DayView({
   days, hours, currentHourExact, accentColor, hourHeight, selectedMemberIds, members, events, eventLayouts,
   selection, setSelection, dragOverSlot, setDragOverSlot, handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
   dayScrollContainerRef, handleDayScroll, resizingEvent, setResizingEvent, singleDayWidth,
-  handleTouchEventDragStart,
+  handleTouchEventDragStart, selectionActive = false,
 }: DayViewProps) {
   
-  // ★iPhone対応: 上下なら上下、左右なら左右に軸をロック
-  useTouchAxisScroll(dayScrollContainerRef);
+  // ★iPhone対応: 新規予定枠ドラッグ中（selectionActive）は軸ロックを外す
+  useTouchAxisScroll(dayScrollContainerRef, !selectionActive);
 
   const activeMembers = selectedMemberIds.length > 0 ? members.filter(m => selectedMemberIds.includes(m.id)) : [{ id: 'all', name: 'マイカレンダー', colorHex: accentColor, initials: 'マ' }];
 

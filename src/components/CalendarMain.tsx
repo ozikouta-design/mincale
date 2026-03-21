@@ -211,6 +211,7 @@ const CalendarMain = memo(function CalendarMain() {
   };
 
   useEffect(() => {
+    // ── マウス操作 ────────────────────────────────────────────────
     const onMouseMove = (e: MouseEvent) => {
       if (resizingEvent) {
         const deltaY = e.clientY - resizingEvent.startY;
@@ -228,13 +229,16 @@ const CalendarMain = memo(function CalendarMain() {
         setResizingEvent(null);
       } else if (selection) {
         const start = Math.min(selection.startHour, selection.currentHour);
-        const end = Math.max(selection.startHour, selection.currentHour);
+        const end   = Math.max(selection.startHour, selection.currentHour);
         let duration = Math.round((end - start) * 4) / 4;
         if (duration < 0.25) duration = 1;
         handleRangeSelect(selection.dayIndex, Math.round(start * 4) / 4, duration);
         setSelection(null);
       }
     };
+
+    // ── タッチ操作：既存イベントのリサイズのみ ────────────────────────
+    // ★ 新規予定の長押しドラッグは下の独立したeffectが担当
     const onTouchMoveResize = (e: TouchEvent) => {
       if (!resizingEvent) return;
       e.preventDefault();
@@ -247,11 +251,14 @@ const CalendarMain = memo(function CalendarMain() {
       handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
       setResizingEvent(null);
     };
+
+    if (resizingEvent) {
+      window.addEventListener("touchmove", onTouchMoveResize, { passive: false });
+      window.addEventListener("touchend", onTouchEndResize);
+    }
     if (selection || resizingEvent) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
-      window.addEventListener("touchmove", onTouchMoveResize, { passive: false });
-      window.addEventListener("touchend", onTouchEndResize);
     }
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
@@ -261,50 +268,132 @@ const CalendarMain = memo(function CalendarMain() {
     };
   }, [selection, resizingEvent, handleRangeSelect, handleEventResize, hourHeight]);
 
-  // ★機能1: 長押しでの予定作成
+  // ★機能1: 長押しでの新規予定作成（Google Calendar風）
+  //
+  // 【Race Condition 修正】
+  // 旧実装の問題:
+  //   タイマー発火 → setSelection(非同期) → React再レンダリング待ち
+  //   → useEffectが再登録される前にtouchmove/touchendが来る
+  //   → 枠が表示されても指を動かしても何も起きない / 指を離しても何も起きない
+  //
+  // 新実装の解決策:
+  //   selectionRef（useRef）で選択状態を同期的に保持。
+  //   touchstart → touchmove → touchend を全て同一effectで完結させ
+  //   Reactの非同期更新に依存しない。
+  //   handleTouchMove を passive:false にしてiOSスクロールを阻止。
   useEffect(() => {
     const wrapper = mainWrapperRef.current;
     if (!wrapper) return;
 
-    let timer: NodeJS.Timeout | null = null;
+    // React stateのsetSelectionとは別に、同期的に参照できるref
+    const selRef = { current: null as { dayIndex: number; colIndex: number; startHour: number; currentHour: number } | null };
+    let longPressTimer: NodeJS.Timeout | null = null;
     let startX = 0, startY = 0;
+    let longPressActivated = false; // タイマーが発火して長押し確定したか
 
     const handleTouchStart = (e: TouchEvent) => {
-      if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.calendar-event') || (e.target as HTMLElement).closest('.modal-content')) return;
-      
-      const touch = e.touches[0];
-      startX = touch.clientX; startY = touch.clientY;
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('button') ||
+        target.closest('.calendar-event') ||
+        target.closest('.modal-content') ||
+        target.closest('[data-no-axis-lock]')
+      ) return;
 
-      timer = setTimeout(() => {
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      longPressActivated = false;
+
+      longPressTimer = setTimeout(() => {
         const slot = getSlotFromTouch(startX, startY);
-        if (slot) {
-           setSelection({ dayIndex: slot.dayIndex, colIndex: slot.colIndex, startHour: slot.startHour, currentHour: slot.startHour + 1 });
-           if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(40);
-        }
+        if (!slot) return;
+
+        longPressActivated = true;
+        const newSel = {
+          dayIndex: slot.dayIndex,
+          colIndex: slot.colIndex,
+          startHour: slot.startHour,
+          currentHour: slot.startHour + 1, // デフォルト1時間
+        };
+        // ★ refに即時反映（Reactの非同期更新を待たない）
+        selRef.current = newSel;
+        // ★ stateも更新（UI表示用）
+        setSelection(newSel);
+        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(40);
       }, 450);
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (timer) {
-         const touch = e.touches[0];
-         if (Math.sqrt(Math.pow(touch.clientX - startX, 2) + Math.pow(touch.clientY - startY, 2)) > 10) {
-           clearTimeout(timer); timer = null;
-         }
+      if (longPressActivated && selRef.current) {
+        // ★ 長押し確定後: iOSスクロールを止めて枠をドラッグ
+        // passive:false でないと e.preventDefault() が呼べない → 下で登録を変更
+        e.preventDefault();
+        const touch = e.touches[0];
+        const slot = getSlotFromTouch(touch.clientX, touch.clientY);
+        if (slot) {
+          selRef.current = { ...selRef.current, currentHour: slot.startHour };
+          setSelection({ ...selRef.current });
+        }
+        return;
+      }
+      // 長押し待機中: 指が動いたらタイマーをキャンセル
+      if (longPressTimer) {
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) > 10) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
       }
     };
 
-    const handleTouchEnd = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 
+      if (longPressActivated && selRef.current) {
+        // ★ 指を離した瞬間に予定を確定 → モーダルを開く
+        const sel = selRef.current;
+        const touch = e.changedTouches[0];
+        const slot = getSlotFromTouch(touch.clientX, touch.clientY);
+        const finalHour = slot ? slot.startHour : sel.currentHour;
+
+        const startHr = Math.min(sel.startHour, finalHour);
+        const endHr   = Math.max(sel.startHour, finalHour);
+        let duration = Math.round((endHr - startHr) * 4) / 4;
+        if (duration < 0.25) duration = 1; // 最低15分
+
+        handleRangeSelect(sel.dayIndex, Math.round(startHr * 4) / 4, duration);
+        setSelection(null);
+        selRef.current = null;
+        longPressActivated = false;
+        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(20);
+      }
+    };
+
+    const handleTouchCancel = () => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (longPressActivated) {
+        setSelection(null);
+        selRef.current = null;
+        longPressActivated = false;
+      }
+    };
+
+    // ★ touchmove だけ passive:false（スクロール阻止のため）
     wrapper.addEventListener('touchstart', handleTouchStart, { passive: true });
-    wrapper.addEventListener('touchmove', handleTouchMove, { passive: true });
+    wrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
     wrapper.addEventListener('touchend', handleTouchEnd, { passive: true });
+    wrapper.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
     return () => {
+      if (longPressTimer) clearTimeout(longPressTimer);
       wrapper.removeEventListener('touchstart', handleTouchStart);
       wrapper.removeEventListener('touchmove', handleTouchMove);
       wrapper.removeEventListener('touchend', handleTouchEnd);
+      wrapper.removeEventListener('touchcancel', handleTouchCancel);
     };
-  }, [getSlotFromTouch]);
+  }, [getSlotFromTouch, handleRangeSelect]);
 
   // ★機能2: タッチドラッグの移動軸ロック
   useEffect(() => {
@@ -459,6 +548,7 @@ const CalendarMain = memo(function CalendarMain() {
             singleDayWidth={singleDayWidth}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
             handleTouchEventDragStart={handleTouchEventDragStart}
+            selectionActive={!!selection}
           />
         )}
         {viewMode === "week" && (
@@ -474,6 +564,7 @@ const CalendarMain = memo(function CalendarMain() {
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
             weekStartDay={weekStartDay} dayWidth={weekDayWidth}
             handleTouchEventDragStart={handleTouchEventDragStart}
+            selectionActive={!!selection}
           />
         )}
         {viewMode === "month" && (
