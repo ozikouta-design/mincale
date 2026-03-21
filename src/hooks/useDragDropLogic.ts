@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { CalendarEvent, Todo } from "@/types";
+import { CalendarEvent, Todo, Member } from "@/types";
 import { formatLocalISO, GOOGLE_COLORS, getDayIndex } from "./useEventLogic";
 import toast from "react-hot-toast";
 import type { Session } from "next-auth";
@@ -14,7 +14,7 @@ interface DragDropDeps {
   selectedMemberIds: string[];
   setSelectedMemberIds: React.Dispatch<React.SetStateAction<string[]>>;
   newEventMemberId: string;
-  members: { id: string }[];
+  members: Member[];
   setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
