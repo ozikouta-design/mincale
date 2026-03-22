@@ -12,7 +12,7 @@ interface WeekViewProps {
   handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
   handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void; handleEventClick: (ev: any, e: React.MouseEvent) => void;
   weekScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleWeekScroll: () => void;
-  resizingEvent: any; setResizingEvent: (evt: any) => void; weekStartDay: number;
+  resizingEvent: any; setResizingEvent: (evt: any) => void;
   handleTouchEventDragStart?: (eventId: any, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => void;
   selectionActive?: boolean; // ★ 新規予定枠ドラッグ中はスクロール軸ロックを無効化
 }
@@ -21,7 +21,7 @@ export default function WeekView({
   days, hours, currentHourExact, accentColor, hourHeight, dayWidth,
   selectedMemberIds, members, events, eventLayouts,
   selection, setSelection, dragOverSlot, setDragOverSlot, handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
-  weekScrollContainerRef, handleWeekScroll, resizingEvent, setResizingEvent, weekStartDay,
+  weekScrollContainerRef, handleWeekScroll, resizingEvent, setResizingEvent,
   handleTouchEventDragStart, selectionActive = false,
 }: WeekViewProps) {
 
@@ -29,10 +29,10 @@ export default function WeekView({
   useTouchAxisScroll(weekScrollContainerRef, !selectionActive);
 
   return (
-    <div 
-      className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative snap-x snap-mandatory scroll-pl-16" 
-      ref={weekScrollContainerRef} 
-      onScroll={handleWeekScroll} 
+    <div
+      className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative"
+      ref={weekScrollContainerRef}
+      onScroll={handleWeekScroll}
       style={{ scrollbarWidth: 'none' }}
     >
       <div className="flex flex-col min-w-max">
@@ -50,7 +50,7 @@ export default function WeekView({
             const allDayEvents = events.filter(ev => ev.dayIndex === day.dayIndex && ev.isAllDay && selectedMemberIds.includes(ev.memberId));
 
             return (
-              <div key={day.dayIndex} className={`shrink-0 py-2 md:py-3 border-r border-gray-100 flex flex-col ${day.date.getDay() === weekStartDay ? 'snap-start snap-always' : ''}`} style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + '10' } : {}) }}>
+              <div key={day.dayIndex} className="shrink-0 py-2 md:py-3 border-r border-gray-100 flex flex-col" style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + '10' } : {}) }}>
                 <div className={`w-8 h-8 md:w-auto md:h-auto mx-auto rounded-full flex flex-col items-center justify-center mb-1.5 shrink-0 ${day.isToday ? 'shadow-sm' : ''}`} style={day.isToday ? { backgroundColor: accentColor } : {}}>
                   <span className={`text-[12px] md:text-sm font-bold md:font-medium md:px-3 md:py-1 md:rounded-full ${textColor}`} style={day.isToday ? { color: 'white' } : {}}>
                     <span className="md:hidden">{day.label}</span>
@@ -87,7 +87,7 @@ export default function WeekView({
             </div>
           )}
           {days.map((day, colIndex) => (
-            <div key={day.dayIndex} className={`shrink-0 border-r border-gray-100 relative ${day.date.getDay() === weekStartDay ? 'snap-start snap-always' : ''}`} style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + '05' } : {}) }}>
+            <div key={day.dayIndex} data-day-index={day.dayIndex} className="shrink-0 border-r border-gray-100 relative" style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + '05' } : {}) }}>
               {hours.map((_, i) => (
                 <div key={i} className={`border-b border-gray-100 cursor-crosshair hover:bg-gray-50/50 ${dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? 'ring-2 ring-inset z-20 shadow-inner' : ''}`} style={{ height: hourHeight, ...(dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i ? { backgroundColor: accentColor + '20', borderColor: accentColor } : {}) }}
                   onMouseDown={(e) => { 

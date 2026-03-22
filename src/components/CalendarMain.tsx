@@ -43,6 +43,7 @@ const CalendarMain = memo(function CalendarMain() {
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const touchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const weekScrollSnapTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -51,7 +52,9 @@ const CalendarMain = memo(function CalendarMain() {
   }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 0
+  );
   useEffect(() => {
     if (!mainWrapperRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -180,17 +183,23 @@ const CalendarMain = memo(function CalendarMain() {
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
+  const clearWeekSnap = () => {
+    if (weekScrollSnapTimerRef.current) clearTimeout(weekScrollSnapTimerRef.current);
+  };
   const handlePrev = () => {
+    clearWeekSnap();
     if (viewMode === "day" && dayScrollContainerRef.current) dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: "smooth" });
     else if (viewMode === "week" && weekScrollContainerRef.current) weekScrollContainerRef.current.scrollBy({ left: -weekDayWidth * 7, behavior: "smooth" });
     else if (viewMode === "month" && monthScrollContainerRef.current) monthScrollContainerRef.current.scrollBy({ left: -monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
   };
   const handleNext = () => {
+    clearWeekSnap();
     if (viewMode === "day" && dayScrollContainerRef.current) dayScrollContainerRef.current.scrollBy({ left: singleDayWidth, behavior: "smooth" });
     else if (viewMode === "week" && weekScrollContainerRef.current) weekScrollContainerRef.current.scrollBy({ left: weekDayWidth * 7, behavior: "smooth" });
     else if (viewMode === "month" && monthScrollContainerRef.current) monthScrollContainerRef.current.scrollBy({ left: monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
   };
   const handleToday = () => {
+    clearWeekSnap();
     if (viewMode === "day" && dayScrollContainerRef.current) {
       const idx = days.findIndex((d) => d.isToday);
       if (idx !== -1) dayScrollContainerRef.current.scrollTo({ left: idx * singleDayWidth, behavior: "smooth" });
@@ -234,8 +243,20 @@ const CalendarMain = memo(function CalendarMain() {
 
   const handleWeekScroll = () => {
     if (viewMode !== "week" || !weekScrollContainerRef.current) return;
-    const idx = Math.max(0, Math.floor((weekScrollContainerRef.current.scrollLeft + weekDayWidth / 2) / weekDayWidth));
+    const el = weekScrollContainerRef.current;
+    const idx = Math.max(0, Math.floor((el.scrollLeft + weekDayWidth / 2) / weekDayWidth));
     if (days[idx]) setCurrentMonthYear(`${days[idx].date.getFullYear()}年 ${days[idx].date.getMonth() + 1}月`);
+
+    // スクロール停止後に最寄りの週先頭にスナップ（スワイプ対応）
+    if (weekScrollSnapTimerRef.current) clearTimeout(weekScrollSnapTimerRef.current);
+    weekScrollSnapTimerRef.current = setTimeout(() => {
+      if (!weekScrollContainerRef.current || weekDayWidth === 0) return;
+      const weekWidth = weekDayWidth * 7;
+      const nearestWeek = Math.round(el.scrollLeft / weekWidth) * weekWidth;
+      if (Math.abs(el.scrollLeft - nearestWeek) > 2) {
+        el.scrollTo({ left: nearestWeek, behavior: "smooth" });
+      }
+    }, 150);
   };
   const handleDayScroll = () => {
     if (viewMode !== "day" || !dayScrollContainerRef.current || singleDayWidth === 0) return;
@@ -597,7 +618,7 @@ const CalendarMain = memo(function CalendarMain() {
             handleEventDragStart={handleEventDragStart} handleEventClick={handleEventClick}
             weekScrollContainerRef={weekScrollContainerRef} handleWeekScroll={handleWeekScroll}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
-            weekStartDay={weekStartDay} dayWidth={weekDayWidth}
+            dayWidth={weekDayWidth}
             handleTouchEventDragStart={handleTouchEventDragStart}
             selectionActive={!!selection}
           />
