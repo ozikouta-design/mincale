@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { getDayIndex } from "@/app/page";
 import CalendarHeader from "./CalendarHeader";
 import DayView from "./views/DayView";
 import WeekView from "./views/WeekView";
 import MonthView from "./views/MonthView";
-import { TIME_AXIS_WIDTH_PX, CALENDAR_HEADER_HEIGHT } from "@/constants/calendar";
+import { TIME_AXIS_WIDTH_PX } from "@/constants/calendar";
 import { useCalendar } from "@/context/CalendarContext";
 import { CalendarEvent, DragOverSlot, TodoTouchDragState } from "@/types";
 import { useSelectionDrag } from "@/hooks/useSelectionDrag";
@@ -43,7 +44,7 @@ const CalendarMain = memo(function CalendarMain() {
   }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
-  // ── 幅の計算 ────────────────────────────────────
+  // ── 幅の計算（週・日で統一） ────────────────────────────────────
   const [weekContainerClientWidth, setWeekContainerClientWidth] = useState(0);
   useEffect(() => {
     const el = weekScrollContainerRef.current;
@@ -78,7 +79,7 @@ const CalendarMain = memo(function CalendarMain() {
     ? Math.max(effectiveMainWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
     : Math.max(300, activeMemberCount * 120);
 
-  // ── ★修正3: タッチ座標 → スロット変換（数学的計算へ変更・座標ズレの解決） ──
+  // ── ★修正3: 座標ズレの解決（純粋な数学的計算に変更） ────────────────────
   const getSlotFromTouch = useCallback(
     (clientX: number, clientY: number): {
       dayIndex: number; colIndex: number; startHour: number; memberId?: string
@@ -88,16 +89,21 @@ const CalendarMain = memo(function CalendarMain() {
       if (!scrollRef.current) return null;
 
       const rect = scrollRef.current.getBoundingClientRect();
+      
+      // 時間軸（左）や曜日ヘッダー（上:72px）でのタッチは無効化
+      if (clientX - rect.left < TIME_AXIS_WIDTH_PX) return null;
+      if (clientY - rect.top < 72) return null;
+
       const colWidth = viewMode === "week" ? actualWeekDayWidth : singleDayWidth;
-
-      const relX = clientX - rect.left + scrollRef.current.scrollLeft - TIME_AXIS_WIDTH_PX;
-      const relY = clientY - rect.top + scrollRef.current.scrollTop - CALENDAR_HEADER_HEIGHT;
-
-      if (relX < 0 || relY < 0) return null;
-
+      
+      // スクロール量を加味してX座標（列）を特定
+      const relX = (clientX - rect.left) + scrollRef.current.scrollLeft - TIME_AXIS_WIDTH_PX;
       const colIndex = Math.floor(relX / colWidth);
+
       if (colIndex < 0 || colIndex >= days.length) return null;
 
+      // スクロール量とヘッダー高さ(72px)を加味してY座標（時間）を特定
+      const relY = (clientY - rect.top) + scrollRef.current.scrollTop - 72;
       const startHour = Math.max(0, Math.min(23.75, relY / hourHeight));
 
       let memberId: string | undefined;
@@ -113,10 +119,11 @@ const CalendarMain = memo(function CalendarMain() {
     [viewMode, actualWeekDayWidth, singleDayWidth, days, hourHeight, selectedMemberIds]
   );
 
-  // ── Hook ──────────────────────────
+  // ── Hook: 長押し新規予定 & マウス選択 ──────────────────────────
   const { selection, setSelection, selectionActive, handleSlotMouseDown } =
     useSelectionDrag({ wrapperRef: mainWrapperRef, hourHeight, getSlotFromTouch, handleRangeSelect });
 
+  // ── Hook: タッチドラッグ ────────────────────────────────────────
   const { touchDragInfo, handleTouchEventDragStart } = useTouchDrag({
     getSlotFromTouch, handleDrop,
     todoTouchDrag: todoTouchDrag as TodoTouchDragState | null,
@@ -167,7 +174,7 @@ const CalendarMain = memo(function CalendarMain() {
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // ── ナビゲーション ────────────────
+  // ── ナビゲーション（actualWeekDayWidth で統一） ────────────────
   const handlePrev = useCallback(() => {
     if (viewMode === "day" && dayScrollContainerRef.current)
       dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: "smooth" });
@@ -186,7 +193,14 @@ const CalendarMain = memo(function CalendarMain() {
       monthScrollContainerRef.current.scrollBy({ left: monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
   }, [viewMode, singleDayWidth, actualWeekDayWidth]);
 
-  // ── ★修正1: 「今日」ボタン・12月ジャンプ問題の解決 ──
+  const getScrollLeftForDay = useCallback((container: HTMLElement, targetDayIndex: number) => {
+    const el = container.querySelector(`[data-day-index="${targetDayIndex}"]`) as HTMLElement;
+    if (el) { return el.offsetLeft - TIME_AXIS_WIDTH_PX; }
+    const idx = days.findIndex((d) => d.dayIndex === targetDayIndex);
+    return Math.max(0, idx * actualWeekDayWidth);
+  }, [days, actualWeekDayWidth]);
+
+  // ── ★修正1: 12月ジャンプ問題の解決（getDayIndexで統一） ────────────────
   const handleToday = useCallback(() => {
     if (viewMode === "day" && dayScrollContainerRef.current) {
       const idx = days.findIndex((d) => d.isToday);
@@ -196,18 +210,16 @@ const CalendarMain = memo(function CalendarMain() {
       let dayOffset = today.getDay() - weekStartDay;
       if (dayOffset < 0) dayOffset += 7;
       const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOffset);
-      const targetDayIndex = weekStart.getFullYear() * 10000 + (weekStart.getMonth() + 1) * 100 + weekStart.getDate();
-      const idx = days.findIndex((d) => d.dayIndex === targetDayIndex);
-      if (idx !== -1) {
-        weekScrollContainerRef.current.scrollTo({ left: idx * actualWeekDayWidth, behavior: "smooth" });
-      }
+      const targetDayIndex = getDayIndex(weekStart); // 確実に同じロジックで検索
+      const scrollLeft = getScrollLeftForDay(weekScrollContainerRef.current, targetDayIndex);
+      weekScrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: "smooth" });
     } else if (viewMode === "month" && monthScrollContainerRef.current) {
       const idx = months.findIndex((m) => m.monthIndex === new Date().getFullYear() * 100 + new Date().getMonth());
       if (idx !== -1) monthScrollContainerRef.current.scrollTo({ left: idx * monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
     }
-  }, [viewMode, days, months, singleDayWidth, actualWeekDayWidth, weekStartDay]);
+  }, [viewMode, days, months, singleDayWidth, getScrollLeftForDay, weekStartDay]);
 
-  // ── ★修正2: いきなり0時に移動する問題の解決（alignedViewRefの導入） ──
+  // ── ★修正2: 0時にジャンプする問題の解決（描画待機と暴発防止） ───────────
   const alignedViewRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -215,7 +227,6 @@ const CalendarMain = memo(function CalendarMain() {
     if (viewMode === "week" && actualWeekDayWidth <= 0) return;
     if (viewMode === "day" && singleDayWidth <= 0) return;
     
-    // 既に現在のviewModeで初期スクロールが完了していれば何もしない（暴発防止）
     if (alignedViewRef.current === viewMode) return;
 
     const align = () => {
@@ -224,32 +235,41 @@ const CalendarMain = memo(function CalendarMain() {
         let dayOffset = today.getDay() - weekStartDay;
         if (dayOffset < 0) dayOffset += 7;
         const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOffset);
-        const targetDayIndex = weekStart.getFullYear() * 10000 + (weekStart.getMonth() + 1) * 100 + weekStart.getDate();
-        const idx = days.findIndex((d) => d.dayIndex === targetDayIndex);
-
-        if (idx !== -1) weekScrollContainerRef.current.scrollTo({ left: idx * actualWeekDayWidth, behavior: "auto" });
-        weekScrollContainerRef.current.scrollTop = DEFAULT_SCROLL_HOUR * hourHeight;
+        const targetDayIndex = getDayIndex(weekStart);
+        const scrollLeft = getScrollLeftForDay(weekScrollContainerRef.current, targetDayIndex);
+        
+        weekScrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: "auto" });
+        
+        // ブラウザの描画が完了してからscrollTopをセットすることで0時のバグを防ぐ
+        requestAnimationFrame(() => {
+          if (weekScrollContainerRef.current) {
+            weekScrollContainerRef.current.scrollTop = DEFAULT_SCROLL_HOUR * hourHeight;
+          }
+        });
       } else if (viewMode === "day" && dayScrollContainerRef.current) {
         const idx = days.findIndex((d) => d.isToday);
         if (idx !== -1) dayScrollContainerRef.current.scrollTo({ left: idx * singleDayWidth, behavior: "auto" });
-        dayScrollContainerRef.current.scrollTop = DEFAULT_SCROLL_HOUR * hourHeight;
+        requestAnimationFrame(() => {
+          if (dayScrollContainerRef.current) {
+            dayScrollContainerRef.current.scrollTop = DEFAULT_SCROLL_HOUR * hourHeight;
+          }
+        });
       } else if (viewMode === "month" && monthScrollContainerRef.current) {
         const idx = months.findIndex((m) => m.monthIndex === new Date().getFullYear() * 100 + new Date().getMonth());
         if (idx !== -1) monthScrollContainerRef.current.scrollTo({ left: idx * monthScrollContainerRef.current.clientWidth, behavior: "auto" });
       }
-      // 初期スクロール完了マークを付ける
       alignedViewRef.current = viewMode;
     };
     
-    const t = setTimeout(align, 100);
+    const t = setTimeout(align, 150);
     return () => clearTimeout(t);
-  }, [viewMode, days, months, actualWeekDayWidth, singleDayWidth, weekStartDay, hourHeight]);
+  }, [viewMode, days, months, actualWeekDayWidth, singleDayWidth, weekStartDay, hourHeight, getScrollLeftForDay]);
 
   // ── スクロールハンドラ ─────────────────────────────────────────
   const handleWeekScroll = useCallback(() => {
     if (viewMode !== "week" || !weekScrollContainerRef.current || actualWeekDayWidth <= 0) return;
     const scrollLeft = Math.max(0, weekScrollContainerRef.current.scrollLeft);
-    const colIndex = Math.round(scrollLeft / actualWeekDayWidth); // /7 * 7の誤作動を排除
+    const colIndex = Math.round(scrollLeft / actualWeekDayWidth);
     const dayAtWeekStart = days[Math.min(colIndex, days.length - 1)];
     if (dayAtWeekStart) setCurrentMonthYear(`${dayAtWeekStart.date.getFullYear()}年 ${dayAtWeekStart.date.getMonth() + 1}月`);
   }, [viewMode, actualWeekDayWidth, days, setCurrentMonthYear]);
@@ -268,7 +288,7 @@ const CalendarMain = memo(function CalendarMain() {
     if (months[idx]) setCurrentMonthYear(`${months[idx].year}年 ${months[idx].month + 1}月`);
   }, [viewMode, months, setCurrentMonthYear]);
 
-  // ── リサイズ（マウス + タッチ）と選択枠の拡張 ───────────────────
+  // ── リサイズと選択枠の操作 ───────────────────────────────
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (resizingEvent) {
@@ -277,7 +297,7 @@ const CalendarMain = memo(function CalendarMain() {
       } else if (selection && mainWrapperRef.current) {
         const rect = mainWrapperRef.current.getBoundingClientRect();
         const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-        setSelection((prev) => prev ? { ...prev, currentHour: Math.max(0, (y - CALENDAR_HEADER_HEIGHT) / hourHeight) } : null);
+        setSelection((prev) => prev ? { ...prev, currentHour: Math.max(0, (y - 72) / hourHeight) } : null);
       }
     };
     const onMouseUp = () => {
@@ -299,10 +319,10 @@ const CalendarMain = memo(function CalendarMain() {
         const dur = Math.round((resizingEvent.initialDuration + (e.touches[0].clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
         setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
       } else if (selection && mainWrapperRef.current) {
-        e.preventDefault(); // スクロールを防いで枠を広げる
+        e.preventDefault();
         const rect = mainWrapperRef.current.getBoundingClientRect();
         const y = Math.max(0, Math.min(e.touches[0].clientY - rect.top, rect.height));
-        setSelection((prev) => prev ? { ...prev, currentHour: Math.max(0, (y - CALENDAR_HEADER_HEIGHT) / hourHeight) } : null);
+        setSelection((prev) => prev ? { ...prev, currentHour: Math.max(0, (y - 72) / hourHeight) } : null);
       }
     };
     const onTouchEndResize = () => {
@@ -333,7 +353,7 @@ const CalendarMain = memo(function CalendarMain() {
     };
   }, [resizingEvent, selection, handleEventResize, handleRangeSelect, hourHeight, setSelection]);
 
-  // ── 長押しでの新規作成枠呼び出し ───────────────────────────────
+  // ── 長押しでの新規作成UIの復活と制御 ───────────────────────────────
   useEffect(() => {
     const wrapper = mainWrapperRef.current;
     if (!wrapper) return;
