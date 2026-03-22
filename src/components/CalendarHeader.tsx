@@ -23,21 +23,21 @@ export default function CalendarHeader({
   const { setActiveTab } = useCalendar();
 
   return (
-    <header className="h-[60px] md:h-16 flex items-center justify-between px-2 md:px-6 border-b border-gray-200 bg-white shrink-0 z-30 shadow-sm relative">
+    <header role="banner" className="h-[60px] md:h-16 flex items-center justify-between px-2 md:px-6 border-b border-gray-200 bg-white shrink-0 z-30 shadow-sm relative">
 
       {/* 左: メニュー + 年月 + 前後ナビ + 今日(md+) */}
       <div className="flex items-center gap-1 md:gap-4">
-        <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">
+        <button onClick={() => setIsSidebarOpen(true)} aria-label="サイドバーを開く" className="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">
           <Menu className="w-5 h-5" />
         </button>
         <h2 className="text-sm md:text-2xl font-black text-gray-800 tracking-tight min-w-[68px] md:min-w-[140px] truncate">
           {displayMonthYear}
         </h2>
         <div className="flex items-center gap-0.5 bg-gray-50 p-0.5 md:p-1 rounded-xl border border-gray-200">
-          <button onClick={handlePrevWeek} className="p-1 md:p-1.5 text-gray-600 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronLeft className="w-4 h-4" /></button>
-          <button onClick={handleNextWeek} className="p-1 md:p-1.5 text-gray-600 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronRight className="w-4 h-4" /></button>
+          <button onClick={handlePrevWeek} aria-label="前へ" className="p-1 md:p-1.5 text-gray-600 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={handleNextWeek} aria-label="次へ" className="p-1 md:p-1.5 text-gray-600 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronRight className="w-4 h-4" /></button>
         </div>
-        <button onClick={handleToday} className="hidden md:block px-3 py-1.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all shadow-sm">
+        <button onClick={handleToday} aria-label="今日" className="hidden md:block px-3 py-1.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all shadow-sm">
           今日
         </button>
       </div>

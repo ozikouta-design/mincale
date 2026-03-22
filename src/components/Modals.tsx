@@ -75,11 +75,11 @@ const Modals = memo(function Modals() {
     <>
       {/* ===== 日程調整テキスト ===== */}
       {isScheduleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-schedule-title">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsScheduleModalOpen(false)} />
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl z-10 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
-              <h2 className="text-lg font-bold text-gray-800">日程調整テキストを生成</h2>
+              <h2 id="modal-schedule-title" className="text-lg font-bold text-gray-800">日程調整テキストを生成</h2>
               <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-5 flex-1 overflow-y-auto">
@@ -101,11 +101,11 @@ const Modals = memo(function Modals() {
 
       {/* ===== 予定作成/編集 ===== */}
       {isCreateEventModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-create-event-title">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsCreateEventModalOpen(false)} />
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
-              <h2 className="text-base font-bold text-gray-800">{editingEventId ? "予定を編集" : "新しい予定"}</h2>
+              <h2 id="modal-create-event-title" className="text-base font-bold text-gray-800">{editingEventId ? "予定を編集" : "新しい予定"}</h2>
               <button onClick={() => setIsCreateEventModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-5 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
@@ -170,7 +170,7 @@ const Modals = memo(function Modals() {
 
       {/* ===== グループ作成/編集 ===== */}
       {isGroupModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-group-title">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleCloseGroupModal} />
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-4 border-b border-gray-100">

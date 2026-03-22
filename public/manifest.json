@@ -1,17 +1,13 @@
 {
   "name": "みんカレ",
   "short_name": "みんカレ",
-  "description": "最強の日程調整＆カレンダーアプリ",
+  "description": "直感的なマトリックスUIで、Googleカレンダーと完全同期する日程調整アプリ",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#2563eb",
+  "background_color": "#ffffff",
   "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
   "icons": [
-    {
-      "src": "/favicon.ico",
-      "sizes": "32x32",
-      "type": "image/x-icon"
-    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
@@ -19,10 +15,11 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
-  ]
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "ja"
 }

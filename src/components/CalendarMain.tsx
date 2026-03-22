@@ -1,15 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
-import toast from "react-hot-toast";
 import { getDayIndex } from "@/app/page";
 import CalendarHeader from "./CalendarHeader";
 import DayView from "./views/DayView";
 import WeekView from "./views/WeekView";
 import MonthView from "./views/MonthView";
-import { TIME_AXIS_WIDTH_PX, CALENDAR_HEADER_HEIGHT } from "@/constants/calendar";
+import { TIME_AXIS_WIDTH_PX } from "@/constants/calendar";
 import { useCalendar } from "@/context/CalendarContext";
-import { CalendarEvent } from "@/types";
+import { CalendarEvent, DragOverSlot, TodoTouchDragState } from "@/types";
+import { useSelectionDrag } from "@/hooks/useSelectionDrag";
+import { useTouchDrag } from "@/hooks/useTouchDrag";
 
 const CalendarMain = memo(function CalendarMain() {
   const {
@@ -25,24 +26,16 @@ const CalendarMain = memo(function CalendarMain() {
     todoTouchDrag, setTodoTouchDrag,
   } = useCalendar();
 
-  const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number; startHour: number } | null>(null);
-  const [selection, setSelection] = useState<{ dayIndex: number; colIndex: number; memberId?: string; startHour: number; currentHour: number } | null>(null);
-  const [resizingEvent, setResizingEvent] = useState<{ eventId: string; initialDuration: number; startY: number; currentDuration: number; memberId: string } | null>(null);
-
-  const [touchDragInfo, setTouchDragInfo] = useState<{
-    eventId: string; memberId: string; isGoogle: boolean;
-    ghostX: number; ghostY: number; title: string; color: string;
-    isDragging: boolean; initX: number; initY: number;
-    isPending: boolean;
-    dragAxis?: 'x' | 'y';
+  const [dragOverSlot, setDragOverSlot] = useState<DragOverSlot | null>(null);
+  const [resizingEvent, setResizingEvent] = useState<{
+    eventId: string; initialDuration: number; startY: number;
+    currentDuration: number; memberId: string;
   } | null>(null);
 
   const mainWrapperRef = useRef<HTMLDivElement>(null);
   const weekScrollContainerRef = useRef<HTMLDivElement>(null);
   const dayScrollContainerRef = useRef<HTMLDivElement>(null);
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const touchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -51,9 +44,7 @@ const CalendarMain = memo(function CalendarMain() {
   }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
-  const [containerWidth, setContainerWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : 0
-  );
+  const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     if (!mainWrapperRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -63,54 +54,43 @@ const CalendarMain = memo(function CalendarMain() {
     return () => observer.disconnect();
   }, [viewMode]);
 
-  const weekDayWidth = containerWidth > TIME_AXIS_WIDTH_PX ? (containerWidth - TIME_AXIS_WIDTH_PX) / 7 : 192;
+  const effectiveWidth = containerWidth > 0
+    ? containerWidth
+    : (typeof window !== "undefined" ? window.innerWidth : 375);
+  const weekDayWidth = (effectiveWidth - TIME_AXIS_WIDTH_PX) / 7;
   const activeMemberCount = selectedMemberIds.length || 1;
-  const singleDayWidth = containerWidth > TIME_AXIS_WIDTH_PX
-    ? Math.max(containerWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
+  const singleDayWidth = effectiveWidth > TIME_AXIS_WIDTH_PX
+    ? Math.max(effectiveWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
     : Math.max(300, activeMemberCount * 120);
 
-  // ★★★ 座標ずれの根本修正 ★★★
-  //
-  // 旧実装の問題:
-  //   scrollLeft / scrollTop / CALENDAR_HEADER_HEIGHT / TIME_AXIS_WIDTH_PX を
-  //   手計算で組み合わせていた → iOSのstickyヘッダーとの組み合わせで座標がずれる
-  //
-  // 新実装:
-  //   1. document.elementFromPoint() でブラウザに正確なヒットテストをさせる
-  //   2. 日カラム要素の data-day-index 属性から dayIndex を取得
-  //   3. startHour は日カラムの getBoundingClientRect().top から直接計算
-  //   → scrollLeft/scrollTop/ヘッダー高/軸幅の手計算が一切不要
+  /**
+   * タッチ座標 → スロット変換（elementFromPoint + data属性ベース）
+   * スクロール量・ヘッダー高さの影響を受けない正確な実装
+   */
   const getSlotFromTouch = useCallback(
-    (clientX: number, clientY: number): { dayIndex: number; colIndex: number; startHour: number; memberId?: string } | null => {
+    (clientX: number, clientY: number): {
+      dayIndex: number; colIndex: number; startHour: number; memberId?: string
+    } | null => {
       if (viewMode === "month") return null;
-
-      // ブラウザのヒットテストで実際にタッチされた要素を取得
       const el = document.elementFromPoint(clientX, clientY);
       if (!el) return null;
 
-      // data-day-index を持つ日カラム要素を探す（WeekView/DayView共通）
-      const dayCol = el.closest('[data-day-index]') as HTMLElement | null;
+      const dayCol = el.closest("[data-day-index]") as HTMLElement | null;
       if (!dayCol) return null;
 
-      const dayIndex = Number(dayCol.getAttribute('data-day-index'));
-      const colIndex = days.findIndex(d => d.dayIndex === dayIndex);
+      const dayIndex = Number(dayCol.getAttribute("data-day-index"));
+      const colIndex = days.findIndex((d) => d.dayIndex === dayIndex);
       if (colIndex === -1) return null;
 
-      // startHour: 日カラムの上端（= 時間グリッドの 0:00）からの距離で計算
-      // getBoundingClientRect はビューポート座標で正確な値を返すので
-      // scroll位置やstickyヘッダーの影響を受けない
       const dayRect = dayCol.getBoundingClientRect();
-      const relY = clientY - dayRect.top;
-      const startHour = Math.max(0, Math.min(23.75, relY / hourHeight));
+      const startHour = Math.max(0, Math.min(23.75, (clientY - dayRect.top) / hourHeight));
 
-      // DayView: メンバーカラムを特定（data-member-id属性で）
       let memberId: string | undefined;
       if (viewMode === "day") {
-        const memberCol = el.closest('[data-member-id]') as HTMLElement | null;
+        const memberCol = el.closest("[data-member-id]") as HTMLElement | null;
         if (memberCol) {
-          memberId = memberCol.getAttribute('data-member-id') || undefined;
+          memberId = memberCol.getAttribute("data-member-id") || undefined;
         } else if (selectedMemberIds.length > 0) {
-          // フォールバック: X座標からメンバーカラムを推定
           const relX = clientX - dayRect.left;
           const memberColWidth = dayRect.width / selectedMemberIds.length;
           const memberIdx = Math.min(
@@ -126,21 +106,30 @@ const CalendarMain = memo(function CalendarMain() {
     [viewMode, days, hourHeight, selectedMemberIds]
   );
 
-  const handleTouchEventDragStart = useCallback(
-    (eventId: string, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => {
-      setTouchDragInfo({ eventId, memberId, isGoogle, ghostX: clientX, ghostY: clientY, title, color, isDragging: false, initX: clientX, initY: clientY, isPending: true });
+  // ── Hook: 長押し新規予定 & マウス選択 ──────────────────────────
+  const { selection, setSelection, selectionActive, handleSlotMouseDown } =
+    useSelectionDrag({
+      wrapperRef: mainWrapperRef,
+      hourHeight,
+      getSlotFromTouch,
+      handleRangeSelect,
+    });
 
-      touchTimerRef.current = setTimeout(() => {
-        setTouchDragInfo((prev) => prev ? { ...prev, isPending: false } : null);
-        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(30);
-      }, 400);
-    },
-    []
-  );
+  // ── Hook: タッチドラッグ（既存イベント + Todo） ────────────────
+  const { touchDragInfo, handleTouchEventDragStart } = useTouchDrag({
+    getSlotFromTouch,
+    handleDrop,
+    todoTouchDrag: todoTouchDrag as TodoTouchDragState | null,
+    setTodoTouchDrag: setTodoTouchDrag as React.Dispatch<React.SetStateAction<TodoTouchDragState | null>>,
+    setDragOverSlot,
+  });
 
+  // ── イベントレイアウト計算 ────────────────────────────────────
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number; totalColumns: number }> = {};
-    const visibleEvents = events.filter((e) => selectedMemberIds.includes(e.memberId) && !e.isAllDay);
+    const visibleEvents = events.filter(
+      (e) => selectedMemberIds.includes(e.memberId) && !e.isAllDay
+    );
 
     const processEvents = (colEvents: CalendarEvent[]) => {
       colEvents.sort((a, b) => a.startHour - b.startHour || b.duration - a.duration);
@@ -148,9 +137,13 @@ const CalendarMain = memo(function CalendarMain() {
       let currentCluster: CalendarEvent[] = [];
       let clusterEnd = 0;
       colEvents.forEach((ev) => {
-        if (currentCluster.length === 0) { currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration; }
-        else if (ev.startHour < clusterEnd) { currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration); }
-        else { clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration; }
+        if (currentCluster.length === 0) {
+          currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
+        } else if (ev.startHour < clusterEnd) {
+          currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
+        } else {
+          clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
+        }
       });
       if (currentCluster.length > 0) clusters.push(currentCluster);
       clusters.forEach((cluster) => {
@@ -160,10 +153,15 @@ const CalendarMain = memo(function CalendarMain() {
           for (let i = 0; i < columns.length; i++) {
             const lastEv = columns[i][columns[i].length - 1];
             if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
-              columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
+              columns[i].push(ev);
+              layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 };
+              placed = true; break;
             }
           }
-          if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
+          if (!placed) {
+            columns.push([ev]);
+            layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 };
+          }
         });
         const totalCols = columns.length;
         cluster.forEach((ev) => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols; });
@@ -182,15 +180,22 @@ const CalendarMain = memo(function CalendarMain() {
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
+  // ── ナビゲーション ─────────────────────────────────────────────
   const handlePrev = () => {
-    if (viewMode === "day" && dayScrollContainerRef.current) dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: "smooth" });
-    else if (viewMode === "week" && weekScrollContainerRef.current) weekScrollContainerRef.current.scrollBy({ left: -weekDayWidth * 7, behavior: "smooth" });
-    else if (viewMode === "month" && monthScrollContainerRef.current) monthScrollContainerRef.current.scrollBy({ left: -monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
+    if (viewMode === "day" && dayScrollContainerRef.current)
+      dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: "smooth" });
+    else if (viewMode === "week" && weekScrollContainerRef.current)
+      weekScrollContainerRef.current.scrollBy({ left: -weekDayWidth * 7, behavior: "smooth" });
+    else if (viewMode === "month" && monthScrollContainerRef.current)
+      monthScrollContainerRef.current.scrollBy({ left: -monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
   };
   const handleNext = () => {
-    if (viewMode === "day" && dayScrollContainerRef.current) dayScrollContainerRef.current.scrollBy({ left: singleDayWidth, behavior: "smooth" });
-    else if (viewMode === "week" && weekScrollContainerRef.current) weekScrollContainerRef.current.scrollBy({ left: weekDayWidth * 7, behavior: "smooth" });
-    else if (viewMode === "month" && monthScrollContainerRef.current) monthScrollContainerRef.current.scrollBy({ left: monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
+    if (viewMode === "day" && dayScrollContainerRef.current)
+      dayScrollContainerRef.current.scrollBy({ left: singleDayWidth, behavior: "smooth" });
+    else if (viewMode === "week" && weekScrollContainerRef.current)
+      weekScrollContainerRef.current.scrollBy({ left: weekDayWidth * 7, behavior: "smooth" });
+    else if (viewMode === "month" && monthScrollContainerRef.current)
+      monthScrollContainerRef.current.scrollBy({ left: monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
   };
   const handleToday = () => {
     if (viewMode === "day" && dayScrollContainerRef.current) {
@@ -209,6 +214,7 @@ const CalendarMain = memo(function CalendarMain() {
     }
   };
 
+  // ── 初期スクロール位置 ─────────────────────────────────────────
   useEffect(() => {
     const DEFAULT_SCROLL_HOUR = 9;
     const align = () => {
@@ -234,6 +240,7 @@ const CalendarMain = memo(function CalendarMain() {
     return () => clearTimeout(t);
   }, [viewMode, days, months, weekDayWidth, singleDayWidth, weekStartDay, hourHeight]);
 
+  // ── スクロールハンドラ ─────────────────────────────────────────
   const handleWeekScroll = () => {
     if (viewMode !== "week" || !weekScrollContainerRef.current) return;
     const idx = Math.max(0, Math.floor((weekScrollContainerRef.current.scrollLeft + weekDayWidth / 2) / weekDayWidth));
@@ -252,53 +259,39 @@ const CalendarMain = memo(function CalendarMain() {
     if (months[idx]) setCurrentMonthYear(`${months[idx].year}年 ${months[idx].month + 1}月`);
   };
 
-  // ── マウス & リサイズのタッチ ──────────────────────────────────
+  // ── リサイズ（マウス + タッチ） ───────────────────────────────
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (resizingEvent) {
-        const deltaY = e.clientY - resizingEvent.startY;
-        let dur = Math.round((resizingEvent.initialDuration + deltaY / hourHeight) * 4) / 4;
-        setResizingEvent((prev) => prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null);
-      } else if (selection && mainWrapperRef.current) {
-        const rect = mainWrapperRef.current.getBoundingClientRect();
-        const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-        setSelection((prev) => prev ? { ...prev, currentHour: Math.max(0, (y - CALENDAR_HEADER_HEIGHT) / hourHeight) } : null);
-      }
+      if (!resizingEvent) return;
+      const deltaY = e.clientY - resizingEvent.startY;
+      const dur = Math.round((resizingEvent.initialDuration + deltaY / hourHeight) * 4) / 4;
+      setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
     };
     const onMouseUp = () => {
       if (resizingEvent) {
         handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
         setResizingEvent(null);
-      } else if (selection) {
-        const start = Math.min(selection.startHour, selection.currentHour);
-        const end   = Math.max(selection.startHour, selection.currentHour);
-        let duration = Math.round((end - start) * 4) / 4;
-        if (duration < 0.25) duration = 1;
-        handleRangeSelect(selection.dayIndex, Math.round(start * 4) / 4, duration);
-        setSelection(null);
       }
     };
-
     const onTouchMoveResize = (e: TouchEvent) => {
       if (!resizingEvent) return;
       e.preventDefault();
       const deltaY = e.touches[0].clientY - resizingEvent.startY;
-      let dur = Math.round((resizingEvent.initialDuration + deltaY / hourHeight) * 4) / 4;
-      setResizingEvent((prev) => prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null);
+      const dur = Math.round((resizingEvent.initialDuration + deltaY / hourHeight) * 4) / 4;
+      setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
     };
     const onTouchEndResize = () => {
-      if (!resizingEvent) return;
-      handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
-      setResizingEvent(null);
+      if (resizingEvent) {
+        handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
+        setResizingEvent(null);
+      }
     };
 
     if (resizingEvent) {
-      window.addEventListener("touchmove", onTouchMoveResize, { passive: false });
-      window.addEventListener("touchend", onTouchEndResize);
-    }
-    if (selection || resizingEvent) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
+      window.addEventListener("touchmove", onTouchMoveResize, { passive: false });
+      window.addEventListener("touchend", onTouchEndResize);
     }
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
@@ -306,259 +299,7 @@ const CalendarMain = memo(function CalendarMain() {
       window.removeEventListener("touchmove", onTouchMoveResize);
       window.removeEventListener("touchend", onTouchEndResize);
     };
-  }, [selection, resizingEvent, handleRangeSelect, handleEventResize, hourHeight]);
-
-  // ★機能1: 長押しでの新規予定作成（Google Calendar風）
-  useEffect(() => {
-    const wrapper = mainWrapperRef.current;
-    if (!wrapper) return;
-
-    const selRef = { current: null as { dayIndex: number; colIndex: number; memberId?: string; startHour: number; currentHour: number } | null };
-    let longPressTimer: NodeJS.Timeout | null = null;
-    let startX = 0, startY = 0;
-    let longPressActivated = false;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('button') ||
-        target.closest('.calendar-event') ||
-        target.closest('.modal-content') ||
-        target.closest('[data-no-axis-lock]')
-      ) return;
-
-      const touch = e.touches[0];
-      startX = touch.clientX;
-      startY = touch.clientY;
-      longPressActivated = false;
-
-      longPressTimer = setTimeout(() => {
-        const slot = getSlotFromTouch(startX, startY);
-        if (!slot) return;
-
-        longPressActivated = true;
-        const newSel = {
-          dayIndex: slot.dayIndex,
-          colIndex: slot.colIndex,
-          memberId: slot.memberId,
-          startHour: slot.startHour,
-          currentHour: slot.startHour + 1,
-        };
-        selRef.current = newSel;
-        setSelection(newSel);
-        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(40);
-      }, 450);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (longPressActivated && selRef.current) {
-        e.preventDefault();
-        const touch = e.touches[0];
-
-        // ★ touchmove中: 日カラム要素の rect.top を直接使って currentHour を計算
-        //    elementFromPoint は指の下にゴーストがある場合うまくいかないことがあるため、
-        //    長押し開始時の dayIndex の日カラム要素を直接参照する
-        const dayCol = document.querySelector(`[data-day-index="${selRef.current.dayIndex}"]`) as HTMLElement | null;
-        if (dayCol) {
-          const dayRect = dayCol.getBoundingClientRect();
-          const relY = touch.clientY - dayRect.top;
-          const newHour = Math.max(0, Math.min(23.75, relY / hourHeight));
-          selRef.current = { ...selRef.current, currentHour: Math.round(newHour * 4) / 4 };
-          setSelection({ ...selRef.current });
-        }
-        return;
-      }
-      if (longPressTimer) {
-        const dx = e.touches[0].clientX - startX;
-        const dy = e.touches[0].clientY - startY;
-        if (Math.sqrt(dx * dx + dy * dy) > 10) {
-          clearTimeout(longPressTimer);
-          longPressTimer = null;
-        }
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-
-      if (longPressActivated && selRef.current) {
-        const sel = selRef.current;
-        const touch = e.changedTouches[0];
-
-        const dayCol = document.querySelector(`[data-day-index="${sel.dayIndex}"]`) as HTMLElement | null;
-        let finalHour = sel.currentHour;
-        if (dayCol) {
-          const dayRect = dayCol.getBoundingClientRect();
-          const relY = touch.clientY - dayRect.top;
-          finalHour = Math.max(0, Math.min(23.75, Math.round((relY / hourHeight) * 4) / 4));
-        }
-
-        const startHr = Math.min(sel.startHour, finalHour);
-        const endHr   = Math.max(sel.startHour, finalHour);
-        let duration = Math.round((endHr - startHr) * 4) / 4;
-        if (duration < 0.25) duration = 1;
-
-        handleRangeSelect(sel.dayIndex, Math.round(startHr * 4) / 4, duration);
-        setSelection(null);
-        selRef.current = null;
-        longPressActivated = false;
-        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(20);
-      }
-    };
-
-    const handleTouchCancel = () => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      if (longPressActivated) {
-        setSelection(null);
-        selRef.current = null;
-        longPressActivated = false;
-      }
-    };
-
-    wrapper.addEventListener('touchstart', handleTouchStart, { passive: true });
-    wrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
-    wrapper.addEventListener('touchend', handleTouchEnd, { passive: true });
-    wrapper.addEventListener('touchcancel', handleTouchCancel, { passive: true });
-
-    return () => {
-      if (longPressTimer) clearTimeout(longPressTimer);
-      wrapper.removeEventListener('touchstart', handleTouchStart);
-      wrapper.removeEventListener('touchmove', handleTouchMove);
-      wrapper.removeEventListener('touchend', handleTouchEnd);
-      wrapper.removeEventListener('touchcancel', handleTouchCancel);
-    };
-  }, [getSlotFromTouch, handleRangeSelect, hourHeight]);
-
-  // ★機能2: タッチドラッグの移動軸ロック
-  useEffect(() => {
-    if (!touchDragInfo) return;
-
-    const DRAG_THRESHOLD = 8;
-
-    const onTouchMoveDrag = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      const dx = touch.clientX - touchDragInfo.initX;
-      const dy = touch.clientY - touchDragInfo.initY;
-
-      if (touchDragInfo.isPending) {
-        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-          if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-          setTouchDragInfo(null);
-        }
-        return;
-      }
-
-      e.preventDefault();
-
-      let newAxis = touchDragInfo.dragAxis;
-      if (!newAxis && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-        newAxis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      }
-
-      let currentX = touch.clientX;
-      let currentY = touch.clientY;
-
-      if (newAxis === 'x') {
-        currentY = touchDragInfo.initY;
-      } else if (newAxis === 'y') {
-        currentX = touchDragInfo.initX;
-      }
-
-      const slot = getSlotFromTouch(currentX, currentY);
-      if (slot) setDragOverSlot({ dayIndex: slot.dayIndex, startHour: Math.floor(slot.startHour) });
-      setTouchDragInfo((prev) => prev ? { ...prev, ghostX: currentX, ghostY: currentY, isDragging: true, dragAxis: newAxis } : null);
-    };
-
-    const onTouchEndDrag = (e: TouchEvent) => {
-      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-
-      if (!touchDragInfo.isDragging) {
-        setTouchDragInfo(null);
-        setDragOverSlot(null);
-        return;
-      }
-
-      const touch = e.changedTouches[0];
-      let finalX = touch.clientX, finalY = touch.clientY;
-      if (touchDragInfo.dragAxis === 'x') finalY = touchDragInfo.initY;
-      else if (touchDragInfo.dragAxis === 'y') finalX = touchDragInfo.initX;
-
-      const slot = getSlotFromTouch(finalX, finalY);
-      if (slot) {
-        const { eventId, memberId } = touchDragInfo;
-        const fake = {
-          preventDefault: () => {},
-          dataTransfer: { getData: (k: string) => ({ type: "event", eventId, memberId } as Record<string, string>)[k] ?? "" },
-        } as unknown as React.DragEvent<HTMLDivElement>;
-        handleDrop(fake, slot.dayIndex, slot.startHour);
-      }
-      setTouchDragInfo(null);
-      setDragOverSlot(null);
-    };
-
-    const onTouchCancelDrag = () => {
-      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-      setTouchDragInfo(null);
-      setDragOverSlot(null);
-    };
-
-    window.addEventListener("touchmove", onTouchMoveDrag, { passive: false });
-    window.addEventListener("touchend", onTouchEndDrag);
-    window.addEventListener("touchcancel", onTouchCancelDrag);
-
-    return () => {
-      window.removeEventListener("touchmove", onTouchMoveDrag);
-      window.removeEventListener("touchend", onTouchEndDrag);
-      window.removeEventListener("touchcancel", onTouchCancelDrag);
-    };
-  }, [touchDragInfo, getSlotFromTouch, handleDrop]);
-
-  // ★機能3: TodoカードのiPhone長押しドラッグ → カレンダーへドロップ
-  useEffect(() => {
-    if (!todoTouchDrag?.isDragging) return;
-
-    const onMove = (e: TouchEvent) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      setTodoTouchDrag((prev) => prev ? { ...prev, ghostX: touch.clientX, ghostY: touch.clientY } : null);
-      const slot = getSlotFromTouch(touch.clientX, touch.clientY);
-      if (slot) setDragOverSlot({ dayIndex: slot.dayIndex, startHour: Math.floor(slot.startHour) });
-      else setDragOverSlot(null);
-    };
-
-    const onEnd = (e: TouchEvent) => {
-      const touch = e.changedTouches[0];
-      const slot = getSlotFromTouch(touch.clientX, touch.clientY);
-      if (slot && todoTouchDrag) {
-        const { todoId } = todoTouchDrag;
-        const fake = {
-          preventDefault: () => {},
-          dataTransfer: {
-            getData: (k: string) => ({ type: "todo", todoId: todoId.toString() } as Record<string, string>)[k] ?? "",
-          },
-        } as unknown as React.DragEvent<HTMLDivElement>;
-        handleDrop(fake, slot.dayIndex, slot.startHour);
-      } else if (todoTouchDrag && !slot) {
-        toast.error("カレンダーの時間帯にドロップしてください");
-      }
-      setTodoTouchDrag(null);
-      setDragOverSlot(null);
-    };
-
-    const onCancel = () => {
-      setTodoTouchDrag(null);
-      setDragOverSlot(null);
-    };
-
-    window.addEventListener("touchmove", onMove, { passive: false });
-    window.addEventListener("touchend", onEnd);
-    window.addEventListener("touchcancel", onCancel);
-    return () => {
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onEnd);
-      window.removeEventListener("touchcancel", onCancel);
-    };
-  }, [todoTouchDrag, getSlotFromTouch, handleDrop, setTodoTouchDrag]);
+  }, [resizingEvent, handleEventResize, hourHeight]);
 
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative select-none bg-white">
@@ -571,7 +312,7 @@ const CalendarMain = memo(function CalendarMain() {
         accentColor={accentColor}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden relative" ref={mainWrapperRef}>
+      <div className="flex-1 flex flex-col overflow-hidden relative min-w-0" ref={mainWrapperRef}>
         {viewMode === "day" && (
           <DayView
             days={days} hours={hours} currentHourExact={currentHourExact} accentColor={accentColor}
@@ -585,7 +326,8 @@ const CalendarMain = memo(function CalendarMain() {
             singleDayWidth={singleDayWidth}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
             handleTouchEventDragStart={handleTouchEventDragStart}
-            selectionActive={!!selection}
+            selectionActive={selectionActive}
+            handleSlotMouseDown={handleSlotMouseDown}
           />
         )}
         {viewMode === "week" && (
@@ -601,7 +343,8 @@ const CalendarMain = memo(function CalendarMain() {
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
             weekStartDay={weekStartDay} dayWidth={weekDayWidth}
             handleTouchEventDragStart={handleTouchEventDragStart}
-            selectionActive={!!selection}
+            selectionActive={selectionActive}
+            handleSlotMouseDown={handleSlotMouseDown}
           />
         )}
         {viewMode === "month" && (
@@ -617,9 +360,11 @@ const CalendarMain = memo(function CalendarMain() {
         )}
       </div>
 
+      {/* イベントドラッグ中のゴースト */}
       {touchDragInfo?.isDragging && (
         <div
           className="fixed pointer-events-none z-[9999] rounded-md px-2 py-1 text-white text-xs shadow-2xl border border-white/30"
+          aria-hidden="true"
           style={{
             left: touchDragInfo.ghostX - 40,
             top: touchDragInfo.ghostY - 16,
@@ -636,9 +381,11 @@ const CalendarMain = memo(function CalendarMain() {
         </div>
       )}
 
+      {/* Todo長押しドラッグ中のゴースト */}
       {todoTouchDrag?.isDragging && (
         <div
           className="fixed pointer-events-none z-[9999] rounded-xl px-3 py-2 text-white text-xs shadow-2xl border border-white/30 flex items-center gap-1.5"
+          aria-hidden="true"
           style={{
             left: todoTouchDrag.ghostX - 60,
             top: todoTouchDrag.ghostY - 20,
