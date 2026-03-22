@@ -44,29 +44,47 @@ const CalendarMain = memo(function CalendarMain() {
   }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
-  const [containerWidth, setContainerWidth] = useState(0);
+  // ── 幅の計算（週・日で統一） ────────────────────────────────────
+  // ★修正: weekScrollContainerRef.clientWidth から正確な幅を計算
+  //        min-w-max の子divに引きずられるcontentRectではなく clientWidth を使う
+  const [weekContainerClientWidth, setWeekContainerClientWidth] = useState(0);
   useEffect(() => {
-    if (!mainWrapperRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) setContainerWidth(entry.contentRect.width);
-    });
-    observer.observe(mainWrapperRef.current);
-    return () => observer.disconnect();
+    const el = weekScrollContainerRef.current;
+    if (!el) return;
+    // ResizeObserver は contentRect を返すが、スクロールコンテナの
+    // 「表示領域の幅」は clientWidth で取る
+    const update = () => setWeekContainerClientWidth(el.clientWidth);
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
   }, [viewMode]);
 
-  const effectiveWidth = containerWidth > 0
-    ? containerWidth
+  const [mainContainerWidth, setMainContainerWidth] = useState(0);
+  useEffect(() => {
+    if (!mainWrapperRef.current) return;
+    const obs = new ResizeObserver((entries) => {
+      for (const e of entries) setMainContainerWidth(e.contentRect.width);
+    });
+    obs.observe(mainWrapperRef.current);
+    return () => obs.disconnect();
+  }, [viewMode]);
+
+  const effectiveMainWidth = mainContainerWidth > 0
+    ? mainContainerWidth
     : (typeof window !== "undefined" ? window.innerWidth : 375);
-  const weekDayWidth = (effectiveWidth - TIME_AXIS_WIDTH_PX) / 7;
+
+  // ★ actualWeekDayWidth: スクロールコンテナのclientWidthから計算（全箇所で統一）
+  const actualWeekDayWidth = weekContainerClientWidth > TIME_AXIS_WIDTH_PX
+    ? (weekContainerClientWidth - TIME_AXIS_WIDTH_PX) / 7
+    : (effectiveMainWidth - TIME_AXIS_WIDTH_PX) / 7;
+
   const activeMemberCount = selectedMemberIds.length || 1;
-  const singleDayWidth = effectiveWidth > TIME_AXIS_WIDTH_PX
-    ? Math.max(effectiveWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
+  const singleDayWidth = effectiveMainWidth > TIME_AXIS_WIDTH_PX
+    ? Math.max(effectiveMainWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
     : Math.max(300, activeMemberCount * 120);
 
-  /**
-   * タッチ座標 → スロット変換（elementFromPoint + data属性ベース）
-   * スクロール量・ヘッダー高さの影響を受けない正確な実装
-   */
+  // ── タッチ座標 → スロット変換 ──────────────────────────────────
   const getSlotFromTouch = useCallback(
     (clientX: number, clientY: number): {
       dayIndex: number; colIndex: number; startHour: number; memberId?: string
@@ -74,17 +92,13 @@ const CalendarMain = memo(function CalendarMain() {
       if (viewMode === "month") return null;
       const el = document.elementFromPoint(clientX, clientY);
       if (!el) return null;
-
       const dayCol = el.closest("[data-day-index]") as HTMLElement | null;
       if (!dayCol) return null;
-
       const dayIndex = Number(dayCol.getAttribute("data-day-index"));
       const colIndex = days.findIndex((d) => d.dayIndex === dayIndex);
       if (colIndex === -1) return null;
-
       const dayRect = dayCol.getBoundingClientRect();
       const startHour = Math.max(0, Math.min(23.75, (clientY - dayRect.top) / hourHeight));
-
       let memberId: string | undefined;
       if (viewMode === "day") {
         const memberCol = el.closest("[data-member-id]") as HTMLElement | null;
@@ -93,14 +107,10 @@ const CalendarMain = memo(function CalendarMain() {
         } else if (selectedMemberIds.length > 0) {
           const relX = clientX - dayRect.left;
           const memberColWidth = dayRect.width / selectedMemberIds.length;
-          const memberIdx = Math.min(
-            selectedMemberIds.length - 1,
-            Math.max(0, Math.floor(relX / memberColWidth))
-          );
+          const memberIdx = Math.min(selectedMemberIds.length - 1, Math.max(0, Math.floor(relX / memberColWidth)));
           memberId = selectedMemberIds[memberIdx];
         }
       }
-
       return { dayIndex, colIndex, startHour: Math.round(startHour * 4) / 4, memberId };
     },
     [viewMode, days, hourHeight, selectedMemberIds]
@@ -108,17 +118,11 @@ const CalendarMain = memo(function CalendarMain() {
 
   // ── Hook: 長押し新規予定 & マウス選択 ──────────────────────────
   const { selection, setSelection, selectionActive, handleSlotMouseDown } =
-    useSelectionDrag({
-      wrapperRef: mainWrapperRef,
-      hourHeight,
-      getSlotFromTouch,
-      handleRangeSelect,
-    });
+    useSelectionDrag({ wrapperRef: mainWrapperRef, hourHeight, getSlotFromTouch, handleRangeSelect });
 
-  // ── Hook: タッチドラッグ（既存イベント + Todo） ────────────────
+  // ── Hook: タッチドラッグ ────────────────────────────────────────
   const { touchDragInfo, handleTouchEventDragStart } = useTouchDrag({
-    getSlotFromTouch,
-    handleDrop,
+    getSlotFromTouch, handleDrop,
     todoTouchDrag: todoTouchDrag as TodoTouchDragState | null,
     setTodoTouchDrag: setTodoTouchDrag as React.Dispatch<React.SetStateAction<TodoTouchDragState | null>>,
     setDragOverSlot,
@@ -127,23 +131,16 @@ const CalendarMain = memo(function CalendarMain() {
   // ── イベントレイアウト計算 ────────────────────────────────────
   const eventLayouts = useMemo(() => {
     const layouts: Record<string, { column: number; totalColumns: number }> = {};
-    const visibleEvents = events.filter(
-      (e) => selectedMemberIds.includes(e.memberId) && !e.isAllDay
-    );
-
+    const visibleEvents = events.filter((e) => selectedMemberIds.includes(e.memberId) && !e.isAllDay);
     const processEvents = (colEvents: CalendarEvent[]) => {
       colEvents.sort((a, b) => a.startHour - b.startHour || b.duration - a.duration);
       const clusters: CalendarEvent[][] = [];
       let currentCluster: CalendarEvent[] = [];
       let clusterEnd = 0;
       colEvents.forEach((ev) => {
-        if (currentCluster.length === 0) {
-          currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration;
-        } else if (ev.startHour < clusterEnd) {
-          currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration);
-        } else {
-          clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration;
-        }
+        if (currentCluster.length === 0) { currentCluster.push(ev); clusterEnd = ev.startHour + ev.duration; }
+        else if (ev.startHour < clusterEnd) { currentCluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.startHour + ev.duration); }
+        else { clusters.push(currentCluster); currentCluster = [ev]; clusterEnd = ev.startHour + ev.duration; }
       });
       if (currentCluster.length > 0) clusters.push(currentCluster);
       clusters.forEach((cluster) => {
@@ -153,21 +150,15 @@ const CalendarMain = memo(function CalendarMain() {
           for (let i = 0; i < columns.length; i++) {
             const lastEv = columns[i][columns[i].length - 1];
             if (lastEv.startHour + lastEv.duration <= ev.startHour + 0.001) {
-              columns[i].push(ev);
-              layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 };
-              placed = true; break;
+              columns[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 }; placed = true; break;
             }
           }
-          if (!placed) {
-            columns.push([ev]);
-            layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 };
-          }
+          if (!placed) { columns.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: columns.length - 1, totalColumns: 0 }; }
         });
         const totalCols = columns.length;
         cluster.forEach((ev) => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = totalCols; });
       });
     };
-
     days.forEach((day) => {
       if (viewMode === "day") {
         selectedMemberIds.forEach((memberId) =>
@@ -180,51 +171,61 @@ const CalendarMain = memo(function CalendarMain() {
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // ── ナビゲーション ─────────────────────────────────────────────
-  const handlePrev = () => {
+  // ── ナビゲーション（actualWeekDayWidth で統一） ────────────────
+  const handlePrev = useCallback(() => {
     if (viewMode === "day" && dayScrollContainerRef.current)
       dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: "smooth" });
     else if (viewMode === "week" && weekScrollContainerRef.current)
-      weekScrollContainerRef.current.scrollBy({ left: -weekDayWidth * 7, behavior: "smooth" });
+      weekScrollContainerRef.current.scrollBy({ left: -actualWeekDayWidth * 7, behavior: "smooth" });
     else if (viewMode === "month" && monthScrollContainerRef.current)
       monthScrollContainerRef.current.scrollBy({ left: -monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
-  };
-  const handleNext = () => {
+  }, [viewMode, singleDayWidth, actualWeekDayWidth]);
+
+  const handleNext = useCallback(() => {
     if (viewMode === "day" && dayScrollContainerRef.current)
       dayScrollContainerRef.current.scrollBy({ left: singleDayWidth, behavior: "smooth" });
     else if (viewMode === "week" && weekScrollContainerRef.current)
-      weekScrollContainerRef.current.scrollBy({ left: weekDayWidth * 7, behavior: "smooth" });
+      weekScrollContainerRef.current.scrollBy({ left: actualWeekDayWidth * 7, behavior: "smooth" });
     else if (viewMode === "month" && monthScrollContainerRef.current)
       monthScrollContainerRef.current.scrollBy({ left: monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
-  };
-  const handleToday = () => {
+  }, [viewMode, singleDayWidth, actualWeekDayWidth]);
+
+  // ★「今日」ボタン: actualWeekDayWidth を使って正確にスクロール
+  const handleToday = useCallback(() => {
     if (viewMode === "day" && dayScrollContainerRef.current) {
       const idx = days.findIndex((d) => d.isToday);
       if (idx !== -1) dayScrollContainerRef.current.scrollTo({ left: idx * singleDayWidth, behavior: "smooth" });
     } else if (viewMode === "week" && weekScrollContainerRef.current) {
-      const targetDate = new Date();
-      let dayOffset = targetDate.getDay() - weekStartDay;
+      const today = new Date();
+      let dayOffset = today.getDay() - weekStartDay;
       if (dayOffset < 0) dayOffset += 7;
-      targetDate.setDate(targetDate.getDate() - dayOffset);
-      const idx = days.findIndex((d) => d.dayIndex === getDayIndex(targetDate));
-      if (idx !== -1) weekScrollContainerRef.current.scrollTo({ left: idx * weekDayWidth, behavior: "smooth" });
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - dayOffset);
+      const idx = days.findIndex((d) => d.dayIndex === getDayIndex(weekStart));
+      if (idx !== -1) weekScrollContainerRef.current.scrollTo({ left: idx * actualWeekDayWidth, behavior: "smooth" });
     } else if (viewMode === "month" && monthScrollContainerRef.current) {
       const idx = months.findIndex((m) => m.monthIndex === new Date().getFullYear() * 100 + new Date().getMonth());
       if (idx !== -1) monthScrollContainerRef.current.scrollTo({ left: idx * monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
     }
-  };
+  }, [viewMode, days, months, singleDayWidth, actualWeekDayWidth, weekStartDay]);
 
-  // ── 初期スクロール位置 ─────────────────────────────────────────
+  // ★初期スクロール: actualWeekDayWidthが確定してから実行（週の初日にスクロール）
   useEffect(() => {
     const DEFAULT_SCROLL_HOUR = 9;
+    // actualWeekDayWidthが0の場合はまだDOMが準備できていない
+    if (viewMode === "week" && actualWeekDayWidth <= 0) return;
+
     const align = () => {
-      if (viewMode === "week" && weekScrollContainerRef.current && weekDayWidth > 0) {
-        const targetDate = new Date();
-        let dayOffset = targetDate.getDay() - weekStartDay;
+      if (viewMode === "week" && weekScrollContainerRef.current) {
+        const today = new Date();
+        let dayOffset = today.getDay() - weekStartDay;
         if (dayOffset < 0) dayOffset += 7;
-        targetDate.setDate(targetDate.getDate() - dayOffset);
-        const idx = days.findIndex((d) => d.dayIndex === getDayIndex(targetDate));
-        if (idx !== -1) weekScrollContainerRef.current.scrollTo({ left: idx * weekDayWidth, behavior: "auto" });
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - dayOffset);
+        const idx = days.findIndex((d) => d.dayIndex === getDayIndex(weekStart));
+        if (idx !== -1) {
+          weekScrollContainerRef.current.scrollTo({ left: idx * actualWeekDayWidth, behavior: "auto" });
+        }
         weekScrollContainerRef.current.scrollTop = DEFAULT_SCROLL_HOUR * hourHeight;
       } else if (viewMode === "day" && dayScrollContainerRef.current && singleDayWidth > 0) {
         const idx = days.findIndex((d) => d.isToday);
@@ -236,57 +237,51 @@ const CalendarMain = memo(function CalendarMain() {
       }
     };
     align();
-    const t = setTimeout(align, 100);
+    const t = setTimeout(align, 150);
     return () => clearTimeout(t);
-  }, [viewMode, days, months, weekDayWidth, singleDayWidth, weekStartDay, hourHeight]);
+  }, [viewMode, days, months, actualWeekDayWidth, singleDayWidth, weekStartDay, hourHeight]);
 
   // ── スクロールハンドラ ─────────────────────────────────────────
-  const handleWeekScroll = () => {
-    if (viewMode !== "week" || !weekScrollContainerRef.current) return;
-    const idx = Math.max(0, Math.floor((weekScrollContainerRef.current.scrollLeft + weekDayWidth / 2) / weekDayWidth));
-    if (days[idx]) setCurrentMonthYear(`${days[idx].date.getFullYear()}年 ${days[idx].date.getMonth() + 1}月`);
-  };
-  const handleDayScroll = () => {
+  const handleWeekScroll = useCallback(() => {
+    if (viewMode !== "week" || !weekScrollContainerRef.current || actualWeekDayWidth <= 0) return;
+    const idx = Math.max(0, Math.round(weekScrollContainerRef.current.scrollLeft / actualWeekDayWidth / 7) * 7);
+    const dayAtWeekStart = days[Math.min(idx, days.length - 1)];
+    if (dayAtWeekStart) setCurrentMonthYear(`${dayAtWeekStart.date.getFullYear()}年 ${dayAtWeekStart.date.getMonth() + 1}月`);
+  }, [viewMode, actualWeekDayWidth, days, setCurrentMonthYear]);
+
+  const handleDayScroll = useCallback(() => {
     if (viewMode !== "day" || !dayScrollContainerRef.current || singleDayWidth === 0) return;
     const idx = Math.max(0, Math.round(dayScrollContainerRef.current.scrollLeft / singleDayWidth));
     if (days[idx]) setCurrentMonthYear(`${days[idx].date.getFullYear()}年 ${days[idx].date.getMonth() + 1}月`);
-  };
-  const handleMonthScroll = () => {
+  }, [viewMode, singleDayWidth, days, setCurrentMonthYear]);
+
+  const handleMonthScroll = useCallback(() => {
     if (viewMode !== "month" || !monthScrollContainerRef.current) return;
     const w = monthScrollContainerRef.current.clientWidth;
     if (w === 0) return;
     const idx = Math.max(0, Math.round(monthScrollContainerRef.current.scrollLeft / w));
     if (months[idx]) setCurrentMonthYear(`${months[idx].year}年 ${months[idx].month + 1}月`);
-  };
+  }, [viewMode, months, setCurrentMonthYear]);
 
   // ── リサイズ（マウス + タッチ） ───────────────────────────────
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!resizingEvent) return;
-      const deltaY = e.clientY - resizingEvent.startY;
-      const dur = Math.round((resizingEvent.initialDuration + deltaY / hourHeight) * 4) / 4;
+      const dur = Math.round((resizingEvent.initialDuration + (e.clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
       setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
     };
     const onMouseUp = () => {
-      if (resizingEvent) {
-        handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
-        setResizingEvent(null);
-      }
+      if (resizingEvent) { handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId); setResizingEvent(null); }
     };
     const onTouchMoveResize = (e: TouchEvent) => {
       if (!resizingEvent) return;
       e.preventDefault();
-      const deltaY = e.touches[0].clientY - resizingEvent.startY;
-      const dur = Math.round((resizingEvent.initialDuration + deltaY / hourHeight) * 4) / 4;
+      const dur = Math.round((resizingEvent.initialDuration + (e.touches[0].clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
       setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
     };
     const onTouchEndResize = () => {
-      if (resizingEvent) {
-        handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
-        setResizingEvent(null);
-      }
+      if (resizingEvent) { handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId); setResizingEvent(null); }
     };
-
     if (resizingEvent) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
@@ -311,7 +306,6 @@ const CalendarMain = memo(function CalendarMain() {
         setIsScheduleModalOpen={setIsScheduleModalOpen} setIsCreateEventModalOpen={setIsCreateEventModalOpen}
         accentColor={accentColor}
       />
-
       <div className="flex-1 flex flex-col overflow-hidden relative min-w-0" ref={mainWrapperRef}>
         {viewMode === "day" && (
           <DayView
@@ -323,11 +317,9 @@ const CalendarMain = memo(function CalendarMain() {
             handleDragOver={handleDragOver} handleDrop={handleDrop}
             handleEventDragStart={handleEventDragStart} handleEventClick={handleEventClick}
             dayScrollContainerRef={dayScrollContainerRef} handleDayScroll={handleDayScroll}
-            singleDayWidth={singleDayWidth}
-            resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
+            singleDayWidth={singleDayWidth} resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
             handleTouchEventDragStart={handleTouchEventDragStart}
-            selectionActive={selectionActive}
-            handleSlotMouseDown={handleSlotMouseDown}
+            selectionActive={selectionActive} handleSlotMouseDown={handleSlotMouseDown}
           />
         )}
         {viewMode === "week" && (
@@ -341,10 +333,11 @@ const CalendarMain = memo(function CalendarMain() {
             handleEventDragStart={handleEventDragStart} handleEventClick={handleEventClick}
             weekScrollContainerRef={weekScrollContainerRef} handleWeekScroll={handleWeekScroll}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
-            weekStartDay={weekStartDay} dayWidth={weekDayWidth}
+            weekStartDay={weekStartDay}
+            // ★ actualWeekDayWidth を渡す（自己計測なし）
+            dayWidth={actualWeekDayWidth}
             handleTouchEventDragStart={handleTouchEventDragStart}
-            selectionActive={selectionActive}
-            handleSlotMouseDown={handleSlotMouseDown}
+            selectionActive={selectionActive} handleSlotMouseDown={handleSlotMouseDown}
           />
         )}
         {viewMode === "month" && (
@@ -359,45 +352,15 @@ const CalendarMain = memo(function CalendarMain() {
           />
         )}
       </div>
-
-      {/* イベントドラッグ中のゴースト */}
       {touchDragInfo?.isDragging && (
-        <div
-          className="fixed pointer-events-none z-[9999] rounded-md px-2 py-1 text-white text-xs shadow-2xl border border-white/30"
-          aria-hidden="true"
-          style={{
-            left: touchDragInfo.ghostX - 40,
-            top: touchDragInfo.ghostY - 16,
-            backgroundColor: touchDragInfo.color,
-            opacity: 0.85,
-            transform: "scale(1.08)",
-            maxWidth: 120,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div className="fixed pointer-events-none z-[9999] rounded-md px-2 py-1 text-white text-xs shadow-2xl border border-white/30" aria-hidden="true"
+          style={{ left: touchDragInfo.ghostX - 40, top: touchDragInfo.ghostY - 16, backgroundColor: touchDragInfo.color, opacity: 0.85, transform: "scale(1.08)", maxWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {touchDragInfo.title}
         </div>
       )}
-
-      {/* Todo長押しドラッグ中のゴースト */}
       {todoTouchDrag?.isDragging && (
-        <div
-          className="fixed pointer-events-none z-[9999] rounded-xl px-3 py-2 text-white text-xs shadow-2xl border border-white/30 flex items-center gap-1.5"
-          aria-hidden="true"
-          style={{
-            left: todoTouchDrag.ghostX - 60,
-            top: todoTouchDrag.ghostY - 20,
-            backgroundColor: "#1d4ed8",
-            opacity: 0.92,
-            transform: "scale(1.06) rotate(-1.5deg)",
-            maxWidth: 160,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div className="fixed pointer-events-none z-[9999] rounded-xl px-3 py-2 text-white text-xs shadow-2xl border border-white/30 flex items-center gap-1.5" aria-hidden="true"
+          style={{ left: todoTouchDrag.ghostX - 60, top: todoTouchDrag.ghostY - 20, backgroundColor: "#1d4ed8", opacity: 0.92, transform: "scale(1.06) rotate(-1.5deg)", maxWidth: 160, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           <span className="text-[10px]">📋</span>
           <span className="font-bold truncate">{todoTouchDrag.title}</span>
         </div>

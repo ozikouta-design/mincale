@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { TIME_AXIS_WIDTH_PX } from "@/constants/calendar";
 import { useTouchAxisScroll } from "@/hooks/useTouchAxisScroll";
 import { useWeekHorizontalScroll } from "@/hooks/useWeekHorizontalScroll";
@@ -13,6 +13,7 @@ interface WeekViewProps {
   currentHourExact: number;
   accentColor: string;
   hourHeight: number;
+  /** CalendarMain から統一された dayWidth を受け取る（自己計測しない） */
   dayWidth: number;
   selectedMemberIds: string[];
   members: Member[];
@@ -33,7 +34,6 @@ interface WeekViewProps {
   weekStartDay: number;
   handleTouchEventDragStart?: (eventId: string, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => void;
   selectionActive?: boolean;
-  /** CalendarMain の useSelectionDrag から渡す修正済みmousedownハンドラ */
   handleSlotMouseDown?: (e: React.MouseEvent<HTMLDivElement>, dayIndex: number, colIndex: number, memberId?: string) => void;
 }
 
@@ -48,36 +48,24 @@ export default function WeekView({
   handleSlotMouseDown,
 }: WeekViewProps) {
 
-  // WeekView自身でスクロールコンテナの実測幅を計算
-  const [selfMeasuredWidth, setSelfMeasuredWidth] = useState(0);
-  useEffect(() => {
-    const el = weekScrollContainerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) setSelfMeasuredWidth(entry.contentRect.width);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [weekScrollContainerRef]);
-
-  const actualDayWidth = selfMeasuredWidth > TIME_AXIS_WIDTH_PX
-    ? (selfMeasuredWidth - TIME_AXIS_WIDTH_PX) / 7
-    : dayWidth;
-
-  // ★ 週1単位スクロール制限（数ヶ月ジャンプを防止）
-  useWeekHorizontalScroll(weekScrollContainerRef, actualDayWidth, !selectionActive);
-
-  // ★ 縦横の軸ロック（長押し中は無効）
+  // ★ 縦横の軸ロック（長押し選択中は無効）
   useTouchAxisScroll(weekScrollContainerRef, !selectionActive);
+
+  // ★ スマホ: 1週間単位スクロール制限（長押し選択中は無効）
+  useWeekHorizontalScroll(weekScrollContainerRef, dayWidth, !selectionActive);
+
+  // dayWidth は CalendarMain から渡される（自己計測なし）
+  // dayWidth=0 の間は表示を避ける
+  if (dayWidth <= 0) return null;
 
   return (
     <div
-      className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative"
+      className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative snap-x snap-mandatory"
       ref={weekScrollContainerRef}
       onScroll={handleWeekScroll}
       style={{ scrollbarWidth: "none" }}
     >
-      <div className="flex flex-col min-w-max">
+      <div className="flex flex-col" style={{ minWidth: `${TIME_AXIS_WIDTH_PX + dayWidth * days.length}px` }}>
 
         {/* ヘッダーエリア */}
         <div
@@ -99,7 +87,7 @@ export default function WeekView({
                 role="columnheader"
                 aria-label={`${day.date.getFullYear()}年${day.date.getMonth() + 1}月${day.label}日`}
                 className={`shrink-0 py-2 md:py-3 border-r border-gray-100 flex flex-col ${day.date.getDay() === weekStartDay ? "snap-start snap-always" : ""}`}
-                style={{ width: actualDayWidth, ...(day.isToday ? { backgroundColor: accentColor + "10" } : {}) }}
+                style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + "10" } : {}) }}
               >
                 <div
                   className={`w-8 h-8 md:w-auto md:h-auto mx-auto rounded-full flex flex-col items-center justify-center mb-1.5 shrink-0 ${day.isToday ? "shadow-sm" : ""}`}
@@ -123,7 +111,6 @@ export default function WeekView({
                         aria-label={`終日: ${ev.title}`}
                         className="text-[10px] text-white rounded px-1.5 py-0.5 truncate hover:brightness-105 shadow-sm text-left font-bold w-full"
                         style={{ backgroundColor: ev.colorHex || member?.colorHex || accentColor }}
-                        title={ev.title}
                       >
                         {ev.title}
                       </button>
@@ -161,9 +148,9 @@ export default function WeekView({
               key={day.dayIndex}
               data-day-index={day.dayIndex}
               role="gridcell"
-              aria-label={`${day.label}日の時間グリッド`}
+              aria-label={`${day.label}日のタイムグリッド`}
               className={`shrink-0 border-r border-gray-100 relative ${day.date.getDay() === weekStartDay ? "snap-start snap-always" : ""}`}
-              style={{ width: actualDayWidth, ...(day.isToday ? { backgroundColor: accentColor + "05" } : {}) }}
+              style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + "05" } : {}) }}
             >
               {hours.map((_, i) => (
                 <div
@@ -172,14 +159,9 @@ export default function WeekView({
                   style={{
                     height: hourHeight,
                     ...(dragOverSlot?.dayIndex === day.dayIndex && dragOverSlot?.startHour === i
-                      ? { backgroundColor: accentColor + "20", borderColor: accentColor }
-                      : {}),
+                      ? { backgroundColor: accentColor + "20", borderColor: accentColor } : {}),
                   }}
-                  onMouseDown={(e) => {
-                    if (handleSlotMouseDown) {
-                      handleSlotMouseDown(e, day.dayIndex, colIndex);
-                    }
-                  }}
+                  onMouseDown={(e) => handleSlotMouseDown?.(e, day.dayIndex, colIndex)}
                   onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: i }); }}
                   onDragLeave={() => setDragOverSlot(null)}
                   onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, i); }}
@@ -197,23 +179,14 @@ export default function WeekView({
                   const isResizing = resizingEvent?.eventId === event.id;
                   const displayDuration = isResizing ? resizingEvent!.currentDuration : event.duration;
                   const eventColor = event.colorHex || member?.colorHex || accentColor;
-
                   return (
                     <div
                       key={`${event.id}-${idx}`}
                       data-no-axis-lock
                       draggable={!isResizing}
                       onMouseDown={(e) => e.stopPropagation()}
-                      onDragStart={(e) => {
-                        e.currentTarget.style.opacity = "0.6";
-                        e.currentTarget.style.transform = "scale(0.95)";
-                        handleEventDragStart(e, event.id, event.isGoogle, event.memberId);
-                      }}
-                      onDragEnd={(e) => {
-                        e.currentTarget.style.opacity = "1";
-                        e.currentTarget.style.transform = "scale(1)";
-                        setDragOverSlot(null);
-                      }}
+                      onDragStart={(e) => { e.currentTarget.style.opacity = "0.6"; e.currentTarget.style.transform = "scale(0.95)"; handleEventDragStart(e, event.id, event.isGoogle, event.memberId); }}
+                      onDragEnd={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.transform = "scale(1)"; setDragOverSlot(null); }}
                       onClick={(e) => { if (!isResizing) handleEventClick(event, e); }}
                       onTouchStart={(e) => {
                         if (isResizing) return;
@@ -226,29 +199,14 @@ export default function WeekView({
                       tabIndex={0}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleEventClick(event, e as unknown as React.MouseEvent); }}
                       className={`calendar-event absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:brightness-105 z-10 border border-white/20 ${!isResizing && "cursor-grab active:cursor-grabbing"} flex flex-col items-start`}
-                      style={{
-                        top: `${event.startHour * hourHeight + 1}px`,
-                        height: `${displayDuration * hourHeight - 2}px`,
-                        left: `calc(${leftPct}% + 1px)`,
-                        width: `calc(${widthPct}% - 2px)`,
-                        backgroundColor: eventColor,
-                      }}
+                      style={{ top: `${event.startHour * hourHeight + 1}px`, height: `${displayDuration * hourHeight - 2}px`, left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`, backgroundColor: eventColor }}
                     >
-                      <div className="font-semibold text-[10px] md:text-[11px] leading-tight break-words whitespace-normal w-full overflow-hidden">
-                        {event.title}
-                      </div>
+                      <div className="font-semibold text-[10px] md:text-[11px] leading-tight break-words whitespace-normal w-full overflow-hidden">{event.title}</div>
                       <div
                         className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize hover:bg-black/20 z-20 touch-none"
                         aria-label="リサイズ"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId });
-                        }}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.touches[0].clientY, currentDuration: event.duration, memberId: event.memberId });
-                        }}
+                        onMouseDown={(e) => { e.stopPropagation(); setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId }); }}
+                        onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.touches[0].clientY, currentDuration: event.duration, memberId: event.memberId }); }}
                       />
                     </div>
                   );
@@ -264,8 +222,8 @@ export default function WeekView({
               aria-label={`新規予定: ${Math.round(Math.abs(selection.currentHour - selection.startHour) * 60)}分`}
               style={{
                 backgroundColor: accentColor + "E6",
-                left: `${TIME_AXIS_WIDTH_PX + selection.colIndex * actualDayWidth + 2}px`,
-                width: `${actualDayWidth - 4}px`,
+                left: `${TIME_AXIS_WIDTH_PX + selection.colIndex * dayWidth + 2}px`,
+                width: `${dayWidth - 4}px`,
                 top: `${Math.min(selection.startHour, selection.currentHour) * hourHeight}px`,
                 height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * hourHeight}px`,
               }}
