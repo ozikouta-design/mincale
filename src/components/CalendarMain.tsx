@@ -28,8 +28,7 @@ const CalendarMain = memo(function CalendarMain() {
   const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number; startHour: number } | null>(null);
   const [selection, setSelection] = useState<{ dayIndex: number; colIndex: number; memberId?: string; startHour: number; currentHour: number } | null>(null);
   const [resizingEvent, setResizingEvent] = useState<{ eventId: string; initialDuration: number; startY: number; currentDuration: number; memberId: string } | null>(null);
-  
-  // ★変更: isPending（長押し待機中）と dragAxis（軸ロック）を追加
+
   const [touchDragInfo, setTouchDragInfo] = useState<{
     eventId: string; memberId: string; isGoogle: boolean;
     ghostX: number; ghostY: number; title: string; color: string;
@@ -42,7 +41,7 @@ const CalendarMain = memo(function CalendarMain() {
   const weekScrollContainerRef = useRef<HTMLDivElement>(null);
   const dayScrollContainerRef = useRef<HTMLDivElement>(null);
   const monthScrollContainerRef = useRef<HTMLDivElement>(null);
-  
+
   const touchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -68,26 +67,61 @@ const CalendarMain = memo(function CalendarMain() {
     ? Math.max(containerWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
     : Math.max(300, activeMemberCount * 120);
 
+  // ★★★ 座標ずれの根本修正 ★★★
+  //
+  // 旧実装の問題:
+  //   scrollLeft / scrollTop / CALENDAR_HEADER_HEIGHT / TIME_AXIS_WIDTH_PX を
+  //   手計算で組み合わせていた → iOSのstickyヘッダーとの組み合わせで座標がずれる
+  //
+  // 新実装:
+  //   1. document.elementFromPoint() でブラウザに正確なヒットテストをさせる
+  //   2. 日カラム要素の data-day-index 属性から dayIndex を取得
+  //   3. startHour は日カラムの getBoundingClientRect().top から直接計算
+  //   → scrollLeft/scrollTop/ヘッダー高/軸幅の手計算が一切不要
   const getSlotFromTouch = useCallback(
-    (clientX: number, clientY: number): { dayIndex: number; colIndex: number; startHour: number } | null => {
-      // monthビューはtimeグリッドを持たないため非対応
+    (clientX: number, clientY: number): { dayIndex: number; colIndex: number; startHour: number; memberId?: string } | null => {
       if (viewMode === "month") return null;
-      const scrollRef = viewMode === "week" ? weekScrollContainerRef : dayScrollContainerRef;
-      if (!scrollRef.current) return null;
-      const rect = scrollRef.current.getBoundingClientRect();
-      const colWidth = viewMode === "week" ? weekDayWidth : singleDayWidth;
-      const relX = clientX - rect.left + scrollRef.current.scrollLeft - TIME_AXIS_WIDTH_PX;
-      const relY = clientY - rect.top + scrollRef.current.scrollTop - CALENDAR_HEADER_HEIGHT;
-      // ★ 少しの余裕（16px）を持たせる: ヘッダーぎりぎりやサイドバーぎりぎりでも拾えるように
-      if (relX < -16 || relY < -16) return null;
-      const clampedRelX = Math.max(0, relX);
-      const clampedRelY = Math.max(0, relY);
-      const colIndex = Math.floor(clampedRelX / colWidth);
-      if (colIndex < 0 || colIndex >= days.length) return null;
-      const startHour = Math.max(0, Math.min(23.75, clampedRelY / hourHeight));
-      return { dayIndex: days[colIndex].dayIndex, colIndex, startHour: Math.round(startHour * 4) / 4 };
+
+      // ブラウザのヒットテストで実際にタッチされた要素を取得
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return null;
+
+      // data-day-index を持つ日カラム要素を探す（WeekView/DayView共通）
+      const dayCol = el.closest('[data-day-index]') as HTMLElement | null;
+      if (!dayCol) return null;
+
+      const dayIndex = Number(dayCol.getAttribute('data-day-index'));
+      const colIndex = days.findIndex(d => d.dayIndex === dayIndex);
+      if (colIndex === -1) return null;
+
+      // startHour: 日カラムの上端（= 時間グリッドの 0:00）からの距離で計算
+      // getBoundingClientRect はビューポート座標で正確な値を返すので
+      // scroll位置やstickyヘッダーの影響を受けない
+      const dayRect = dayCol.getBoundingClientRect();
+      const relY = clientY - dayRect.top;
+      const startHour = Math.max(0, Math.min(23.75, relY / hourHeight));
+
+      // DayView: メンバーカラムを特定（data-member-id属性で）
+      let memberId: string | undefined;
+      if (viewMode === "day") {
+        const memberCol = el.closest('[data-member-id]') as HTMLElement | null;
+        if (memberCol) {
+          memberId = memberCol.getAttribute('data-member-id') || undefined;
+        } else if (selectedMemberIds.length > 0) {
+          // フォールバック: X座標からメンバーカラムを推定
+          const relX = clientX - dayRect.left;
+          const memberColWidth = dayRect.width / selectedMemberIds.length;
+          const memberIdx = Math.min(
+            selectedMemberIds.length - 1,
+            Math.max(0, Math.floor(relX / memberColWidth))
+          );
+          memberId = selectedMemberIds[memberIdx];
+        }
+      }
+
+      return { dayIndex, colIndex, startHour: Math.round(startHour * 4) / 4, memberId };
     },
-    [viewMode, weekDayWidth, singleDayWidth, days, hourHeight]
+    [viewMode, days, hourHeight, selectedMemberIds]
   );
 
   const handleTouchEventDragStart = useCallback(
@@ -216,8 +250,8 @@ const CalendarMain = memo(function CalendarMain() {
     if (months[idx]) setCurrentMonthYear(`${months[idx].year}年 ${months[idx].month + 1}月`);
   };
 
+  // ── マウス & リサイズのタッチ ──────────────────────────────────
   useEffect(() => {
-    // ── マウス操作 ────────────────────────────────────────────────
     const onMouseMove = (e: MouseEvent) => {
       if (resizingEvent) {
         const deltaY = e.clientY - resizingEvent.startY;
@@ -243,8 +277,6 @@ const CalendarMain = memo(function CalendarMain() {
       }
     };
 
-    // ── タッチ操作：既存イベントのリサイズのみ ────────────────────────
-    // ★ 新規予定の長押しドラッグは下の独立したeffectが担当
     const onTouchMoveResize = (e: TouchEvent) => {
       if (!resizingEvent) return;
       e.preventDefault();
@@ -275,27 +307,14 @@ const CalendarMain = memo(function CalendarMain() {
   }, [selection, resizingEvent, handleRangeSelect, handleEventResize, hourHeight]);
 
   // ★機能1: 長押しでの新規予定作成（Google Calendar風）
-  //
-  // 【Race Condition 修正】
-  // 旧実装の問題:
-  //   タイマー発火 → setSelection(非同期) → React再レンダリング待ち
-  //   → useEffectが再登録される前にtouchmove/touchendが来る
-  //   → 枠が表示されても指を動かしても何も起きない / 指を離しても何も起きない
-  //
-  // 新実装の解決策:
-  //   selectionRef（useRef）で選択状態を同期的に保持。
-  //   touchstart → touchmove → touchend を全て同一effectで完結させ
-  //   Reactの非同期更新に依存しない。
-  //   handleTouchMove を passive:false にしてiOSスクロールを阻止。
   useEffect(() => {
     const wrapper = mainWrapperRef.current;
     if (!wrapper) return;
 
-    // React stateのsetSelectionとは別に、同期的に参照できるref
-    const selRef = { current: null as { dayIndex: number; colIndex: number; startHour: number; currentHour: number } | null };
+    const selRef = { current: null as { dayIndex: number; colIndex: number; memberId?: string; startHour: number; currentHour: number } | null };
     let longPressTimer: NodeJS.Timeout | null = null;
     let startX = 0, startY = 0;
-    let longPressActivated = false; // タイマーが発火して長押し確定したか
+    let longPressActivated = false;
 
     const handleTouchStart = (e: TouchEvent) => {
       const target = e.target as HTMLElement;
@@ -319,12 +338,11 @@ const CalendarMain = memo(function CalendarMain() {
         const newSel = {
           dayIndex: slot.dayIndex,
           colIndex: slot.colIndex,
+          memberId: slot.memberId,
           startHour: slot.startHour,
-          currentHour: slot.startHour + 1, // デフォルト1時間
+          currentHour: slot.startHour + 1,
         };
-        // ★ refに即時反映（Reactの非同期更新を待たない）
         selRef.current = newSel;
-        // ★ stateも更新（UI表示用）
         setSelection(newSel);
         if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(40);
       }, 450);
@@ -332,18 +350,22 @@ const CalendarMain = memo(function CalendarMain() {
 
     const handleTouchMove = (e: TouchEvent) => {
       if (longPressActivated && selRef.current) {
-        // ★ 長押し確定後: iOSスクロールを止めて枠をドラッグ
-        // passive:false でないと e.preventDefault() が呼べない → 下で登録を変更
         e.preventDefault();
         const touch = e.touches[0];
-        const slot = getSlotFromTouch(touch.clientX, touch.clientY);
-        if (slot) {
-          selRef.current = { ...selRef.current, currentHour: slot.startHour };
+
+        // ★ touchmove中: 日カラム要素の rect.top を直接使って currentHour を計算
+        //    elementFromPoint は指の下にゴーストがある場合うまくいかないことがあるため、
+        //    長押し開始時の dayIndex の日カラム要素を直接参照する
+        const dayCol = document.querySelector(`[data-day-index="${selRef.current.dayIndex}"]`) as HTMLElement | null;
+        if (dayCol) {
+          const dayRect = dayCol.getBoundingClientRect();
+          const relY = touch.clientY - dayRect.top;
+          const newHour = Math.max(0, Math.min(23.75, relY / hourHeight));
+          selRef.current = { ...selRef.current, currentHour: Math.round(newHour * 4) / 4 };
           setSelection({ ...selRef.current });
         }
         return;
       }
-      // 長押し待機中: 指が動いたらタイマーをキャンセル
       if (longPressTimer) {
         const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startY;
@@ -358,16 +380,21 @@ const CalendarMain = memo(function CalendarMain() {
       if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 
       if (longPressActivated && selRef.current) {
-        // ★ 指を離した瞬間に予定を確定 → モーダルを開く
         const sel = selRef.current;
         const touch = e.changedTouches[0];
-        const slot = getSlotFromTouch(touch.clientX, touch.clientY);
-        const finalHour = slot ? slot.startHour : sel.currentHour;
+
+        const dayCol = document.querySelector(`[data-day-index="${sel.dayIndex}"]`) as HTMLElement | null;
+        let finalHour = sel.currentHour;
+        if (dayCol) {
+          const dayRect = dayCol.getBoundingClientRect();
+          const relY = touch.clientY - dayRect.top;
+          finalHour = Math.max(0, Math.min(23.75, Math.round((relY / hourHeight) * 4) / 4));
+        }
 
         const startHr = Math.min(sel.startHour, finalHour);
         const endHr   = Math.max(sel.startHour, finalHour);
         let duration = Math.round((endHr - startHr) * 4) / 4;
-        if (duration < 0.25) duration = 1; // 最低15分
+        if (duration < 0.25) duration = 1;
 
         handleRangeSelect(sel.dayIndex, Math.round(startHr * 4) / 4, duration);
         setSelection(null);
@@ -386,7 +413,6 @@ const CalendarMain = memo(function CalendarMain() {
       }
     };
 
-    // ★ touchmove だけ passive:false（スクロール阻止のため）
     wrapper.addEventListener('touchstart', handleTouchStart, { passive: true });
     wrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
     wrapper.addEventListener('touchend', handleTouchEnd, { passive: true });
@@ -399,7 +425,7 @@ const CalendarMain = memo(function CalendarMain() {
       wrapper.removeEventListener('touchend', handleTouchEnd);
       wrapper.removeEventListener('touchcancel', handleTouchCancel);
     };
-  }, [getSlotFromTouch, handleRangeSelect]);
+  }, [getSlotFromTouch, handleRangeSelect, hourHeight]);
 
   // ★機能2: タッチドラッグの移動軸ロック
   useEffect(() => {
@@ -417,7 +443,7 @@ const CalendarMain = memo(function CalendarMain() {
           if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
           setTouchDragInfo(null);
         }
-        return; 
+        return;
       }
 
       e.preventDefault();
@@ -431,9 +457,9 @@ const CalendarMain = memo(function CalendarMain() {
       let currentY = touch.clientY;
 
       if (newAxis === 'x') {
-        currentY = touchDragInfo.initY; 
+        currentY = touchDragInfo.initY;
       } else if (newAxis === 'y') {
-        currentX = touchDragInfo.initX; 
+        currentX = touchDragInfo.initX;
       }
 
       const slot = getSlotFromTouch(currentX, currentY);
@@ -511,7 +537,6 @@ const CalendarMain = memo(function CalendarMain() {
         } as unknown as React.DragEvent<HTMLDivElement>;
         handleDrop(fake, slot.dayIndex, slot.startHour);
       } else if (todoTouchDrag && !slot) {
-        // ★ カレンダーの時間グリッド外にドロップされた場合
         toast.error("カレンダーの時間帯にドロップしてください");
       }
       setTodoTouchDrag(null);
@@ -609,7 +634,6 @@ const CalendarMain = memo(function CalendarMain() {
         </div>
       )}
 
-      {/* ★ TodoカードのiPhone長押しドラッグ中のゴーストカード */}
       {todoTouchDrag?.isDragging && (
         <div
           className="fixed pointer-events-none z-[9999] rounded-xl px-3 py-2 text-white text-xs shadow-2xl border border-white/30 flex items-center gap-1.5"

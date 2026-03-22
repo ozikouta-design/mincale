@@ -138,8 +138,18 @@ export default function WeekView({
               })}
             </div>
           ))}
+
+          {/* ★修正: 選択枠のleft計算をピクセル値に変更（旧: (colIndex/7)*100% → 壊れていた） */}
           {selection && (
-            <div className="absolute rounded-lg shadow-lg pointer-events-none z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none" style={{ backgroundColor: accentColor + 'E6', left: `calc(${TIME_AXIS_WIDTH_PX}px + ${(selection.colIndex / 7) * 100}% + 2px)`, width: `calc(${100 / 7}% - 4px)`, top: `${Math.min(selection.startHour, selection.currentHour) * hourHeight}px`, height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * hourHeight}px` }}>
+            <div className="absolute rounded-lg shadow-lg pointer-events-none z-30 px-3 py-2 text-xs text-white overflow-hidden transition-none"
+              style={{
+                backgroundColor: accentColor + 'E6',
+                left: `${TIME_AXIS_WIDTH_PX + selection.colIndex * dayWidth + 2}px`,
+                width: `${dayWidth - 4}px`,
+                top: `${Math.min(selection.startHour, selection.currentHour) * hourHeight}px`,
+                height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * hourHeight}px`,
+              }}
+            >
               <div className="font-bold tracking-wide">新規予定</div>
             </div>
           )}
