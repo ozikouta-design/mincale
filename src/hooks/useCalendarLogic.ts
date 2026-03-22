@@ -1,130 +1,91 @@
-import { useState, useEffect, useMemo } from "react";
-import { useSession, signIn, signOut } from "next-auth/react";
+"use client";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { supabase } from "@/lib/supabase";
-import { Group, Todo } from "@/types";
-import { useTodoLogic } from "./useTodoLogic";
-import { useEventLogic, getDayIndex } from "./useEventLogic";
-import { useDragDropLogic } from "./useDragDropLogic";
+import { SYNC_MONTHS, HOUR_H } from "@/constants/calendar";
+import { getDayIndex } from "@/hooks/useInitialScroll";
+import { useEventLogic } from "@/hooks/useEventLogic";
+import { useTodoLogic } from "@/hooks/useTodoLogic";
+import { useDragDropLogic } from "@/hooks/useDragDropLogic";
+import type { Group, Todo, ViewMode, DayData, MonthData, SelectionState, EventLayout, CalendarEvent } from "@/types";
 import toast from "react-hot-toast";
-import { DEFAULT_HOUR_HEIGHT } from "@/constants/calendar";
 
 export function useCalendarLogic() {
   const { data: session, status } = useSession();
 
-  // ---------- Haptics ----------
+  // ── Haptics ──────────────────────────────────────────────────
   const [isHapticsEnabled, setIsHapticsEnabled] = useState(true);
-  const [syncMonths, setSyncMonths] = useState<number>(3);
+  const triggerHaptic = useCallback(() => {
+    if (isHapticsEnabled && typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(15);
+  }, [isHapticsEnabled]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const h = localStorage.getItem("mincale_haptics");
-    if (h !== null) setIsHapticsEnabled(h === "true");
-    const s = localStorage.getItem("mincale_sync_months");
-    if (s !== null) setSyncMonths(Number(s));
-    if (window.innerWidth >= 768) {
-      setIsSidebarOpen(true);
-      setIsRightPanelOpen(true);
-    }
-  }, []);
-
-  const triggerHaptic = () => {
-    if (isHapticsEnabled && typeof window !== "undefined" && navigator.vibrate) {
-      navigator.vibrate(15);
-    }
-  };
-
-  const toggleHaptics = (enabled: boolean) => {
-    setIsHapticsEnabled(enabled);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mincale_haptics", String(enabled));
-      if (enabled && navigator.vibrate) navigator.vibrate(15);
-    }
-  };
-
-  const handleSyncMonthsChange = (val: number) => {
-    setSyncMonths(val);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mincale_sync_months", String(val));
-    }
-    toast.success("同期期間を変更しました。再同期ボタンで即時反映できます。");
-    triggerHaptic();
-  };
-
-  // ---------- Todo タッチドラッグ（iPhone長押し→カレンダードロップ）----------
-  const [todoTouchDrag, setTodoTouchDrag] = useState<{
-    todoId: number;
-    title: string;
-    ghostX: number;
-    ghostY: number;
-    isDragging: boolean;
-  } | null>(null);
-
-  // ---------- UI state ----------
-  const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
-  const [activeTab, setActiveTab] = useState<"todo" | "settings">("todo");
+  // ── UI state ─────────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [currentMonthYear, setCurrentMonthYear] = useState("");
   const [accentColor, setAccentColor] = useState("#2563eb");
-  const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
-  const [isCopied, setIsCopied] = useState(false);
+  const [hourHeight, setHourHeight] = useState(HOUR_H);
+  const [currentMonthYear, setCurrentMonthYear] = useState("");
+  const [weekStartDay, setWeekStartDay] = useState(0);
+  const [syncMonths, setSyncMonths] = useState(SYNC_MONTHS);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // ---------- Groups ----------
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  // ── Selection (new event being drawn) ────────────────────────
+  const [selection, setSelection] = useState<SelectionState | null>(null);
 
-  // ---------- Booking ----------
+  // ── Drag over slot ───────────────────────────────────────────
+  const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number; startHour: number } | null>(null);
+
+  // ── Booking ──────────────────────────────────────────────────
   const [bookingTitle, setBookingTitle] = useState("ミーティングの予約");
   const [bookingDuration, setBookingDuration] = useState(30);
   const [bookingStartHour, setBookingStartHour] = useState(10);
   const [bookingEndHour, setBookingEndHour] = useState(18);
   const [bookingDays, setBookingDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [bookingLeadTime, setBookingLeadTime] = useState(24);
-  const [weekStartDay, setWeekStartDay] = useState(0);
   const [profileId, setProfileId] = useState("");
 
-  // ---------- Calendar days ----------
+  // ── Groups ───────────────────────────────────────────────────
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+
+  // ── Calendar day/month arrays ─────────────────────────────────
   const { days, months, timeMin, timeMax } = useMemo(() => {
     const today = new Date();
-    const tempDays: { dayIndex: number; label: string; isToday: boolean; date: Date }[] = [];
-    const tempMonths: { year: number; month: number; monthIndex: number; date: Date }[] = [];
+    const days: DayData[] = [];
+    const months: MonthData[] = [];
     const fetchStart = new Date(today.getFullYear(), today.getMonth() - syncMonths, 1);
-    const fetchEnd = new Date(today.getFullYear(), today.getMonth() + syncMonths + 1, 0, 23, 59, 59);
+    const fetchEnd   = new Date(today.getFullYear(), today.getMonth() + syncMonths + 1, 0, 23, 59, 59);
+
+    // Start from the weekStartDay before (syncMonths * 30) days ago
     const startDay = new Date(today);
     startDay.setDate(today.getDate() - syncMonths * 30);
-    let dayOffset = startDay.getDay() - weekStartDay;
-    if (dayOffset < 0) dayOffset += 7;
-    startDay.setDate(startDay.getDate() - dayOffset);
-    const totalDays = (syncMonths * 2 + 1) * 31;
-    for (let i = 0; i < totalDays; i++) {
-      const current = new Date(startDay);
-      current.setDate(startDay.getDate() + i);
-      tempDays.push({
-        dayIndex: getDayIndex(current),
-        label: current.getDate().toString(),
-        isToday: getDayIndex(current) === getDayIndex(today),
-        date: current,
-      });
+    let offset = startDay.getDay() - weekStartDay;
+    if (offset < 0) offset += 7;
+    startDay.setDate(startDay.getDate() - offset);
+
+    const total = (syncMonths * 2 + 1) * 31;
+    for (let i = 0; i < total; i++) {
+      const cur = new Date(startDay);
+      cur.setDate(startDay.getDate() + i);
+      days.push({ dayIndex: getDayIndex(cur), label: String(cur.getDate()), isToday: getDayIndex(cur) === getDayIndex(today), date: cur });
     }
     for (let i = -syncMonths; i <= syncMonths; i++) {
       const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-      tempMonths.push({ year: d.getFullYear(), month: d.getMonth(), monthIndex: d.getFullYear() * 100 + d.getMonth(), date: d });
+      months.push({ year: d.getFullYear(), month: d.getMonth(), monthIndex: d.getFullYear() * 100 + d.getMonth(), date: d });
     }
-    return { days: tempDays, months: tempMonths, timeMin: fetchStart.toISOString(), timeMax: fetchEnd.toISOString() };
+    return { days, months, timeMin: fetchStart.toISOString(), timeMax: fetchEnd.toISOString() };
   }, [weekStartDay, syncMonths]);
 
-  const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
+  const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, "0")}:00`);
 
-  // ---------- Sub-hooks ----------
-  const todoLogic = useTodoLogic(session, triggerHaptic);
+  // ── Sub-hooks ─────────────────────────────────────────────────
   const eventLogic = useEventLogic(session, status, triggerHaptic, timeMin, timeMax, accentColor);
-
-  const dragDropLogic = useDragDropLogic({
+  const todoLogic  = useTodoLogic(session, triggerHaptic);
+  const dragDrop   = useDragDropLogic({
     session,
     triggerHaptic,
     todos: todoLogic.todos,
@@ -138,210 +99,124 @@ export function useCalendarLogic() {
     setIsRightPanelOpen,
   });
 
-  // ---------- Data fetching ----------
+  // ── Event layouts (overlap calculation) ──────────────────────
+  const eventLayouts = useMemo(() => {
+    const layouts: Record<string, EventLayout> = {};
+    const visible = eventLogic.events.filter(
+      (e) => eventLogic.selectedMemberIds.includes(e.memberId) && !e.isAllDay
+    );
+
+    const processColumn = (col: CalendarEvent[]) => {
+      col.sort((a, b) => a.startHour - b.startHour || b.duration - a.duration);
+      const clusters: CalendarEvent[][] = [];
+      let cur: CalendarEvent[] = [], end = 0;
+      col.forEach((ev) => {
+        if (cur.length === 0) { cur.push(ev); end = ev.startHour + ev.duration; }
+        else if (ev.startHour < end) { cur.push(ev); end = Math.max(end, ev.startHour + ev.duration); }
+        else { clusters.push(cur); cur = [ev]; end = ev.startHour + ev.duration; }
+      });
+      if (cur.length) clusters.push(cur);
+
+      clusters.forEach((cluster) => {
+        const cols: CalendarEvent[][] = [];
+        cluster.forEach((ev) => {
+          let placed = false;
+          for (let i = 0; i < cols.length; i++) {
+            const last = cols[i][cols[i].length - 1];
+            if (last.startHour + last.duration <= ev.startHour + 0.001) {
+              cols[i].push(ev); layouts[`${ev.id}-${ev.memberId}`] = { column: i, totalColumns: 0 };
+              placed = true; break;
+            }
+          }
+          if (!placed) { cols.push([ev]); layouts[`${ev.id}-${ev.memberId}`] = { column: cols.length - 1, totalColumns: 0 }; }
+        });
+        const tc = cols.length;
+        cluster.forEach((ev) => { layouts[`${ev.id}-${ev.memberId}`].totalColumns = tc; });
+      });
+    };
+
+    days.forEach((d) => processColumn(visible.filter((e) => e.dayIndex === d.dayIndex)));
+    return layouts;
+  }, [eventLogic.events, eventLogic.selectedMemberIds, days]);
+
+  // ── Data loading (profile, groups) ───────────────────────────
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       if (!session?.user?.email) { setIsLoadingData(false); return; }
       setIsLoadingData(true);
       try {
-        const { data: todosData } = await supabase
-          .from("todos").select("*").eq("user_email", session.user.email).order("id", { ascending: true });
-        if (todosData) todoLogic.setTodos(todosData as Todo[]);
-
-        const { data: groupsData } = await supabase
-          .from("groups").select("*").eq("user_email", session.user.email).order("id", { ascending: true });
-        if (groupsData) setGroups(groupsData.map((g) => ({ id: g.id.toString(), name: g.name, memberIds: g.member_ids })));
-
-        const { data: profileData } = await supabase
-          .from("profiles").select("*").eq("email", session.user.email).single();
-        if (profileData) {
-          // ★ 修正: データベースの slug を最優先で取得する
-          setProfileId(profileData.slug || profileData.id || profileData.email);
-          if (profileData.booking_title) setBookingTitle(profileData.booking_title);
-          if (profileData.booking_duration) setBookingDuration(profileData.booking_duration);
-          if (profileData.booking_start_hour != null) setBookingStartHour(profileData.booking_start_hour);
-          if (profileData.booking_end_hour != null) setBookingEndHour(profileData.booking_end_hour);
-          if (profileData.booking_days) setBookingDays(profileData.booking_days);
-          if (profileData.booking_lead_time != null) setBookingLeadTime(profileData.booking_lead_time);
-          if (profileData.week_start_day != null) setWeekStartDay(profileData.week_start_day);
+        const { data: profile } = await supabase.from("profiles").select("*").eq("email", session.user.email).single();
+        if (profile) {
+          setProfileId(profile.slug || profile.id || profile.email);
+          if (profile.booking_title) setBookingTitle(profile.booking_title);
+          if (profile.booking_duration) setBookingDuration(profile.booking_duration);
+          if (profile.booking_start_hour != null) setBookingStartHour(profile.booking_start_hour);
+          if (profile.booking_end_hour != null) setBookingEndHour(profile.booking_end_hour);
+          if (profile.booking_days) setBookingDays(profile.booking_days);
+          if (profile.booking_lead_time != null) setBookingLeadTime(profile.booking_lead_time);
+          if (profile.week_start_day != null) setWeekStartDay(profile.week_start_day);
+          if (profile.accent_color) setAccentColor(profile.accent_color);
         }
-      } catch (error) {
-        console.error(error);
-        toast.error("データの読み込みに失敗しました");
-      } finally {
-        setIsLoadingData(false);
-      }
+        const { data: groupsData } = await supabase.from("groups").select("*").eq("user_email", session.user.email);
+        if (groupsData) setGroups(groupsData.map((g) => ({ id: String(g.id), name: g.name, memberIds: g.member_ids })));
+      } catch { toast.error("データの読み込みに失敗しました"); }
+      finally { setIsLoadingData(false); }
     };
-    fetchData();
+    load();
   }, [session]);
 
-  // ---------- Booking settings ----------
-  const handleSaveBookingSettings = async () => {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (window.innerWidth >= 768) { setIsSidebarOpen(true); setIsRightPanelOpen(true); }
+      const h = localStorage.getItem("mincale_haptics");
+      if (h !== null) setIsHapticsEnabled(h === "true");
+    }
+  }, []);
+
+  // ── Booking save ─────────────────────────────────────────────
+  const handleSaveBookingSettings = useCallback(async () => {
     if (!session?.user?.email) return;
     const { error } = await supabase.from("profiles").update({
-      booking_title: bookingTitle,
-      booking_duration: bookingDuration,
-      booking_start_hour: bookingStartHour,
-      booking_end_hour: bookingEndHour,
-      booking_days: bookingDays,
-      booking_lead_time: bookingLeadTime,
+      booking_title: bookingTitle, booking_duration: bookingDuration,
+      booking_start_hour: bookingStartHour, booking_end_hour: bookingEndHour,
+      booking_days: bookingDays, booking_lead_time: bookingLeadTime,
       week_start_day: weekStartDay,
     }).eq("email", session.user.email);
-    if (!error) { toast.success("設定を保存しました！"); triggerHaptic(); }
+    if (!error) { toast.success("設定を保存しました"); triggerHaptic(); }
     else toast.error("設定の保存に失敗しました");
-  };
-
-  // ---------- Groups ----------
-  const handleCreateGroupClick = () => {
-    setEditingGroupId(null); setNewGroupName(""); setNewGroupMemberIds([]);
-    setIsGroupModalOpen(true); triggerHaptic();
-  };
-  const handleEditGroupClick = (group: Group, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingGroupId(group.id); setNewGroupName(group.name); setNewGroupMemberIds(group.memberIds);
-    setIsGroupModalOpen(true); triggerHaptic();
-  };
-  const handleCloseGroupModal = () => {
-    setIsGroupModalOpen(false); setEditingGroupId(null); setNewGroupName(""); setNewGroupMemberIds([]);
-  };
-  const handleSaveGroup = async () => {
-    if (!newGroupName.trim() || newGroupMemberIds.length === 0 || !session?.user?.email) return;
-    if (editingGroupId) {
-      const { data, error } = await supabase.from("groups")
-        .update({ name: newGroupName, member_ids: newGroupMemberIds })
-        .eq("id", parseInt(editingGroupId, 10)).select().single();
-      if (!error && data) {
-        setGroups((prev) => prev.map((g) => g.id === editingGroupId ? { id: data.id.toString(), name: data.name, memberIds: data.member_ids } : g));
-        toast.success("グループを更新しました"); triggerHaptic();
-      } else toast.error("グループの更新に失敗しました");
-    } else {
-      const { data, error } = await supabase.from("groups")
-        .insert({ name: newGroupName, member_ids: newGroupMemberIds, user_email: session.user.email })
-        .select().single();
-      if (!error && data) {
-        setGroups((prev) => [...prev, { id: data.id.toString(), name: data.name, memberIds: data.member_ids }]);
-        toast.success("グループを作成しました"); triggerHaptic();
-      } else toast.error("グループの作成に失敗しました");
-    }
-    handleCloseGroupModal();
-  };
-  const handleDeleteGroup = async (groupId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const { error } = await supabase.from("groups").delete().eq("id", parseInt(groupId, 10));
-    if (!error) { setGroups((prev) => prev.filter((g) => g.id !== groupId)); toast.success("グループを削除しました"); triggerHaptic(); }
-    else toast.error("グループの削除に失敗しました");
-  };
-
-  // ---------- Clipboard / free time ----------
-  const getCommonFreeTimeText = () => {
-    const freeSlots: string[] = [];
-    const now = new Date();
-    const minBookingTime = new Date(now.getTime() + bookingLeadTime * 3600000);
-    const visibleDays = days.filter((d) => d.dayIndex >= getDayIndex(now) && bookingDays.includes(d.date.getDay()));
-    let addedDaysCount = 0;
-
-    for (let di = 0; di < visibleDays.length; di++) {
-      if (addedDaysCount >= 5) break;
-      const dt = visibleDays[di].date;
-      const dateStr = `${dt.getMonth() + 1}/${dt.getDate()}(${["日","月","火","水","木","金","土"][dt.getDay()]})`;
-      let currentMin = bookingStartHour * 60;
-      const endMin = bookingEndHour * 60;
-      const dayFreeBlocks: string[] = [];
-      let blockStart = -1, blockEnd = -1;
-
-      while (currentMin < endMin) {
-        if (currentMin + bookingDuration > endMin) break;
-        const h = Math.floor(currentMin / 60), m = currentMin % 60;
-        const slotStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), h, m, 0);
-        let occupied = slotStart <= minBookingTime;
-
-        if (!occupied) {
-          for (const event of eventLogic.events) {
-            if (eventLogic.selectedMemberIds.includes(event.memberId) && event.dayIndex === visibleDays[di].dayIndex) {
-              const slotStartH = currentMin / 60, slotEndH = (currentMin + bookingDuration) / 60;
-              if (slotStartH < event.startHour + event.duration && slotEndH > event.startHour) {
-                occupied = true; break;
-              }
-            }
-          }
-        }
-
-        if (!occupied) {
-          if (blockStart === -1) { blockStart = currentMin; blockEnd = currentMin + bookingDuration; }
-          else blockEnd = currentMin + bookingDuration;
-        } else {
-          if (blockStart !== -1) {
-            const fmt = (n: number) => Math.floor(n / 60).toString().padStart(2, "0") + ":" + (n % 60).toString().padStart(2, "0");
-            dayFreeBlocks.push(`${fmt(blockStart)}〜${fmt(blockEnd)}`);
-            blockStart = -1;
-          }
-        }
-        currentMin += bookingDuration;
-      }
-      if (blockStart !== -1) {
-        const fmt = (n: number) => Math.floor(n / 60).toString().padStart(2, "0") + ":" + (n % 60).toString().padStart(2, "0");
-        dayFreeBlocks.push(`${fmt(blockStart)}〜${fmt(blockEnd)}`);
-      }
-      if (dayFreeBlocks.length > 0) { freeSlots.push(`・${dateStr} ${dayFreeBlocks.join(", ")}`); addedDaysCount++; }
-    }
-
-    if (freeSlots.length === 0) freeSlots.push("※現在ご提示できる直近の空き日程がありません。恐れ入りますがリンクからカレンダーをご確認ください。");
-    
-    // ★ 修正: データベースのslugを優先し、無い場合はドットや記号を自動排除したslugを生成する
-    const fallbackSlug = session?.user?.email 
-      ? session.user.email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') 
-      : "";
-    const userSlug = profileId || fallbackSlug;
-    
-    const bookingUrl = typeof window !== "undefined" ? `${window.location.origin}/t/${userSlug}` : `https://mincale.app/t/${userSlug}`;
-    return `お世話になっております。\n次回のお打ち合わせにつきまして、以下の日程でご都合のよろしい日時はございますでしょうか？\n\n${freeSlots.join("\n")}\n\n▼ こちらの専用リンクから、ご都合の良い時間を直接ご予約いただけます：\n${bookingUrl}\n\nご検討のほど、よろしくお願いいたします。`;
-  };
-
-  const handleCopyToClipboard = async (textToCopy?: string) => {
-    try {
-      await navigator.clipboard.writeText(textToCopy !== undefined ? textToCopy : getCommonFreeTimeText());
-      setIsCopied(true);
-      triggerHaptic();
-      setTimeout(() => setIsCopied(false), 2000);
-      toast.success("クリップボードにコピーしました");
-    } catch {
-      toast.error("コピーに失敗しました");
-    }
-  };
+  }, [session, bookingTitle, bookingDuration, bookingStartHour, bookingEndHour, bookingDays, bookingLeadTime, weekStartDay, triggerHaptic]);
 
   return {
-    session, status, signIn, signOut,
+    session, status,
     viewMode, setViewMode,
-    activeTab, setActiveTab,
     isSidebarOpen, setIsSidebarOpen,
     isRightPanelOpen, setIsRightPanelOpen,
-    isScheduleModalOpen, setIsScheduleModalOpen,
+    accentColor, hourHeight,
+    currentMonthYear, setCurrentMonthYear,
+    weekStartDay, setWeekStartDay,
+    syncMonths, setSyncMonths,
+    isLoadingData,
+    days, months, hours,
+    selection, setSelection,
+    dragOverSlot, setDragOverSlot,
+    eventLayouts,
+    groups, setGroups,
     isGroupModalOpen, setIsGroupModalOpen,
     newGroupName, setNewGroupName,
     newGroupMemberIds, setNewGroupMemberIds,
-    groups, setGroups,
-    currentMonthYear, setCurrentMonthYear,
-    accentColor, setAccentColor,
-    hourHeight, setHourHeight,
-    isCopied, setIsCopied,
-    isLoadingData, setIsLoadingData,
+    editingGroupId, setEditingGroupId,
     bookingTitle, setBookingTitle,
     bookingDuration, setBookingDuration,
     bookingStartHour, setBookingStartHour,
     bookingEndHour, setBookingEndHour,
     bookingDays, setBookingDays,
     bookingLeadTime, setBookingLeadTime,
-    weekStartDay, setWeekStartDay,
-    syncMonths, handleSyncMonthsChange,
-    isHapticsEnabled, toggleHaptics,
-    days, months, hours, todayDate: new Date().getDate(),
+    profileId,
+    isHapticsEnabled,
+    triggerHaptic,
     handleSaveBookingSettings,
-    handleCreateGroupClick, handleEditGroupClick,
-    handleCloseGroupModal, handleSaveGroup, handleDeleteGroup,
-    getCommonFreeTimeText, handleCopyToClipboard,
-    todoTouchDrag, setTodoTouchDrag,
-    ...todoLogic,
     ...eventLogic,
-    ...dragDropLogic,
+    ...todoLogic,
+    ...dragDrop,
   };
 }
