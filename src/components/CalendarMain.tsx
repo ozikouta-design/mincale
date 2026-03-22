@@ -44,7 +44,7 @@ const CalendarMain = memo(function CalendarMain() {
   }, []);
   const currentHourExact = currentTime.getHours() + currentTime.getMinutes() / 60;
 
-  // ── 幅の計算（スクロールコンテナの clientWidth ベース） ─────────
+  // ── 幅の計算（週・日で統一） ────────────────────────────────────
   const [weekContainerClientWidth, setWeekContainerClientWidth] = useState(0);
   useEffect(() => {
     const el = weekScrollContainerRef.current;
@@ -70,7 +70,6 @@ const CalendarMain = memo(function CalendarMain() {
     ? mainContainerWidth
     : (typeof window !== "undefined" ? window.innerWidth : 375);
 
-  // ★ actualWeekDayWidth: 全箇所でこの値を使うことで今日ボタン・初期表示・スクロールが一致する
   const actualWeekDayWidth = weekContainerClientWidth > TIME_AXIS_WIDTH_PX
     ? (weekContainerClientWidth - TIME_AXIS_WIDTH_PX) / 7
     : (effectiveMainWidth - TIME_AXIS_WIDTH_PX) / 7;
@@ -80,8 +79,7 @@ const CalendarMain = memo(function CalendarMain() {
     ? Math.max(effectiveMainWidth - TIME_AXIS_WIDTH_PX, activeMemberCount * 120)
     : Math.max(300, activeMemberCount * 120);
 
-  // ── タッチ座標 → スロット変換 ──────────────────────────────────
-  // scrollRef.getBoundingClientRect() + scrollLeft/Top で正確に計算
+  // ── ★修正3: 座標ズレの解決（純粋な数学的計算に変更） ────────────────────
   const getSlotFromTouch = useCallback(
     (clientX: number, clientY: number): {
       dayIndex: number; colIndex: number; startHour: number; memberId?: string
@@ -91,23 +89,27 @@ const CalendarMain = memo(function CalendarMain() {
       if (!scrollRef.current) return null;
 
       const rect = scrollRef.current.getBoundingClientRect();
-      // 時間軸左端・曜日ヘッダー上のタッチは無効
+      
+      // 時間軸（左）や曜日ヘッダー（上:72px）でのタッチは無効化
       if (clientX - rect.left < TIME_AXIS_WIDTH_PX) return null;
       if (clientY - rect.top < 72) return null;
 
       const colWidth = viewMode === "week" ? actualWeekDayWidth : singleDayWidth;
+      
+      // スクロール量を加味してX座標（列）を特定
       const relX = (clientX - rect.left) + scrollRef.current.scrollLeft - TIME_AXIS_WIDTH_PX;
       const colIndex = Math.floor(relX / colWidth);
+
       if (colIndex < 0 || colIndex >= days.length) return null;
 
-      // ★ scrollTop を加算して正確な時刻を計算
+      // スクロール量とヘッダー高さ(72px)を加味してY座標（時間）を特定
       const relY = (clientY - rect.top) + scrollRef.current.scrollTop - 72;
       const startHour = Math.max(0, Math.min(23.75, relY / hourHeight));
 
       let memberId: string | undefined;
       if (viewMode === "day" && selectedMemberIds.length > 0) {
         const memberColWidth = colWidth / selectedMemberIds.length;
-        const dayRelX = relX - colIndex * colWidth;
+        const dayRelX = relX - (colIndex * colWidth);
         const memberIdx = Math.min(selectedMemberIds.length - 1, Math.max(0, Math.floor(dayRelX / memberColWidth)));
         memberId = selectedMemberIds[memberIdx];
       }
@@ -117,7 +119,7 @@ const CalendarMain = memo(function CalendarMain() {
     [viewMode, actualWeekDayWidth, singleDayWidth, days, hourHeight, selectedMemberIds]
   );
 
-  // ── Hook: 長押し新規予定 & マウス選択（useSelectionDragに全て委譲）──
+  // ── Hook: 長押し新規予定 & マウス選択 ──────────────────────────
   const { selection, setSelection, selectionActive, handleSlotMouseDown } =
     useSelectionDrag({ wrapperRef: mainWrapperRef, hourHeight, getSlotFromTouch, handleRangeSelect });
 
@@ -172,7 +174,7 @@ const CalendarMain = memo(function CalendarMain() {
     return layouts;
   }, [events, selectedMemberIds, days, viewMode]);
 
-  // ── ナビゲーション ─────────────────────────────────────────────
+  // ── ナビゲーション（actualWeekDayWidth で統一） ────────────────
   const handlePrev = useCallback(() => {
     if (viewMode === "day" && dayScrollContainerRef.current)
       dayScrollContainerRef.current.scrollBy({ left: -singleDayWidth, behavior: "smooth" });
@@ -191,86 +193,77 @@ const CalendarMain = memo(function CalendarMain() {
       monthScrollContainerRef.current.scrollBy({ left: monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
   }, [viewMode, singleDayWidth, actualWeekDayWidth]);
 
-  // ★今日ボタン：data-day-index の offsetLeft を使って正確にスクロール
+  const getScrollLeftForDay = useCallback((container: HTMLElement, targetDayIndex: number) => {
+    const el = container.querySelector(`[data-day-index="${targetDayIndex}"]`) as HTMLElement;
+    if (el) { return el.offsetLeft - TIME_AXIS_WIDTH_PX; }
+    const idx = days.findIndex((d) => d.dayIndex === targetDayIndex);
+    return Math.max(0, idx * actualWeekDayWidth);
+  }, [days, actualWeekDayWidth]);
+
+  // ── ★修正1: 12月ジャンプ問題の解決（getDayIndexで統一） ────────────────
   const handleToday = useCallback(() => {
-    const DEFAULT_SCROLL_TOP = 9 * hourHeight;
     if (viewMode === "day" && dayScrollContainerRef.current) {
       const idx = days.findIndex((d) => d.isToday);
-      if (idx !== -1) {
-        dayScrollContainerRef.current.scrollTo({ left: idx * singleDayWidth, top: DEFAULT_SCROLL_TOP, behavior: "smooth" });
-      }
+      if (idx !== -1) dayScrollContainerRef.current.scrollTo({ left: idx * singleDayWidth, behavior: "smooth" });
     } else if (viewMode === "week" && weekScrollContainerRef.current) {
       const today = new Date();
       let dayOffset = today.getDay() - weekStartDay;
       if (dayOffset < 0) dayOffset += 7;
       const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOffset);
-      const targetDayIndex = getDayIndex(weekStart);
-      // ★ data-day-index の offsetLeft を使う（計算誤差なし）
-      const el = weekScrollContainerRef.current.querySelector(
-        `[data-day-index="${targetDayIndex}"]`
-      ) as HTMLElement | null;
-      const scrollLeft = el ? Math.max(0, el.offsetLeft - TIME_AXIS_WIDTH_PX) : 0;
-      weekScrollContainerRef.current.scrollTo({ left: scrollLeft, top: DEFAULT_SCROLL_TOP, behavior: "smooth" });
+      const targetDayIndex = getDayIndex(weekStart); // 確実に同じロジックで検索
+      const scrollLeft = getScrollLeftForDay(weekScrollContainerRef.current, targetDayIndex);
+      weekScrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: "smooth" });
     } else if (viewMode === "month" && monthScrollContainerRef.current) {
       const idx = months.findIndex((m) => m.monthIndex === new Date().getFullYear() * 100 + new Date().getMonth());
       if (idx !== -1) monthScrollContainerRef.current.scrollTo({ left: idx * monthScrollContainerRef.current.clientWidth, behavior: "smooth" });
     }
-  }, [viewMode, days, months, singleDayWidth, hourHeight, weekStartDay]);
+  }, [viewMode, days, months, singleDayWidth, getScrollLeftForDay, weekStartDay]);
 
-  // ★初期スクロール：left と top を一括で scrollTo することで 0時ジャンプを防止
-  const alignedRef = useRef<string | null>(null);
+  // ── ★修正2: 0時にジャンプする問題の解決（描画待機と暴発防止） ───────────
+  const alignedViewRef = useRef<string | null>(null);
+
   useEffect(() => {
+    const DEFAULT_SCROLL_HOUR = 9;
     if (viewMode === "week" && actualWeekDayWidth <= 0) return;
     if (viewMode === "day" && singleDayWidth <= 0) return;
-    if (alignedRef.current === viewMode) return; // ビューモード変化時のみ実行
-
-    const DEFAULT_SCROLL_TOP = 9 * hourHeight;
+    
+    if (alignedViewRef.current === viewMode) return;
 
     const align = () => {
+      const DEFAULT_SCROLL_TOP = DEFAULT_SCROLL_HOUR * hourHeight;
       if (viewMode === "week" && weekScrollContainerRef.current) {
         const today = new Date();
         let dayOffset = today.getDay() - weekStartDay;
         if (dayOffset < 0) dayOffset += 7;
         const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOffset);
         const targetDayIndex = getDayIndex(weekStart);
-        const el = weekScrollContainerRef.current.querySelector(
-          `[data-day-index="${targetDayIndex}"]`
-        ) as HTMLElement | null;
-        const scrollLeft = el ? Math.max(0, el.offsetLeft - TIME_AXIS_WIDTH_PX) : 0;
-        // ★ left と top を同時に設定 → 0時ジャンプ・12月ジャンプを防止
+        const scrollLeft = getScrollLeftForDay(weekScrollContainerRef.current, targetDayIndex);
+        // ★修正: left と top を1回の scrollTo で同時設定
+        // 分割すると間に onScroll が発火して12月・0時ジャンプが起きる
         weekScrollContainerRef.current.scrollTo({ left: scrollLeft, top: DEFAULT_SCROLL_TOP, behavior: "auto" });
-        alignedRef.current = viewMode;
       } else if (viewMode === "day" && dayScrollContainerRef.current) {
         const idx = days.findIndex((d) => d.isToday);
         if (idx !== -1) {
           dayScrollContainerRef.current.scrollTo({ left: idx * singleDayWidth, top: DEFAULT_SCROLL_TOP, behavior: "auto" });
         }
-        alignedRef.current = viewMode;
       } else if (viewMode === "month" && monthScrollContainerRef.current) {
         const idx = months.findIndex((m) => m.monthIndex === new Date().getFullYear() * 100 + new Date().getMonth());
-        if (idx !== -1) {
-          monthScrollContainerRef.current.scrollTo({ left: idx * monthScrollContainerRef.current.clientWidth, behavior: "auto" });
-        }
-        alignedRef.current = viewMode;
+        if (idx !== -1) monthScrollContainerRef.current.scrollTo({ left: idx * monthScrollContainerRef.current.clientWidth, behavior: "auto" });
       }
+      alignedViewRef.current = viewMode;
     };
-
-    const t = setTimeout(align, 100);
+    
+    const t = setTimeout(align, 150);
     return () => clearTimeout(t);
-  }, [viewMode, days, months, actualWeekDayWidth, singleDayWidth, weekStartDay, hourHeight]);
-
-  // viewMode が変わったらリセット
-  useEffect(() => {
-    alignedRef.current = null;
-  }, [viewMode]);
+  }, [viewMode, days, months, actualWeekDayWidth, singleDayWidth, weekStartDay, hourHeight, getScrollLeftForDay]);
 
   // ── スクロールハンドラ ─────────────────────────────────────────
   const handleWeekScroll = useCallback(() => {
     if (viewMode !== "week" || !weekScrollContainerRef.current || actualWeekDayWidth <= 0) return;
-    const scrollLeft = weekScrollContainerRef.current.scrollLeft;
-    const colIndex = Math.max(0, Math.round(scrollLeft / actualWeekDayWidth));
-    const day = days[Math.min(colIndex, days.length - 1)];
-    if (day) setCurrentMonthYear(`${day.date.getFullYear()}年 ${day.date.getMonth() + 1}月`);
+    const scrollLeft = Math.max(0, weekScrollContainerRef.current.scrollLeft);
+    const colIndex = Math.round(scrollLeft / actualWeekDayWidth);
+    const dayAtWeekStart = days[Math.min(colIndex, days.length - 1)];
+    if (dayAtWeekStart) setCurrentMonthYear(`${dayAtWeekStart.date.getFullYear()}年 ${dayAtWeekStart.date.getMonth() + 1}月`);
   }, [viewMode, actualWeekDayWidth, days, setCurrentMonthYear]);
 
   const handleDayScroll = useCallback(() => {
@@ -287,31 +280,32 @@ const CalendarMain = memo(function CalendarMain() {
     if (months[idx]) setCurrentMonthYear(`${months[idx].year}年 ${months[idx].month + 1}月`);
   }, [viewMode, months, setCurrentMonthYear]);
 
-  // ── リサイズのみ（selection は useSelectionDrag が担当） ────────
-  // ★ 旧コードでは resizingEvent OR selection の両方を処理していたが、
-  //    selection の touchmove 処理で scrollTop を加算し忘れて 0時ジャンプが発生。
-  //    selection の処理を useSelectionDrag に完全移管することで修正。
+  // ── リサイズと選択枠の操作 ───────────────────────────────
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (!resizingEvent) return;
-      const dur = Math.round((resizingEvent.initialDuration + (e.clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
-      setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
+      if (resizingEvent) {
+        const dur = Math.round((resizingEvent.initialDuration + (e.clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
+        setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
+      }
     };
     const onMouseUp = () => {
-      if (!resizingEvent) return;
-      handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
-      setResizingEvent(null);
+      if (resizingEvent) {
+        handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
+        setResizingEvent(null);
+      }
     };
     const onTouchMoveResize = (e: TouchEvent) => {
-      if (!resizingEvent) return;
-      e.preventDefault();
-      const dur = Math.round((resizingEvent.initialDuration + (e.touches[0].clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
-      setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
+      if (resizingEvent) {
+        e.preventDefault();
+        const dur = Math.round((resizingEvent.initialDuration + (e.touches[0].clientY - resizingEvent.startY) / hourHeight) * 4) / 4;
+        setResizingEvent((prev) => (prev ? { ...prev, currentDuration: Math.max(0.25, dur) } : null));
+      }
     };
     const onTouchEndResize = () => {
-      if (!resizingEvent) return;
-      handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
-      setResizingEvent(null);
+      if (resizingEvent) {
+        handleEventResize(resizingEvent.eventId, resizingEvent.currentDuration, resizingEvent.memberId);
+        setResizingEvent(null);
+      }
     };
 
     if (resizingEvent) {
@@ -327,6 +321,8 @@ const CalendarMain = memo(function CalendarMain() {
       window.removeEventListener("touchend", onTouchEndResize);
     };
   }, [resizingEvent, handleEventResize, hourHeight]);
+
+  // 長押し処理は useSelectionDrag hook が一元管理
 
   return (
     <main className="flex-1 flex flex-col min-w-0 z-0 relative select-none bg-white">
@@ -365,7 +361,8 @@ const CalendarMain = memo(function CalendarMain() {
             handleEventDragStart={handleEventDragStart} handleEventClick={handleEventClick}
             weekScrollContainerRef={weekScrollContainerRef} handleWeekScroll={handleWeekScroll}
             resizingEvent={resizingEvent} setResizingEvent={setResizingEvent}
-            weekStartDay={weekStartDay} dayWidth={actualWeekDayWidth}
+            weekStartDay={weekStartDay}
+            dayWidth={actualWeekDayWidth}
             handleTouchEventDragStart={handleTouchEventDragStart}
             selectionActive={selectionActive} handleSlotMouseDown={handleSlotMouseDown}
           />
@@ -382,7 +379,6 @@ const CalendarMain = memo(function CalendarMain() {
           />
         )}
       </div>
-
       {touchDragInfo?.isDragging && (
         <div className="fixed pointer-events-none z-[9999] rounded-md px-2 py-1 text-white text-xs shadow-2xl border border-white/30" aria-hidden="true"
           style={{ left: touchDragInfo.ghostX - 40, top: touchDragInfo.ghostY - 16, backgroundColor: touchDragInfo.color, opacity: 0.85, transform: "scale(1.08)", maxWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

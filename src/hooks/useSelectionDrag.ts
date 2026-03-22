@@ -2,14 +2,13 @@
  * useSelectionDrag
  * 長押し（タッチ）・マウスドラッグによる新規予定の範囲選択を管理するhook。
  *
- * 【重要な修正点】
- * ① キャンセル閾値を 10px → 30px に変更
- *    iPhoneは長押し待機中（450ms）に指先が普通に10〜15px揺れる。
- *    10pxのままだと毎回キャンセルされていた。
- *
- * ② calcHourFromDayCol で data-day-index 要素の getBoundingClientRect() を使用
- *    getBoundingClientRect().top はスクロール済みのビューポート座標を返すため、
- *    scrollTop を足す必要がなく常に正確な時刻が得られる。
+ * 【座標計算の根本修正】
+ *   旧コード: parentElement.parentElement.getBoundingClientRect() - CALENDAR_HEADER_HEIGHT
+ *     → time-gridのtopから CALENDAR_HEADER_HEIGHT(72px) を余分に引いていたため
+ *       スクロールなし時でも 72/64≈1.1h ずれていた。
+ *   新コード: data-day-index 要素の getBoundingClientRect().top を直接使用。
+ *     → (clientY - dayColRect.top) / hourHeight で正確に時刻を計算。
+ *        スクロール量・CalendarHeader高さの影響を受けない。
  */
 import { useState, useRef, useCallback, useEffect, RefObject } from "react";
 import { SelectionState } from "@/types";
@@ -40,9 +39,8 @@ export function useSelectionDrag({
   const longPressActivatedRef = useRef(false);
 
   /**
-   * data-day-index 要素の getBoundingClientRect().top から時刻を計算。
-   * getBoundingClientRect はスクロール量を自動的に反映したビューポート座標を返すため、
-   * scrollTop の加算が不要で、常に正確な値が得られる。
+   * data-day-index 要素のrectから時刻を計算（共通ヘルパー）
+   * これが座標バグ修正の核心。
    */
   const calcHourFromDayCol = useCallback(
     (dayIndex: number, clientY: number): number => {
@@ -78,7 +76,7 @@ export function useSelectionDrag({
       startY = touch.clientY;
       longPressActivatedRef.current = false;
 
-      // タッチ瞬間のスロットを即時取得（DOM状態が安定している瞬間）
+      // タッチ瞬間のスロットを即時取得（DOM状態が安定している）
       const immediateSlot = getSlotFromTouch(startX, startY);
 
       longPressTimerRef.current = setTimeout(() => {
@@ -98,8 +96,8 @@ export function useSelectionDrag({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      // ── 長押し確定後：スクロールを止めて枠をドラッグ ──
       if (longPressActivatedRef.current && selRef.current) {
+        // 長押し確定後：iOSスクロールを止めて枠をドラッグ
         e.preventDefault();
         const newHour = calcHourFromDayCol(
           selRef.current.dayIndex,
@@ -109,14 +107,11 @@ export function useSelectionDrag({
         setSelection({ ...selRef.current });
         return;
       }
-
-      // ── 長押し待機中：30px 以上動いたらキャンセル ──
-      // ★旧: 10px → iPhoneで常にキャンセルされていた
-      // ★新: 30px → 明確なスクロール意図のみキャンセル
+      // 長押し待機中：指が動いたらキャンセル
       if (longPressTimerRef.current) {
         const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startY;
-        if (Math.sqrt(dx * dx + dy * dy) > 30) {
+        if (Math.sqrt(dx * dx + dy * dy) > 30) { // ★ 30px: iPhoneの指先ゆれ対策(旧10pxだと常にキャンセルされた)
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
         }
@@ -128,21 +123,22 @@ export function useSelectionDrag({
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
       }
-      if (!longPressActivatedRef.current || !selRef.current) return;
-
-      const sel = selRef.current;
-      // calcHourFromDayCol で正確な終了時刻を計算
-      const finalHour = calcHourFromDayCol(sel.dayIndex, e.changedTouches[0].clientY);
-      const startHr = Math.min(sel.startHour, finalHour);
-      const endHr = Math.max(sel.startHour, finalHour);
-      let duration = Math.round((endHr - startHr) * 4) / 4;
-      if (duration < 0.25) duration = 1;
-
-      handleRangeSelect(sel.dayIndex, Math.round(startHr * 4) / 4, duration);
-      setSelection(null);
-      selRef.current = null;
-      longPressActivatedRef.current = false;
-      if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(20);
+      if (longPressActivatedRef.current && selRef.current) {
+        const sel = selRef.current;
+        const finalHour = calcHourFromDayCol(
+          sel.dayIndex,
+          e.changedTouches[0].clientY
+        );
+        const startHr = Math.min(sel.startHour, finalHour);
+        const endHr = Math.max(sel.startHour, finalHour);
+        let duration = Math.round((endHr - startHr) * 4) / 4;
+        if (duration < 0.25) duration = 1;
+        handleRangeSelect(sel.dayIndex, Math.round(startHr * 4) / 4, duration);
+        setSelection(null);
+        selRef.current = null;
+        longPressActivatedRef.current = false;
+        if (typeof window !== "undefined" && navigator.vibrate) navigator.vibrate(20);
+      }
     };
 
     const onTouchCancel = () => {
@@ -158,7 +154,6 @@ export function useSelectionDrag({
     };
 
     wrapper.addEventListener("touchstart", onTouchStart, { passive: true });
-    // passive:false が必須 → 長押し確定後に e.preventDefault() を呼ぶため
     wrapper.addEventListener("touchmove", onTouchMove, { passive: false });
     wrapper.addEventListener("touchend", onTouchEnd, { passive: true });
     wrapper.addEventListener("touchcancel", onTouchCancel, { passive: true });
@@ -203,7 +198,10 @@ export function useSelectionDrag({
     };
   }, [selection, calcHourFromDayCol, handleRangeSelect]);
 
-  /** hour slot の mousedown ハンドラ（WeekView/DayView から呼ぶ） */
+  /**
+   * hour slot の mousedown ハンドラ（WeekView/DayView から呼ぶ）
+   * 【修正】data-day-index 要素の rect を使って正確に時刻計算
+   */
   const handleSlotMouseDown = useCallback(
     (
       e: React.MouseEvent<HTMLDivElement>,
@@ -217,10 +215,15 @@ export function useSelectionDrag({
       if (!dayCol) return;
       const exactHour = Math.max(
         0,
-        Math.min(23.75, (e.clientY - dayCol.getBoundingClientRect().top) / hourHeight)
+        Math.min(
+          23.75,
+          (e.clientY - dayCol.getBoundingClientRect().top) / hourHeight
+        )
       );
       const newSel: SelectionState = {
-        dayIndex, colIndex, memberId,
+        dayIndex,
+        colIndex,
+        memberId,
         startHour: exactHour,
         currentHour: exactHour,
       };
@@ -230,5 +233,10 @@ export function useSelectionDrag({
     [hourHeight]
   );
 
-  return { selection, setSelection, selectionActive: !!selection, handleSlotMouseDown };
+  return {
+    selection,
+    setSelection,
+    selectionActive: !!selection,
+    handleSlotMouseDown,
+  };
 }
