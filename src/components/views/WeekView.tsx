@@ -1,7 +1,6 @@
 import React from "react";
 import { TIME_AXIS_WIDTH_PX } from "@/constants/calendar";
 import { useTouchAxisScroll } from "@/hooks/useTouchAxisScroll";
-import { useWeekHorizontalScroll } from "@/hooks/useWeekHorizontalScroll";
 import type {
   CalendarEvent, Member, DayData, SelectionState,
   ResizingEventState, EventLayout, DragOverSlot
@@ -51,9 +50,6 @@ export default function WeekView({
   // ★ 縦横の軸ロック（長押し選択中は無効）
   useTouchAxisScroll(weekScrollContainerRef, !selectionActive);
 
-  // ★ スマホ: 1週間単位スクロール制限（長押し選択中は無効）
-  useWeekHorizontalScroll(weekScrollContainerRef, dayWidth, !selectionActive);
-
   // dayWidth は CalendarMain から渡される（自己計測なし）
   // dayWidth=0 の間は表示を避ける
   if (dayWidth <= 0) return null;
@@ -84,10 +80,11 @@ export default function WeekView({
             return (
               <div
                 key={day.dayIndex}
+                data-day-index={day.dayIndex}
                 role="columnheader"
                 aria-label={`${day.date.getFullYear()}年${day.date.getMonth() + 1}月${day.label}日`}
-                className={`shrink-0 py-2 md:py-3 border-r border-gray-100 flex flex-col ${day.date.getDay() === weekStartDay ? "snap-start snap-always" : ""}`}
-                style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + "10" } : {}) }}
+                className={`shrink-0 py-2 md:py-3 border-r border-gray-100 flex flex-col ${day.date.getDay() === weekStartDay ? "snap-start" : ""}`}
+                style={{ width: dayWidth, scrollSnapStop: "always", ...(day.isToday ? { backgroundColor: accentColor + "10" } : {}) }}
               >
                 <div
                   className={`w-8 h-8 md:w-auto md:h-auto mx-auto rounded-full flex flex-col items-center justify-center mb-1.5 shrink-0 ${day.isToday ? "shadow-sm" : ""}`}
@@ -149,8 +146,8 @@ export default function WeekView({
               data-day-index={day.dayIndex}
               role="gridcell"
               aria-label={`${day.label}日のタイムグリッド`}
-              className={`shrink-0 border-r border-gray-100 relative ${day.date.getDay() === weekStartDay ? "snap-start snap-always" : ""}`}
-              style={{ width: dayWidth, ...(day.isToday ? { backgroundColor: accentColor + "05" } : {}) }}
+              className={`shrink-0 border-r border-gray-100 relative ${day.date.getDay() === weekStartDay ? "snap-start" : ""}`}
+              style={{ width: dayWidth, scrollSnapStop: "always", ...(day.isToday ? { backgroundColor: accentColor + "05" } : {}) }}
             >
               {hours.map((_, i) => (
                 <div
