@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 // ★変更：管理者用キーを使用
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseAdmin = supabaseUrl ? createClient(supabaseUrl, supabaseServiceKey) : null;
 
 export async function POST(req: Request) {
+  if (!supabaseAdmin) return NextResponse.json({ error: 'サーバー設定エラー' }, { status: 500 });
   try {
     const body = await req.json();
     const { hostId, hostEmail, guestName, guestEmail, guestPhone, meetingType, zoomUrl, location, otherDetails, startDt, endDt, guestNotes } = body;

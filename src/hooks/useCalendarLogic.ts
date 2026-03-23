@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { supabase } from "@/lib/supabase";
 import { SYNC_MONTHS, HOUR_H } from "@/constants/calendar";
 import { getDayIndex } from "@/hooks/useInitialScroll";
@@ -22,6 +22,7 @@ export function useCalendarLogic() {
   // ── UI state ─────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"todo" | "settings">("todo");
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
   const [accentColor, setAccentColor] = useState("#2563eb");
   const [hourHeight, setHourHeight] = useState(HOUR_H);
@@ -48,6 +49,7 @@ export function useCalendarLogic() {
   // ── Groups ───────────────────────────────────────────────────
   const [groups, setGroups] = useState<Group[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -173,6 +175,166 @@ export function useCalendarLogic() {
     }
   }, []);
 
+  // ── Member selection helpers ──────────────────────────────────
+  const toggleMember = useCallback((memberId: string) => {
+    eventLogic.setSelectedMemberIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
+  }, [eventLogic]);
+
+  const toggleSelectAllMembers = useCallback(() => {
+    eventLogic.setSelectedMemberIds((prev) =>
+      prev.length === eventLogic.members.length ? [] : eventLogic.members.map((m) => m.id)
+    );
+  }, [eventLogic]);
+
+  // ── Group helpers ─────────────────────────────────────────────
+  const handleDeleteGroup = useCallback(async (groupId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      const { error } = await supabase.from("groups").delete().eq("id", groupId);
+      if (!error) {
+        setGroups((prev) => prev.filter((g) => g.id !== groupId));
+        toast.success("グループを削除しました");
+      }
+    } catch {
+      toast.error("グループの削除に失敗しました");
+    }
+  }, []);
+
+  const handleCreateGroupClick = useCallback(() => {
+    setNewGroupName("");
+    setNewGroupMemberIds([]);
+    setEditingGroupId(null);
+    setIsGroupModalOpen(true);
+  }, []);
+
+  const handleEditGroupClick = useCallback((group: Group, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setNewGroupName(group.name);
+    setNewGroupMemberIds(group.memberIds);
+    setEditingGroupId(group.id);
+    setIsGroupModalOpen(true);
+  }, []);
+
+  // ── Todo touch drag ───────────────────────────────────────────
+  const [todoTouchDrag, setTodoTouchDrag] = useState<{ todoId: number; title: string; ghostX: number; ghostY: number; isDragging: boolean } | null>(null);
+
+  // ── Haptics toggle ────────────────────────────────────────────
+  const toggleHaptics = useCallback((value?: boolean) => {
+    setIsHapticsEnabled((prev) => {
+      const next = value !== undefined ? value : !prev;
+      if (typeof window !== "undefined") localStorage.setItem("mincale_haptics", String(next));
+      return next;
+    });
+  }, []);
+
+  // ── Sync months change ────────────────────────────────────────
+  const handleSyncMonthsChange = useCallback((months: number) => {
+    setSyncMonths(months);
+  }, []);
+
+  // ── Delete confirmation flow ─────────────────────────────────
+  const [pendingDeleteEvent, setPendingDeleteEvent] = useState<{ id: string; title: string; isGoogle: boolean; memberId: string } | null>(null);
+
+  const handleDeleteEvent = useCallback((id: string | null, isGoogle: boolean, memberId: string) => {
+    if (!id) return;
+    const ev = eventLogic.events.find((e) => e.id === id);
+    if (!ev) return;
+    setPendingDeleteEvent({ id, title: ev.title, isGoogle, memberId });
+  }, [eventLogic.events]);
+
+  const executeDeleteEvent = useCallback(async () => {
+    if (!pendingDeleteEvent) return;
+    const accessToken = (session as any)?.accessToken as string | undefined;
+    if (!accessToken) { toast.error("認証が必要です"); return; }
+    try {
+      await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(pendingDeleteEvent.memberId)}/events/${encodeURIComponent(pendingDeleteEvent.id)}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      eventLogic.setEvents((prev) => prev.filter((ev) => ev.id !== pendingDeleteEvent.id));
+      eventLogic.setIsCreateEventModalOpen(false);
+      setPendingDeleteEvent(null);
+      toast.success("予定を削除しました");
+      triggerHaptic();
+    } catch {
+      toast.error("予定の削除に失敗しました");
+    }
+  }, [pendingDeleteEvent, session, eventLogic, triggerHaptic]);
+
+  // ── Group modal helpers ───────────────────────────────────────
+  const handleCloseGroupModal = useCallback(() => {
+    setIsGroupModalOpen(false);
+  }, []);
+
+  const handleSaveGroup = useCallback(async () => {
+    if (!newGroupName || newGroupMemberIds.length === 0 || !session?.user?.email) return;
+    try {
+      if (editingGroupId) {
+        const { data, error } = await supabase.from("groups").update({ name: newGroupName, member_ids: newGroupMemberIds }).eq("id", editingGroupId).select().single();
+        if (!error && data) {
+          setGroups((prev) => prev.map((g) => g.id === editingGroupId ? { id: String(data.id), name: data.name, memberIds: data.member_ids } : g));
+        }
+      } else {
+        const { data, error } = await supabase.from("groups").insert({ name: newGroupName, member_ids: newGroupMemberIds, user_email: session.user.email }).select().single();
+        if (!error && data) {
+          setGroups((prev) => [...prev, { id: String(data.id), name: data.name, memberIds: data.member_ids }]);
+        }
+      }
+      setIsGroupModalOpen(false);
+      setNewGroupName("");
+      setNewGroupMemberIds([]);
+      setEditingGroupId(null);
+      toast.success("グループを保存しました");
+      triggerHaptic();
+    } catch {
+      toast.error("グループの保存に失敗しました");
+    }
+  }, [newGroupName, newGroupMemberIds, editingGroupId, session, triggerHaptic]);
+
+  // ── Clipboard ─────────────────────────────────────────────────
+  const [isCopied, setIsCopied] = useState(false);
+  const handleCopyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      toast.error("コピーに失敗しました");
+    }
+  }, []);
+
+  // ── Free time text generation ─────────────────────────────────
+  const getCommonFreeTimeText = useCallback(() => {
+    const today = new Date();
+    const lines: string[] = ["■ 空き日程"];
+    const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+      const di = getDayIndex(d);
+      const busyEvents = eventLogic.events.filter((ev) => ev.dayIndex === di && !ev.isAllDay && eventLogic.selectedMemberIds.includes(ev.memberId));
+      const hours: number[] = [];
+      for (let h = 9; h < 19; h++) {
+        const isBusy = busyEvents.some((ev) => h >= ev.startHour && h < ev.startHour + ev.duration);
+        if (!isBusy) hours.push(h);
+      }
+      if (hours.length > 0) {
+        const ranges: string[] = [];
+        let start = hours[0], prev = hours[0];
+        for (let k = 1; k <= hours.length; k++) {
+          if (k === hours.length || hours[k] !== prev + 1) {
+            ranges.push(`${String(start).padStart(2,"0")}:00-${String(prev + 1).padStart(2,"0")}:00`);
+            if (k < hours.length) { start = hours[k]; prev = hours[k]; }
+          } else { prev = hours[k]; }
+        }
+        const label = `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
+        lines.push(`${label} ${ranges.join(", ")}`);
+      }
+    }
+    return lines.join("\n");
+  }, [eventLogic.events, eventLogic.selectedMemberIds]);
+
   // ── Booking save ─────────────────────────────────────────────
   const handleSaveBookingSettings = useCallback(async () => {
     if (!session?.user?.email) return;
@@ -191,6 +353,7 @@ export function useCalendarLogic() {
     viewMode, setViewMode,
     isSidebarOpen, setIsSidebarOpen,
     isRightPanelOpen, setIsRightPanelOpen,
+    activeTab, setActiveTab,
     accentColor, hourHeight,
     currentMonthYear, setCurrentMonthYear,
     weekStartDay, setWeekStartDay,
@@ -202,6 +365,7 @@ export function useCalendarLogic() {
     eventLayouts,
     groups, setGroups,
     isGroupModalOpen, setIsGroupModalOpen,
+    isScheduleModalOpen, setIsScheduleModalOpen,
     newGroupName, setNewGroupName,
     newGroupMemberIds, setNewGroupMemberIds,
     editingGroupId, setEditingGroupId,
@@ -215,8 +379,22 @@ export function useCalendarLogic() {
     isHapticsEnabled,
     triggerHaptic,
     handleSaveBookingSettings,
+    signIn, signOut,
+    toggleMember, toggleSelectAllMembers,
+    handleDeleteGroup, handleCreateGroupClick, handleEditGroupClick,
+    todoTouchDrag, setTodoTouchDrag,
+    toggleHaptics,
+    handleSyncMonthsChange,
+    handleCloseGroupModal,
+    handleSaveGroup,
+    isCopied, handleCopyToClipboard,
+    getCommonFreeTimeText,
     ...eventLogic,
     ...todoLogic,
     ...dragDrop,
+    // Override eventLogic's handleDeleteEvent with confirmation flow
+    pendingDeleteEvent, setPendingDeleteEvent,
+    executeDeleteEvent,
+    handleDeleteEvent,
   };
 }

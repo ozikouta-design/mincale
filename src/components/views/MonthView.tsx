@@ -1,26 +1,27 @@
 import React from "react";
-import { getDayIndex } from "@/app/page";
+import { getDayIndex } from "@/hooks/useInitialScroll";
 
 interface MonthViewProps {
-  months: any[]; // ★ 追加：固定生成された25ヶ月分をPropsで受け取る
+  months: any[];
   events: any[]; selectedMemberIds: string[]; members: any[]; accentColor: string;
-  handleRangeSelect: (dayIndex: number, startHour: number, duration: number) => void;
-  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void; handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
-  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void; handleEventClick: (ev: any, e: React.MouseEvent) => void;
-  monthScrollContainerRef: React.RefObject<HTMLDivElement | null>; handleMonthScroll: () => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
+  onEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: any, isG: boolean, mId: string) => void;
+  onEventClick: (ev: any, e: React.MouseEvent) => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
   weekStartDay: number;
 }
 
 export default function MonthView({
   months, events, selectedMemberIds, members, accentColor,
-  handleRangeSelect, handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
-  monthScrollContainerRef, handleMonthScroll, weekStartDay
+  onDragOver, onDrop, onEventDragStart, onEventClick,
+  scrollRef, weekStartDay
 }: MonthViewProps) {
   
   const weekDays = weekStartDay === 1 ? ['月', '火', '水', '木', '金', '土', '日'] : ['日', '月', '火', '水', '木', '金', '土'];
 
   return (
-    <div className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-gray-50 scroll-pl-0" ref={monthScrollContainerRef} onScroll={handleMonthScroll} style={{ scrollbarWidth: 'none' }}>
+    <div className="flex-1 overflow-x-auto overflow-y-hidden flex snap-x snap-mandatory bg-gray-50 scroll-pl-0" ref={scrollRef} style={{ scrollbarWidth: 'none' }}>
       
       {months.map((mData) => {
         // 各月ごとの42マス（カレンダー枠）を計算
@@ -59,7 +60,7 @@ export default function MonthView({
                 const textColor = isToday ? 'text-white' : isSat ? 'text-blue-500' : isSun ? 'text-red-500' : isCurrentMonth ? 'text-gray-700' : 'text-gray-300';
 
                 return (
-                  <div key={i} className={`border-b border-r border-gray-100 p-1 flex flex-col relative hover:bg-gray-50 transition-colors group ${!isCurrentMonth && 'bg-gray-50/40'} min-h-0 overflow-hidden`} onClick={() => handleRangeSelect(dayIdx, 0, 1)} onDragOver={(e) => handleDragOver(e)} onDrop={(e) => handleDrop(e, dayIdx, 0)}>
+                  <div key={i} className={`border-b border-r border-gray-100 p-1 flex flex-col relative hover:bg-gray-50 transition-colors group ${!isCurrentMonth && 'bg-gray-50/40'} min-h-0 overflow-hidden`} onDragOver={(e) => onDragOver(e)} onDrop={(e) => onDrop(e, dayIdx, 0)}>
                     <div className={`text-[11px] w-6 h-6 mx-auto rounded-full flex items-center justify-center mb-1 font-medium shrink-0 ${textColor} ${isToday ? 'font-bold shadow-sm' : ''}`} style={isToday ? { backgroundColor: accentColor } : {}}>
                       {d.getDate() === 1 ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate()}
                     </div>
@@ -67,7 +68,7 @@ export default function MonthView({
                       {visibleEvents.map((e, evIdx) => {
                         const member = members.find(m => m.id === e.memberId); const bgColor = e.colorHex || member?.colorHex || accentColor;
                         return (
-                          <div key={evIdx} draggable={true} onDragStart={(evt) => { evt.currentTarget.style.opacity = '0.6'; handleEventDragStart(evt, e.id, e.isGoogle, e.memberId); }} onDragEnd={(evt) => { evt.currentTarget.style.opacity = '1'; }} className="shrink-0 flex items-center text-xs px-1.5 rounded truncate cursor-pointer hover:brightness-90 text-white font-medium shadow-sm transition-all h-[22px]" style={{ backgroundColor: bgColor }} onClick={(evt) => { evt.stopPropagation(); handleEventClick(e, evt); }}>
+                          <div key={evIdx} draggable={true} onDragStart={(evt) => { evt.currentTarget.style.opacity = '0.6'; onEventDragStart(evt, e.id, e.isGoogle, e.memberId); }} onDragEnd={(evt) => { evt.currentTarget.style.opacity = '1'; }} className="shrink-0 flex items-center text-xs px-1.5 rounded truncate cursor-pointer hover:brightness-90 text-white font-medium shadow-sm transition-all h-[22px]" style={{ backgroundColor: bgColor }} onClick={(evt) => { evt.stopPropagation(); onEventClick(e, evt); }}>
                             <span className="font-semibold mr-1 text-[10px] opacity-90">{e.startHour != null ? `${Math.floor(e.startHour).toString().padStart(2, '0')}:${Math.round((e.startHour % 1) * 60).toString().padStart(2, '0')}` : ''}</span><span className="truncate leading-none">{e.title}</span>
                           </div>
                         );

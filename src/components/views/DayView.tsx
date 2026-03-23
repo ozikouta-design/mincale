@@ -1,8 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { useTouchAxisScroll } from "@/hooks/useTouchAxisScroll";
 import type {
   CalendarEvent, Member, DayData, SelectionState,
-  ResizingEventState, EventLayout, DragOverSlot
+  ResizingState, EventLayout
 } from "@/types";
 
 interface DayViewProps {
@@ -17,32 +17,33 @@ interface DayViewProps {
   eventLayouts: Record<string, EventLayout>;
   selection: SelectionState | null;
   setSelection: (sel: SelectionState | null) => void;
-  dragOverSlot: DragOverSlot | null;
-  setDragOverSlot: (slot: DragOverSlot | null) => void;
-  handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  handleDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
-  handleEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: string, isG: boolean, mId: string) => void;
-  handleEventClick: (ev: CalendarEvent, e: React.MouseEvent) => void;
-  dayScrollContainerRef: React.RefObject<HTMLDivElement | null>;
-  handleDayScroll: () => void;
-  resizingEvent: ResizingEventState | null;
-  setResizingEvent: (evt: ResizingEventState | null) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>, d: number, h: number) => void;
+  onEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: string, isG: boolean, mId: string) => void;
+  onEventClick: (ev: CalendarEvent, e: React.MouseEvent) => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  resizing: ResizingState | null;
+  setResizing: (evt: ResizingState | null) => void;
+  onResizeCommit: (eventId: string, memberId: string, dur: number) => void;
   singleDayWidth: number;
-  handleTouchEventDragStart?: (eventId: string, isGoogle: boolean, memberId: string, clientX: number, clientY: number, title: string, color: string) => void;
-  selectionActive?: boolean;
-  handleSlotMouseDown?: (e: React.MouseEvent<HTMLDivElement>, dayIndex: number, colIndex: number, memberId?: string) => void;
+  onSlotMouseDown?: (dayIndex: number, colIndex: number, hour: number) => void;
+  onMouseMove?: (e: React.MouseEvent) => void;
+  onMouseUp?: () => void;
+  onRangeSelect?: (dayIndex: number, startHour: number, duration: number) => void;
 }
 
 export default function DayView({
   days, hours, currentHourExact, accentColor, hourHeight, selectedMemberIds, members,
-  events, eventLayouts, selection, setSelection, dragOverSlot, setDragOverSlot,
-  handleDragOver, handleDrop, handleEventDragStart, handleEventClick,
-  dayScrollContainerRef, handleDayScroll, resizingEvent, setResizingEvent, singleDayWidth,
-  handleTouchEventDragStart, selectionActive = false,
-  handleSlotMouseDown,
+  events, eventLayouts, selection, setSelection,
+  onDragOver, onDrop, onEventDragStart, onEventClick,
+  scrollRef, resizing, setResizing, onResizeCommit, singleDayWidth,
+  onSlotMouseDown, onMouseMove, onMouseUp,
 }: DayViewProps) {
 
-  useTouchAxisScroll(dayScrollContainerRef, !selectionActive);
+  const [dragOverSlot, setDragOverSlot] = useState<{ dayIndex: number; startHour: number } | null>(null);
+  const selectionActive = !!selection;
+
+  useTouchAxisScroll(scrollRef, !selectionActive);
 
   const activeMembers = selectedMemberIds.length > 0
     ? members.filter((m) => selectedMemberIds.includes(m.id))
@@ -51,8 +52,7 @@ export default function DayView({
   return (
     <div
       className="flex-1 overflow-x-auto overflow-y-auto flex flex-col bg-white relative snap-x snap-mandatory scroll-pl-16"
-      ref={dayScrollContainerRef}
-      onScroll={handleDayScroll}
+      ref={scrollRef}
       style={{ scrollbarWidth: "none" }}
       role="grid"
     >
@@ -108,7 +108,7 @@ export default function DayView({
                           {allDayEvents.map((ev, idx) => (
                             <button
                               key={`${ev.id}-${idx}`}
-                              onClick={(e) => handleEventClick(ev, e)}
+                              onClick={(e) => onEventClick(ev, e)}
                               aria-label={`終日: ${ev.title}`}
                               className="text-[10px] text-white rounded px-1.5 py-0.5 truncate hover:brightness-105 shadow-sm text-left font-bold w-full"
                               style={{ backgroundColor: ev.colorHex || member.colorHex || accentColor }}
@@ -172,14 +172,14 @@ export default function DayView({
                           ? { backgroundColor: accentColor + "20", borderColor: accentColor }
                           : {}),
                       }}
-                      onMouseDown={(e) => {
-                        if (handleSlotMouseDown) {
-                          handleSlotMouseDown(e, day.dayIndex, dayIdx, member.id);
+                      onMouseDown={() => {
+                        if (onSlotMouseDown) {
+                          onSlotMouseDown(day.dayIndex, dayIdx, i);
                         }
                       }}
-                      onDragOver={(e) => { handleDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: i }); }}
+                      onDragOver={(e) => { onDragOver(e); setDragOverSlot({ dayIndex: day.dayIndex, startHour: i }); }}
                       onDragLeave={() => setDragOverSlot(null)}
-                      onDrop={(e) => { setDragOverSlot(null); handleDrop(e, day.dayIndex, i); }}
+                      onDrop={(e) => { setDragOverSlot(null); onDrop(e, day.dayIndex, i); }}
                     />
                   ))}
 
@@ -190,8 +190,8 @@ export default function DayView({
                       style={{
                         backgroundColor: accentColor + "E6",
                         left: "2px", right: "4px",
-                        top: `${Math.min(selection.startHour, selection.currentHour) * hourHeight}px`,
-                        height: `${Math.max(0.15, Math.abs(selection.currentHour - selection.startHour)) * hourHeight}px`,
+                        top: `${Math.min(selection.startHour, selection.endHour) * hourHeight}px`,
+                        height: `${Math.max(0.15, Math.abs(selection.endHour - selection.startHour)) * hourHeight}px`,
                       }}
                     >
                       <div className="font-bold tracking-wide">新規予定</div>
@@ -205,8 +205,8 @@ export default function DayView({
                       const layout = eventLayouts[layoutKey] || { column: 0, totalColumns: 1 };
                       const widthPct = 100 / layout.totalColumns;
                       const leftPct = layout.column * widthPct;
-                      const isResizing = resizingEvent?.eventId === event.id;
-                      const displayDuration = isResizing ? resizingEvent!.currentDuration : event.duration;
+                      const isResizing = resizing?.eventId === event.id;
+                      const displayDuration = isResizing ? resizing!.currentDuration : event.duration;
                       const eventColor = event.colorHex || member.colorHex || accentColor;
 
                       return (
@@ -218,24 +218,18 @@ export default function DayView({
                           onDragStart={(e) => {
                             e.currentTarget.style.opacity = "0.6";
                             e.currentTarget.style.transform = "scale(0.95)";
-                            handleEventDragStart(e, event.id, event.isGoogle, event.memberId);
+                            onEventDragStart(e, event.id, event.isGoogle, event.memberId);
                           }}
                           onDragEnd={(e) => {
                             e.currentTarget.style.opacity = "1";
                             e.currentTarget.style.transform = "scale(1)";
                             setDragOverSlot(null);
                           }}
-                          onClick={(e) => { if (!isResizing) handleEventClick(event, e); }}
-                          onTouchStart={(e) => {
-                            if (isResizing) return;
-                            e.stopPropagation();
-                            const touch = e.touches[0];
-                            handleTouchEventDragStart?.(event.id, event.isGoogle, event.memberId, touch.clientX, touch.clientY, event.title, eventColor);
-                          }}
+                          onClick={(e) => { if (!isResizing) onEventClick(event, e); }}
                           role="button"
                           aria-label={`予定: ${event.title}`}
                           tabIndex={0}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleEventClick(event, e as unknown as React.MouseEvent); }}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onEventClick(event, e as unknown as React.MouseEvent); }}
                           className={`calendar-event absolute rounded-md px-1.5 py-0.5 text-white shadow-sm overflow-hidden transition-all hover:brightness-105 active:scale-[0.98] z-10 border border-white/20 ${!isResizing && "cursor-grab active:cursor-grabbing"} flex flex-col items-start`}
                           style={{
                             top: `${event.startHour * hourHeight + 1}px`,
@@ -253,12 +247,12 @@ export default function DayView({
                             aria-label="リサイズ"
                             onMouseDown={(e) => {
                               e.stopPropagation();
-                              setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId });
+                              setResizing({ eventId: event.id, initialDuration: event.duration, startY: e.clientY, currentDuration: event.duration, memberId: event.memberId });
                             }}
                             onTouchStart={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
-                              setResizingEvent({ eventId: event.id, initialDuration: event.duration, startY: e.touches[0].clientY, currentDuration: event.duration, memberId: event.memberId });
+                              setResizing({ eventId: event.id, initialDuration: event.duration, startY: e.touches[0].clientY, currentDuration: event.duration, memberId: event.memberId });
                             }}
                           />
                         </div>

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Session } from "next-auth";
 import { SYNC_MONTHS, GOOGLE_EVENT_COLORS } from "@/constants/calendar";
 import { getDayIndex } from "@/hooks/useInitialScroll";
+export { GOOGLE_EVENT_COLORS as GOOGLE_COLORS, getDayIndex };
 import type { CalendarEvent, Member } from "@/types";
 import toast from "react-hot-toast";
 

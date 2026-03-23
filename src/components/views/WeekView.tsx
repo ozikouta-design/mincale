@@ -1,6 +1,6 @@
 "use client";
 import React, { memo, useRef, useEffect, useState } from "react";
-import { TIME_AXIS_W, DAY_HEADER_H } from "@/constants/calendar";
+import { TIME_AXIS_WIDTH_PX as TIME_AXIS_W, CALENDAR_HEADER_HEIGHT as DAY_HEADER_H } from "@/constants/calendar";
 import { useWeekTouch } from "@/hooks/useWeekTouch";
 import { useResizeDrag } from "@/hooks/useResizeDrag";
 import type {
@@ -28,9 +28,9 @@ interface Props {
   setResizing: (s: ResizingState | null) => void;
   onResizeCommit: (eventId: string, memberId: string, dur: number) => void;
   onEventClick: (ev: CalendarEvent, e: React.MouseEvent) => void;
-  onEventDragStart: (e: React.DragEvent, id: string, isGoogle: boolean, memberId: string) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent, dayIndex: number, hour: number) => void;
+  onEventDragStart: (e: React.DragEvent<HTMLDivElement>, id: string, isGoogle: boolean, memberId: string) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>, dayIndex: number, hour: number) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   onScroll: () => void;
   // PC mousedown for new event creation

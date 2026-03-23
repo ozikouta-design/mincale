@@ -7,7 +7,7 @@ import WeekView from "./views/WeekView";
 import DayView from "./views/DayView";
 import MonthView from "./views/MonthView";
 import CalendarHeader from "./CalendarHeader";
-import { TIME_AXIS_W, HOUR_H } from "@/constants/calendar";
+import { TIME_AXIS_WIDTH_PX as TIME_AXIS_W, DEFAULT_HOUR_HEIGHT as HOUR_H } from "@/constants/calendar";
 import type { SelectionState, ResizingState } from "@/types";
 
 export default memo(function CalendarMain() {
@@ -149,9 +149,9 @@ export default memo(function CalendarMain() {
       <CalendarHeader
         displayMonthYear={currentMonthYear}
         viewMode={viewMode} setViewMode={setViewMode}
-        onPrev={() => viewMode === "week" ? scrollWeekBy(-1) : undefined}
-        onNext={() => viewMode === "week" ? scrollWeekBy(1)  : undefined}
-        onToday={handleToday}
+        handlePrevWeek={() => viewMode === "week" ? scrollWeekBy(-1) : undefined}
+        handleNextWeek={() => viewMode === "week" ? scrollWeekBy(1)  : undefined}
+        handleToday={handleToday}
         setIsSidebarOpen={setIsSidebarOpen}
         setIsRightPanelOpen={setIsRightPanelOpen}
         setIsScheduleModalOpen={setIsScheduleModalOpen ?? (() => {})}
