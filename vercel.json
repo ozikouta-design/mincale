@@ -4,6 +4,7 @@
   "rewrites": [
     { "source": "/event/create", "destination": "/event/create.html" },
     { "source": "/event/:id", "destination": "/event/[id].html" },
-    { "source": "/booking/:slug", "destination": "/booking/[slug].html" }
+    { "source": "/booking/:slug", "destination": "/booking/[slug].html" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
