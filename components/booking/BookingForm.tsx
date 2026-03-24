@@ -1,0 +1,181 @@
+import React, { useState } from 'react';
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
+} from 'react-native';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
+
+interface BookingSlot {
+  startTime: Date;
+  endTime: Date;
+}
+
+const MEETING_TYPES = [
+  { key: 'zoom', label: 'Zoom' },
+  { key: 'google_meet', label: 'Google Meet' },
+  { key: 'in_person', label: '対面' },
+  { key: 'other', label: 'その他' },
+];
+
+interface Props {
+  slot: BookingSlot;
+  isSubmitting: boolean;
+  onSubmit: (guestName: string, guestEmail: string, guestMemo: string, meetingType: string) => void;
+  onBack: () => void;
+}
+
+export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Props) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [memo, setMemo] = useState('');
+  const [meetingType, setMeetingType] = useState('zoom');
+
+  const handleSubmit = () => {
+    if (!name.trim()) {
+      Alert.alert('エラー', 'お名前を入力してください');
+      return;
+    }
+    onSubmit(name.trim(), email.trim(), memo.trim(), meetingType);
+  };
+
+  return (
+    <View style={styles.container}>
+      {/* Selected slot summary */}
+      <View style={styles.slotSummary}>
+        <Text style={styles.slotDate}>
+          {format(slot.startTime, 'M月d日(E)', { locale: ja })}
+        </Text>
+        <Text style={styles.slotTime}>
+          {format(slot.startTime, 'HH:mm')} - {format(slot.endTime, 'HH:mm')}
+        </Text>
+      </View>
+
+      {/* Name */}
+      <Text style={styles.label}>お名前 *</Text>
+      <TextInput
+        style={styles.input}
+        value={name}
+        onChangeText={setName}
+        placeholder="山田 太郎"
+        placeholderTextColor="#ccc"
+      />
+
+      {/* Email */}
+      <Text style={styles.label}>メールアドレス</Text>
+      <TextInput
+        style={styles.input}
+        value={email}
+        onChangeText={setEmail}
+        placeholder="your@email.com"
+        placeholderTextColor="#ccc"
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+
+      {/* Meeting Type */}
+      <Text style={styles.label}>ミーティング形式</Text>
+      <View style={styles.typeRow}>
+        {MEETING_TYPES.map(({ key, label }) => (
+          <TouchableOpacity
+            key={key}
+            style={[styles.typeButton, meetingType === key && styles.typeButtonActive]}
+            onPress={() => setMeetingType(key)}
+          >
+            <Text style={[styles.typeText, meetingType === key && styles.typeTextActive]}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Memo */}
+      <Text style={styles.label}>メモ</Text>
+      <TextInput
+        style={[styles.input, styles.multiline]}
+        value={memo}
+        onChangeText={setMemo}
+        placeholder="ご用件など"
+        placeholderTextColor="#ccc"
+        multiline
+        numberOfLines={3}
+      />
+
+      {/* Submit */}
+      <TouchableOpacity
+        style={[styles.submitButton, isSubmitting && styles.disabled]}
+        onPress={handleSubmit}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.submitText}>予約する</Text>
+        )}
+      </TouchableOpacity>
+
+      {/* Back */}
+      <TouchableOpacity style={styles.backButton} onPress={onBack}>
+        <Text style={styles.backText}>時間を選び直す</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { paddingHorizontal: 16, paddingTop: 8 },
+  slotSummary: {
+    backgroundColor: '#f0f7ff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  slotDate: { fontSize: 16, fontWeight: '600', color: '#333' },
+  slotTime: { fontSize: 20, fontWeight: '700', color: '#4285F4', marginTop: 4 },
+  label: { fontSize: 14, fontWeight: '500', color: '#666', marginBottom: 6, marginTop: 16 },
+  input: {
+    fontSize: 16,
+    color: '#333',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  multiline: { minHeight: 80, textAlignVertical: 'top' },
+  typeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  typeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  typeButtonActive: {
+    backgroundColor: '#4285F4',
+    borderColor: '#4285F4',
+  },
+  typeText: { fontSize: 14, color: '#666' },
+  typeTextActive: { color: '#fff', fontWeight: '600' },
+  submitButton: {
+    backgroundColor: '#34A853',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 28,
+  },
+  disabled: { opacity: 0.6 },
+  submitText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  backButton: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 8,
+  },
+  backText: { color: '#4285F4', fontSize: 15 },
+});
