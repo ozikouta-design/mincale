@@ -1,9 +1,36 @@
 import { useState, useCallback } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData } from '@/types';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
+
+// Platform-aware key-value storage
+const storage = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      try { return localStorage.getItem(key); } catch { return null; }
+    }
+    const SecureStore = await import('expo-secure-store');
+    return SecureStore.getItemAsync(key);
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(key, value); } catch {}
+      return;
+    }
+    const SecureStore = await import('expo-secure-store');
+    return SecureStore.setItemAsync(key, value);
+  },
+  removeItem: async (key: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try { localStorage.removeItem(key); } catch {}
+      return;
+    }
+    const SecureStore = await import('expo-secure-store');
+    return SecureStore.deleteItemAsync(key);
+  },
+};
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -44,7 +71,7 @@ export function useGoogleCalendar() {
   );
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await storage.getItem(TOKEN_KEY);
     return token;
   }, []);
 
@@ -63,9 +90,9 @@ export function useGoogleCalendar() {
         );
 
         if (tokenResponse.accessToken) {
-          await SecureStore.setItemAsync(TOKEN_KEY, tokenResponse.accessToken);
+          await storage.setItem(TOKEN_KEY, tokenResponse.accessToken);
           if (tokenResponse.refreshToken) {
-            await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokenResponse.refreshToken);
+            await storage.setItem(REFRESH_TOKEN_KEY, tokenResponse.refreshToken);
           }
           // Fetch user email
           try {
@@ -75,7 +102,7 @@ export function useGoogleCalendar() {
             if (userRes.ok) {
               const userData = await userRes.json();
               if (userData.email) {
-                await SecureStore.setItemAsync(USER_EMAIL_KEY, userData.email);
+                await storage.setItem(USER_EMAIL_KEY, userData.email);
                 setUserEmail(userData.email);
               }
             }
@@ -91,17 +118,17 @@ export function useGoogleCalendar() {
   }, [promptAsync, redirectUri, request]);
 
   const signOut = useCallback(async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_EMAIL_KEY);
+    await storage.removeItem(TOKEN_KEY);
+    await storage.removeItem(REFRESH_TOKEN_KEY);
+    await storage.removeItem(USER_EMAIL_KEY);
     setIsAuthenticated(false);
     setUserEmail(null);
     setEvents([]);
   }, []);
 
   const checkAuthStatus = useCallback(async () => {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
-    const email = await SecureStore.getItemAsync(USER_EMAIL_KEY);
+    const token = await storage.getItem(TOKEN_KEY);
+    const email = await storage.getItem(USER_EMAIL_KEY);
     setIsAuthenticated(!!token);
     setUserEmail(email);
     return !!token;
@@ -132,7 +159,7 @@ export function useGoogleCalendar() {
       if (!res.ok) {
         if (res.status === 401) {
           setIsAuthenticated(false);
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await storage.removeItem(TOKEN_KEY);
         }
         setIsLoading(false);
         return [];
@@ -205,7 +232,7 @@ export function useGoogleCalendar() {
       if (!res.ok) {
         if (res.status === 401) {
           setIsAuthenticated(false);
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await storage.removeItem(TOKEN_KEY);
         }
         return null;
       }
@@ -261,7 +288,7 @@ export function useGoogleCalendar() {
       if (!res.ok) {
         if (res.status === 401) {
           setIsAuthenticated(false);
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await storage.removeItem(TOKEN_KEY);
         }
         return false;
       }
@@ -285,7 +312,7 @@ export function useGoogleCalendar() {
       if (!res.ok && res.status !== 410) {
         if (res.status === 401) {
           setIsAuthenticated(false);
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await storage.removeItem(TOKEN_KEY);
         }
         return false;
       }
