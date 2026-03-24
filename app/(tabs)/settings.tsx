@@ -28,7 +28,7 @@ export default function SettingsScreen() {
     }
   }, [profile]);
 
-  const bookingUrl = slug ? `https://your-domain.com/book/${slug}` : '';
+  const bookingUrl = slug ? `https://mincale.vercel.app/booking/${slug}` : '';
 
   const handleSave = async () => {
     setIsSaving(true);
