@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Switch, Platform, Alert,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DatePickerField from './DatePickerField';
 import { MapPin, FileText, Trash2 } from 'lucide-react-native';
 import { EventFormData } from '@/types';
 import { format } from 'date-fns';
@@ -42,45 +42,38 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
     onSubmit({ title: title.trim(), startTime, endTime, isAllDay, location, description });
   };
 
-  const onChangeStartDate = (_: DateTimePickerEvent, date?: Date) => {
-    setShowStartDate(Platform.OS === 'ios');
-    if (date) {
-      const newStart = new Date(startTime);
-      newStart.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-      setStartTime(newStart);
-      // Auto-adjust end time
-      if (newStart >= endTime) {
-        const newEnd = new Date(newStart);
-        newEnd.setHours(newEnd.getHours() + 1);
-        setEndTime(newEnd);
-      }
-    }
-  };
-
-  const onChangeStartTime = (_: DateTimePickerEvent, date?: Date) => {
-    setShowStartTime(Platform.OS === 'ios');
-    if (date) {
-      setStartTime(date);
-      if (date >= endTime) {
-        const newEnd = new Date(date);
-        newEnd.setHours(newEnd.getHours() + 1);
-        setEndTime(newEnd);
-      }
-    }
-  };
-
-  const onChangeEndDate = (_: DateTimePickerEvent, date?: Date) => {
-    setShowEndDate(Platform.OS === 'ios');
-    if (date) {
-      const newEnd = new Date(endTime);
-      newEnd.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+  const onChangeStartDate = (date: Date) => {
+    const newStart = new Date(startTime);
+    newStart.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    setStartTime(newStart);
+    if (newStart >= endTime) {
+      const newEnd = new Date(newStart);
+      newEnd.setHours(newEnd.getHours() + 1);
       setEndTime(newEnd);
     }
+    setShowStartDate(false);
   };
 
-  const onChangeEndTime = (_: DateTimePickerEvent, date?: Date) => {
-    setShowEndTime(Platform.OS === 'ios');
-    if (date) setEndTime(date);
+  const onChangeStartTime = (date: Date) => {
+    setStartTime(date);
+    if (date >= endTime) {
+      const newEnd = new Date(date);
+      newEnd.setHours(newEnd.getHours() + 1);
+      setEndTime(newEnd);
+    }
+    setShowStartTime(false);
+  };
+
+  const onChangeEndDate = (date: Date) => {
+    const newEnd = new Date(endTime);
+    newEnd.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    setEndTime(newEnd);
+    setShowEndDate(false);
+  };
+
+  const onChangeEndTime = (date: Date) => {
+    setEndTime(date);
+    setShowEndTime(false);
   };
 
   return (
@@ -115,13 +108,7 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
         </Text>
       </TouchableOpacity>
       {showStartDate && (
-        <DateTimePicker
-          value={startTime}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={onChangeStartDate}
-          locale="ja"
-        />
+        <DatePickerField value={startTime} mode="date" onChange={onChangeStartDate} />
       )}
 
       {!isAllDay && (
@@ -131,14 +118,7 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
             <Text style={styles.dateText}>{format(startTime, 'HH:mm')}</Text>
           </TouchableOpacity>
           {showStartTime && (
-            <DateTimePicker
-              value={startTime}
-              mode="time"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={onChangeStartTime}
-              minuteInterval={5}
-              locale="ja"
-            />
+            <DatePickerField value={startTime} mode="time" onChange={onChangeStartTime} />
           )}
         </>
       )}
@@ -153,13 +133,7 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
         </Text>
       </TouchableOpacity>
       {showEndDate && (
-        <DateTimePicker
-          value={endTime}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={onChangeEndDate}
-          locale="ja"
-        />
+        <DatePickerField value={endTime} mode="date" onChange={onChangeEndDate} />
       )}
 
       {!isAllDay && (
@@ -169,14 +143,7 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
             <Text style={styles.dateText}>{format(endTime, 'HH:mm')}</Text>
           </TouchableOpacity>
           {showEndTime && (
-            <DateTimePicker
-              value={endTime}
-              mode="time"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={onChangeEndTime}
-              minuteInterval={5}
-              locale="ja"
-            />
+            <DatePickerField value={endTime} mode="time" onChange={onChangeEndTime} />
           )}
         </>
       )}
