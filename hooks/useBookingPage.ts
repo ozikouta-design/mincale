@@ -40,6 +40,13 @@ export function useBookingPage(slug: string) {
     async function loadBusy() {
       if (!profile) return;
 
+      // サーバーサイドで Google Calendar を同期（ログイン不要）
+      try {
+        await fetch(`/api/sync-calendar?slug=${encodeURIComponent(slug)}`);
+      } catch {
+        // 同期失敗しても続行（既存データで表示）
+      }
+
       const startDate = startOfDay(new Date());
       const endDate = endOfDay(addDays(startDate, 14));
 
