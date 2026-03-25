@@ -60,19 +60,23 @@ export default function BookingScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Host info */}
-      <View style={styles.hostInfo}>
-        <Text style={styles.hostName}>{profile.name || profile.email}</Text>
-        <View style={styles.durationBadge}>
-          <Clock size={13} color="#4285F4" />
-          <Text style={styles.durationText}>{profile.booking_duration || 30}分</Text>
-        </View>
+      {/* Timezone bar */}
+      <View style={styles.tzBar}>
+        <Text style={styles.tzDot}>●</Text>
+        <Text style={styles.tzText}>タイムゾーン: (GMT+09:00) Asia/Tokyo</Text>
       </View>
 
       {selectedSlot ? (
         /* Phase 2: Booking form */
         <ScrollView style={styles.formContainer}>
           <View style={styles.selectedSlotBanner}>
+            <View style={styles.hostRowSmall}>
+              <Text style={styles.hostNameSmall}>{profile.name || profile.email}</Text>
+              <View style={styles.durationBadge}>
+                <Clock size={12} color="#4285F4" />
+                <Text style={styles.durationText}>{profile.booking_duration || 30}分</Text>
+              </View>
+            </View>
             <Text style={styles.selectedSlotText}>
               {format(selectedSlot.startTime, 'M月d日(EEE) HH:mm', { locale: ja })}
               {' 〜 '}
@@ -88,14 +92,11 @@ export default function BookingScreen() {
         </ScrollView>
       ) : (
         /* Phase 1: Availability grid */
-        <>
-          <Text style={styles.sectionLabel}>日時を選択してください</Text>
-          <AvailabilityGrid
-            grid={grid}
-            selectedSlot={selectedSlot}
-            onSelectSlot={setSelectedSlot}
-          />
-        </>
+        <AvailabilityGrid
+          grid={grid}
+          selectedSlot={selectedSlot}
+          onSelectSlot={setSelectedSlot}
+        />
       )}
     </View>
   );
@@ -108,27 +109,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', paddingHorizontal: 40,
   },
   errorText: { fontSize: 16, color: '#999', textAlign: 'center' },
-  hostInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  tzBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e8ecf4',
+    borderBottomColor: '#e8e8e8',
+    backgroundColor: '#fafafa',
   },
-  hostName: { fontSize: 17, fontWeight: '700', color: '#333' },
-  durationBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#f0f7ff', paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 12,
-  },
-  durationText: { fontSize: 13, color: '#4285F4', fontWeight: '600' },
-  sectionLabel: {
-    fontSize: 13, color: '#888', fontWeight: '500',
-    paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: '#f8f9fa',
-  },
+  tzDot: { fontSize: 8, color: '#34A853' },
+  tzText: { fontSize: 12, color: '#555' },
   formContainer: { flex: 1 },
   selectedSlotBanner: {
     backgroundColor: '#f0f7ff',
@@ -136,7 +125,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#d0e3ff',
   },
-  selectedSlotText: { fontSize: 15, fontWeight: '600', color: '#4285F4', textAlign: 'center' },
+  hostRowSmall: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 6,
+  },
+  hostNameSmall: { fontSize: 14, fontWeight: '600', color: '#444' },
+  durationBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#e8f0fe', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 10,
+  },
+  durationText: { fontSize: 12, color: '#4285F4', fontWeight: '600' },
+  selectedSlotText: { fontSize: 15, fontWeight: '700', color: '#4285F4', textAlign: 'center' },
   completeTitle: { fontSize: 22, fontWeight: '700', color: '#333', marginTop: 20 },
   completeSubtext: {
     fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22, marginTop: 12,
