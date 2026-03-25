@@ -151,12 +151,13 @@ export function useGoogleCalendar() {
             if (userData.email) {
               await storage.setItem(USER_EMAIL_KEY, userData.email);
               setUserEmail(userData.email);
-              // Save refresh token to Supabase for server-side calendar sync
+              // Save refresh token to Supabase for server-side calendar sync (via API to bypass RLS)
               if (tokens.refresh_token) {
-                supabase.from('host_tokens').upsert(
-                  { email: userData.email, google_refresh_token: tokens.refresh_token, updated_at: new Date().toISOString() },
-                  { onConflict: 'email' },
-                ).then(({ error }) => { if (error) console.error('host_tokens save error:', error); });
+                fetch('/api/save-token', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: userData.email, refresh_token: tokens.refresh_token }),
+                }).then(r => { if (!r.ok) console.error('save-token API error:', r.status); });
               }
             }
           }
@@ -412,10 +413,11 @@ export function useGoogleCalendar() {
                 await storage.setItem(USER_EMAIL_KEY, userData.email);
                 setUserEmail(userData.email);
                 if (tokenResponse.refreshToken) {
-                  supabase.from('host_tokens').upsert(
-                    { email: userData.email, google_refresh_token: tokenResponse.refreshToken, updated_at: new Date().toISOString() },
-                    { onConflict: 'email' },
-                  ).then(({ error }) => { if (error) console.error('host_tokens save error:', error); });
+                  fetch('/api/save-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: userData.email, refresh_token: tokenResponse.refreshToken }),
+                  }).then(r => { if (!r.ok) console.error('save-token API error:', r.status); });
                 }
               }
             }
