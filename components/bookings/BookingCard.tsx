@@ -1,12 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { User, Clock, Video, MapPin, MessageSquare } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
+import { User, Clock, MessageSquare, Check, X, Trash2 } from 'lucide-react-native';
 import { Booking } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
 interface Props {
   booking: Booking;
+  onConfirm?: (id: string) => void;
+  onDecline?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 const MEETING_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -16,24 +19,53 @@ const MEETING_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   other: { label: 'その他', color: '#666' },
 };
 
-export default function BookingCard({ booking }: Props) {
+const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  pending: { label: '仮予約', color: '#F57C00', bg: '#FFF3E0' },
+  confirmed: { label: '参加確定', color: '#2E7D32', bg: '#E8F5E9' },
+  cancelled: { label: 'キャンセル', color: '#c62828', bg: '#FFEBEE' },
+};
+
+export default function BookingCard({ booking, onConfirm, onDecline, onDelete }: Props) {
   const startTime = parseISO(booking.start_time);
   const endTime = parseISO(booking.end_time);
   const meetingInfo = MEETING_TYPE_LABELS[booking.meeting_type || 'other'] || MEETING_TYPE_LABELS.other;
+  const statusInfo = STATUS_LABELS[booking.status] || STATUS_LABELS.pending;
+  const isPending = booking.status === 'pending';
   const isCancelled = booking.status === 'cancelled';
 
+  const handleDelete = () => {
+    if (!onDelete) return;
+    if (Platform.OS === 'web') {
+      if (window.confirm('この予約をリストから削除しますか？')) onDelete(booking.id);
+    } else {
+      Alert.alert('予約を削除', 'リストから削除しますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除', style: 'destructive', onPress: () => onDelete(booking.id) },
+      ]);
+    }
+  };
+
   return (
-    <View style={[styles.container, isCancelled && styles.cancelled]}>
+    <View style={[styles.container, isCancelled && styles.cancelledContainer]}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.guestRow}>
           <User size={16} color="#4285F4" />
           <Text style={styles.guestName}>{booking.guest_name}</Text>
         </View>
-        <View style={[styles.typeBadge, { backgroundColor: meetingInfo.color + '20' }]}>
-          <Text style={[styles.typeText, { color: meetingInfo.color }]}>{meetingInfo.label}</Text>
+        <View style={styles.headerRight}>
+          <View style={[styles.typeBadge, { backgroundColor: meetingInfo.color + '20' }]}>
+            <Text style={[styles.typeText, { color: meetingInfo.color }]}>{meetingInfo.label}</Text>
+          </View>
+          {onDelete && (
+            <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
+              <Trash2 size={14} color="#bbb" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
+      {/* Time */}
       <View style={styles.timeRow}>
         <Clock size={14} color="#888" />
         <Text style={styles.timeText}>
@@ -52,11 +84,31 @@ export default function BookingCard({ booking }: Props) {
         </View>
       )}
 
-      {isCancelled && (
-        <View style={styles.cancelledBadge}>
-          <Text style={styles.cancelledText}>キャンセル済み</Text>
+      {/* Status + Actions */}
+      <View style={styles.footer}>
+        <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+          <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
         </View>
-      )}
+
+        {isPending && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.confirmBtn]}
+              onPress={() => onConfirm?.(booking.id)}
+            >
+              <Check size={14} color="#fff" />
+              <Text style={styles.actionBtnText}>参加</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.declineBtn]}
+              onPress={() => onDecline?.(booking.id)}
+            >
+              <X size={14} color="#fff" />
+              <Text style={styles.actionBtnText}>不参加</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -76,47 +128,43 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  cancelled: { opacity: 0.5 },
+  cancelledContainer: { opacity: 0.6 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  guestRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  guestRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   guestName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  typeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typeBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
   typeText: { fontSize: 11, fontWeight: '600' },
+  deleteBtn: { padding: 4 },
   timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4,
   },
   timeText: { fontSize: 13, color: '#666' },
   detailText: { fontSize: 12, color: '#888', marginTop: 2 },
   memoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#eee',
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
+    marginTop: 8, paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#eee',
   },
   memoText: { fontSize: 12, color: '#888', flex: 1 },
-  cancelledBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#ff4444',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 12, paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#f0f0f0',
   },
-  cancelledText: { color: '#fff', fontSize: 10, fontWeight: '600' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  actions: { flexDirection: 'row', gap: 8 },
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
+  },
+  confirmBtn: { backgroundColor: '#34A853' },
+  declineBtn: { backgroundColor: '#EA4335' },
+  actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });

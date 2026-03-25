@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import EventForm from '@/components/event/EventForm';
@@ -50,28 +50,30 @@ export default function EditEventScreen() {
     }
   };
 
+  const doDelete = async () => {
+    const success = await deleteEvent(id!, event.calendarId);
+    if (success) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await refreshEvents();
+      router.back();
+    } else {
+      if (Platform.OS === 'web') {
+        window.alert('予定の削除に失敗しました');
+      } else {
+        Alert.alert('エラー', '予定の削除に失敗しました');
+      }
+    }
+  };
+
   const handleDelete = () => {
-    Alert.alert(
-      '予定を削除',
-      'この予定を削除しますか？',
-      [
+    if (Platform.OS === 'web') {
+      if (window.confirm('この予定を削除しますか？')) doDelete();
+    } else {
+      Alert.alert('予定を削除', 'この予定を削除しますか？', [
         { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await deleteEvent(id!, event.calendarId);
-            if (success) {
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              await refreshEvents();
-              router.back();
-            } else {
-              Alert.alert('エラー', '予定の削除に失敗しました');
-            }
-          },
-        },
-      ],
-    );
+        { text: '削除', style: 'destructive', onPress: doDelete },
+      ]);
+    }
   };
 
   return (

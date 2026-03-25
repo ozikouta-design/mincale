@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Alert, Share, ActivityIndicator, Switch, Modal,
+  TextInput, Alert, Share, ActivityIndicator, Switch, Modal, Platform,
 } from 'react-native';
 import {
   LogOut, Link2, Clock, Calendar as CalendarIcon,
@@ -261,10 +261,16 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     style={styles.groupActionBtn}
                     onPress={() => {
-                      Alert.alert(`「${group.name}」を削除`, 'カレンダーは未分類に戻ります', [
-                        { text: 'キャンセル', style: 'cancel' },
-                        { text: '削除', style: 'destructive', onPress: () => deleteCalendarGroup(group.id) },
-                      ]);
+                      if (Platform.OS === 'web') {
+                        if (window.confirm(`「${group.name}」を削除しますか？\nカレンダーは未分類に戻ります`)) {
+                          deleteCalendarGroup(group.id);
+                        }
+                      } else {
+                        Alert.alert(`「${group.name}」を削除`, 'カレンダーは未分類に戻ります', [
+                          { text: 'キャンセル', style: 'cancel' },
+                          { text: '削除', style: 'destructive', onPress: () => deleteCalendarGroup(group.id) },
+                        ]);
+                      }
                     }}
                   >
                     <Trash2 size={15} color="#EA4335" />

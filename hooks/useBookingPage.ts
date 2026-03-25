@@ -61,7 +61,7 @@ export function useBookingPage(slug: string) {
           .from('bookings')
           .select('start_time, end_time')
           .eq('host_email', profile.email)
-          .eq('status', 'confirmed')
+          .in('status', ['confirmed', 'pending'])
           .gte('end_time', startDate.toISOString())
           .lte('start_time', endDate.toISOString()),
       ]);
@@ -94,7 +94,7 @@ export function useBookingPage(slug: string) {
         meeting_type: meetingType,
         start_time: slot.startTime.toISOString(),
         end_time: slot.endTime.toISOString(),
-        status: 'confirmed',
+        status: 'pending',
       });
       if (err) throw err;
 

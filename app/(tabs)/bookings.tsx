@@ -7,7 +7,7 @@ import { useCalendarContext } from '@/context/CalendarContext';
 
 export default function BookingsScreen() {
   const { isAuthenticated, userEmail } = useCalendarContext();
-  const { bookings, isLoading, refetch } = useBookings(
+  const { bookings, isLoading, refetch, confirmBooking, declineBooking, deleteBooking } = useBookings(
     isAuthenticated ? userEmail ?? undefined : undefined,
   );
 
@@ -39,7 +39,14 @@ export default function BookingsScreen() {
       <FlatList
         data={bookings}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <BookingCard booking={item} />}
+        renderItem={({ item }) => (
+          <BookingCard
+            booking={item}
+            onConfirm={confirmBooking}
+            onDecline={declineBooking}
+            onDelete={deleteBooking}
+          />
+        )}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#4285F4" />

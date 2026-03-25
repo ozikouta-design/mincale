@@ -52,5 +52,54 @@ export function useBookings(hostEmail?: string) {
     };
   }, [hostEmail, fetchBookings]);
 
-  return { bookings, isLoading, refetch: fetchBookings };
+  // 予約を「参加（確定）」にする + Google Calendar にイベント作成
+  const confirmBooking = useCallback(async (bookingId: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/create-booking-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      });
+      if (res.ok) {
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'confirmed' } : b));
+        return true;
+      }
+      // API失敗でも Supabase 側だけ更新
+      const { error } = await supabase.from('bookings').update({ status: 'confirmed' }).eq('id', bookingId);
+      if (error) throw error;
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'confirmed' } : b));
+      return true;
+    } catch (e) {
+      console.error('confirmBooking error:', e);
+      return false;
+    }
+  }, []);
+
+  // 予約を「不参加（キャンセル）」にする
+  const declineBooking = useCallback(async (bookingId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId);
+      if (error) throw error;
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b));
+      return true;
+    } catch (e) {
+      console.error('declineBooking error:', e);
+      return false;
+    }
+  }, []);
+
+  // 予約をリストから削除
+  const deleteBooking = useCallback(async (bookingId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
+      if (error) throw error;
+      setBookings(prev => prev.filter(b => b.id !== bookingId));
+      return true;
+    } catch (e) {
+      console.error('deleteBooking error:', e);
+      return false;
+    }
+  }, []);
+
+  return { bookings, isLoading, refetch: fetchBookings, confirmBooking, declineBooking, deleteBooking };
 }
