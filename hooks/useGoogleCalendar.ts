@@ -236,16 +236,25 @@ export function useGoogleCalendar() {
 
   // ── グループ管理 ──────────────────────────────────────
 
-  // 新しいカレンダーグループを作成する
-  const createCalendarGroup = useCallback(async (name: string): Promise<CalendarGroup> => {
+  // 新しいカレンダーグループを作成する（初期カレンダーIDも指定可能）
+  const createCalendarGroup = useCallback(async (name: string, calendarIds: string[] = []): Promise<CalendarGroup> => {
     const newGroup: CalendarGroup = { id: `group_${Date.now()}`, name };
     setCalendarGroups(prev => {
       const updated = [...prev, newGroup];
       storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
       return updated;
     });
+    if (calendarIds.length > 0) {
+      setCalendarList(prev => {
+        const updated = prev.map(c =>
+          calendarIds.includes(c.id) ? { ...c, groupId: newGroup.id } : c,
+        );
+        saveCalendarListState(updated);
+        return updated;
+      });
+    }
     return newGroup;
-  }, []);
+  }, [saveCalendarListState]);
 
   // カレンダーグループを削除し、所属カレンダーのグループIDをクリアする
   const deleteCalendarGroup = useCallback(async (groupId: string) => {
@@ -269,6 +278,40 @@ export function useGoogleCalendar() {
       const updated = prev.map(c =>
         c.id === calendarId ? { ...c, groupId: groupId ?? undefined } : c,
       );
+      saveCalendarListState(updated);
+      return updated;
+    });
+  }, [saveCalendarListState]);
+
+  // グループのメンバーを一括ON/OFFする（グループスイッチ用）
+  const setGroupVisibility = useCallback(async (calendarIds: string[], selected: boolean) => {
+    setCalendarList(prev => {
+      const updated = prev.map(c =>
+        calendarIds.includes(c.id) ? { ...c, selected } : c,
+      );
+      saveCalendarListState(updated);
+      return updated;
+    });
+  }, [saveCalendarListState]);
+
+  // グループ名とカレンダーメンバーを更新する（編集用）
+  const updateCalendarGroup = useCallback(async (groupId: string, name: string, calendarIds: string[]) => {
+    // グループ名を更新
+    setCalendarGroups(prev => {
+      const updated = prev.map(g => g.id === groupId ? { ...g, name } : g);
+      storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    // カレンダーのグループ割り当てを更新（追加・削除）
+    setCalendarList(prev => {
+      const updated = prev.map(c => {
+        if (calendarIds.includes(c.id)) {
+          return { ...c, groupId }; // このグループに割り当て
+        } else if (c.groupId === groupId) {
+          return { ...c, groupId: undefined }; // このグループから外す
+        }
+        return c;
+      });
       saveCalendarListState(updated);
       return updated;
     });
@@ -513,8 +556,10 @@ export function useGoogleCalendar() {
     fetchCalendarList,
     toggleCalendarVisibility,
     createCalendarGroup,
+    updateCalendarGroup,
     deleteCalendarGroup,
     moveCalendarToGroup,
+    setGroupVisibility,
     createEvent,
     updateEvent,
     deleteEvent,

@@ -1,45 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Alert, Share, ActivityIndicator, Switch, Platform,
+  TextInput, Alert, Share, ActivityIndicator, Switch, Modal,
 } from 'react-native';
 import {
   LogOut, Link2, Clock, Calendar as CalendarIcon,
-  Share2, ChevronRight, User, Save, Mail, Plus, FolderPlus, Trash2,
+  Share2, ChevronRight, User, Save, Mail, FolderPlus, Trash2, Pencil, Check,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useCalendarContext } from '@/context/CalendarContext';
-
-// カレンダーのグループ選択ダイアログを表示するヘルパー
-function showGroupPicker(
-  calendarId: string,
-  groups: { id: string; name: string }[],
-  moveCalendarToGroup: (calId: string, groupId: string | null) => Promise<void>,
-) {
-  const buttons = [
-    ...groups.map(g => ({
-      text: g.name,
-      onPress: () => moveCalendarToGroup(calendarId, g.id),
-    })),
-    { text: '未分類に戻す', onPress: () => moveCalendarToGroup(calendarId, null) },
-    { text: 'キャンセル', style: 'cancel' as const },
-  ];
-  Alert.alert('グループを選択', undefined, buttons);
-}
 
 export default function SettingsScreen() {
   const {
     isAuthenticated, signIn, signOut, userEmail, profile, saveProfile,
     calendarList, calendarGroups, toggleCalendarVisibility,
-    createCalendarGroup, deleteCalendarGroup, moveCalendarToGroup,
+    createCalendarGroup, updateCalendarGroup, deleteCalendarGroup, setGroupVisibility,
   } = useCalendarContext();
   const [slug, setSlug] = useState('');
   const [bookingDuration, setBookingDuration] = useState('30');
   const [startHour, setStartHour] = useState('9');
   const [endHour, setEndHour] = useState('18');
   const [isSaving, setIsSaving] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [showGroupInput, setShowGroupInput] = useState(false);
+
+  // グループ作成・編集モーダルの状態
+  const [groupModal, setGroupModal] = useState<{
+    mode: 'create' | 'edit';
+    groupId?: string;
+    name: string;
+    selectedCalendarIds: string[];
+  } | null>(null);
 
   // Load profile values
   useEffect(() => {
@@ -200,7 +189,7 @@ export default function SettingsScreen() {
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>カレンダー管理</Text>
             <TouchableOpacity
-              onPress={() => setShowGroupInput(v => !v)}
+              onPress={() => setGroupModal({ mode: 'create', name: '', selectedCalendarIds: [] })}
               style={styles.addGroupButton}
             >
               <FolderPlus size={16} color="#4285F4" />
@@ -208,75 +197,52 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* グループ作成フォーム */}
-          {showGroupInput && (
-            <View style={[styles.card, styles.groupInputCard]}>
-              <TextInput
-                style={styles.groupNameInput}
-                value={newGroupName}
-                onChangeText={setNewGroupName}
-                placeholder="グループ名を入力"
-                placeholderTextColor="#999"
-                autoFocus
-              />
-              <TouchableOpacity
-                style={[styles.groupCreateBtn, !newGroupName.trim() && styles.disabled]}
-                disabled={!newGroupName.trim()}
-                onPress={async () => {
-                  await createCalendarGroup(newGroupName.trim());
-                  setNewGroupName('');
-                  setShowGroupInput(false);
-                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }}
-              >
-                <Text style={styles.groupCreateBtnText}>作成</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
           {/* 既存グループとそのカレンダー */}
           {calendarGroups.map(group => {
             const groupCals = calendarList.filter(c => c.groupId === group.id);
-            const allSelected = groupCals.every(c => c.selected);
+            // グループ内カレンダーが全てONかどうか
+            const allSelected = groupCals.length > 0 && groupCals.every(c => c.selected);
             return (
               <View key={group.id} style={styles.groupSection}>
                 <View style={styles.groupHeader}>
+                  {/* グループ全体のON/OFF（setGroupVisibilityで一括更新） */}
+                  <Switch
+                    value={allSelected}
+                    onValueChange={(val) => setGroupVisibility(groupCals.map(c => c.id), val)}
+                    trackColor={{ true: '#4285F4' }}
+                    style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                  />
+                  <Text style={styles.groupName}>{group.name}</Text>
+                  <Text style={styles.groupCount}>{groupCals.length}件</Text>
+                  <View style={{ flex: 1 }} />
+                  {/* 編集ボタン */}
                   <TouchableOpacity
-                    style={styles.groupToggleArea}
-                    onPress={() => {
-                      // グループ全体の表示切り替え
-                      groupCals.forEach(c => {
-                        if (c.selected === allSelected) toggleCalendarVisibility(c.id);
-                      });
-                    }}
+                    style={styles.groupActionBtn}
+                    onPress={() => setGroupModal({
+                      mode: 'edit',
+                      groupId: group.id,
+                      name: group.name,
+                      selectedCalendarIds: groupCals.map(c => c.id),
+                    })}
                   >
-                    <Switch
-                      value={allSelected}
-                      onValueChange={() => {
-                        groupCals.forEach(c => {
-                          if (c.selected === allSelected) toggleCalendarVisibility(c.id);
-                        });
-                      }}
-                      trackColor={{ true: '#4285F4' }}
-                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                    />
-                    <Text style={styles.groupName}>{group.name}</Text>
-                    <Text style={styles.groupCount}>{groupCals.length}件</Text>
+                    <Pencil size={15} color="#4285F4" />
                   </TouchableOpacity>
+                  {/* 削除ボタン */}
                   <TouchableOpacity
+                    style={styles.groupActionBtn}
                     onPress={() => {
-                      Alert.alert(`グループ「${group.name}」を削除`, 'カレンダーはグループなしに戻ります', [
+                      Alert.alert(`「${group.name}」を削除`, 'カレンダーは未分類に戻ります', [
                         { text: 'キャンセル', style: 'cancel' },
                         { text: '削除', style: 'destructive', onPress: () => deleteCalendarGroup(group.id) },
                       ]);
                     }}
                   >
-                    <Trash2 size={16} color="#ccc" />
+                    <Trash2 size={15} color="#EA4335" />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.card}>
                   {groupCals.length === 0 ? (
-                    <Text style={styles.emptyGroupText}>カレンダーがありません</Text>
+                    <Text style={styles.emptyGroupText}>タップして編集からカレンダーを追加できます</Text>
                   ) : (
                     groupCals.map((cal, i) => (
                       <React.Fragment key={cal.id}>
@@ -286,16 +252,11 @@ export default function SettingsScreen() {
                             <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
                             <Text style={styles.rowText} numberOfLines={1}>{cal.summary}</Text>
                           </View>
-                          <View style={styles.calActions}>
-                            <TouchableOpacity onPress={() => showGroupPicker(cal.id, calendarGroups, moveCalendarToGroup)}>
-                              <Text style={styles.moveText}>移動</Text>
-                            </TouchableOpacity>
-                            <Switch
-                              value={cal.selected}
-                              onValueChange={() => toggleCalendarVisibility(cal.id)}
-                              trackColor={{ true: '#4285F4' }}
-                            />
-                          </View>
+                          <Switch
+                            value={cal.selected}
+                            onValueChange={() => toggleCalendarVisibility(cal.id)}
+                            trackColor={{ true: '#4285F4' }}
+                          />
                         </View>
                       </React.Fragment>
                     ))
@@ -321,18 +282,11 @@ export default function SettingsScreen() {
                         <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
                         <Text style={styles.rowText} numberOfLines={1}>{cal.summary}</Text>
                       </View>
-                      <View style={styles.calActions}>
-                        {calendarGroups.length > 0 && (
-                          <TouchableOpacity onPress={() => showGroupPicker(cal.id, calendarGroups, moveCalendarToGroup)}>
-                            <Text style={styles.moveText}>グループに追加</Text>
-                          </TouchableOpacity>
-                        )}
-                        <Switch
-                          value={cal.selected}
-                          onValueChange={() => toggleCalendarVisibility(cal.id)}
-                          trackColor={{ true: '#4285F4' }}
-                        />
-                      </View>
+                      <Switch
+                        value={cal.selected}
+                        onValueChange={() => toggleCalendarVisibility(cal.id)}
+                        trackColor={{ true: '#4285F4' }}
+                      />
                     </View>
                   </React.Fragment>
                 ))}
@@ -341,6 +295,86 @@ export default function SettingsScreen() {
           )}
         </>
       )}
+
+      {/* グループ作成・編集モーダル */}
+      <Modal
+        visible={!!groupModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGroupModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {groupModal?.mode === 'create' ? 'グループを作成' : 'グループを編集'}
+            </Text>
+
+            {/* グループ名入力 */}
+            <Text style={styles.modalLabel}>グループ名</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={groupModal?.name ?? ''}
+              onChangeText={text => setGroupModal(prev => prev ? { ...prev, name: text } : prev)}
+              placeholder="例：仕事、プライベート"
+              placeholderTextColor="#bbb"
+              autoFocus
+            />
+
+            {/* 表示するカレンダー選択 */}
+            <Text style={styles.modalLabel}>表示するカレンダー</Text>
+            <ScrollView style={styles.modalCalList} showsVerticalScrollIndicator={false}>
+              {calendarList.map(cal => {
+                const checked = groupModal?.selectedCalendarIds.includes(cal.id) ?? false;
+                return (
+                  <TouchableOpacity
+                    key={cal.id}
+                    style={styles.modalCalRow}
+                    onPress={() => setGroupModal(prev => {
+                      if (!prev) return prev;
+                      const ids = checked
+                        ? prev.selectedCalendarIds.filter(id => id !== cal.id)
+                        : [...prev.selectedCalendarIds, cal.id];
+                      return { ...prev, selectedCalendarIds: ids };
+                    })}
+                  >
+                    <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
+                    <Text style={styles.modalCalName} numberOfLines={1}>{cal.summary}</Text>
+                    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+                      {checked && <Check size={12} color="#fff" strokeWidth={3} />}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* ボタン */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setGroupModal(null)}
+              >
+                <Text style={styles.modalCancelText}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, !groupModal?.name.trim() && styles.disabled]}
+                disabled={!groupModal?.name.trim()}
+                onPress={async () => {
+                  if (!groupModal?.name.trim()) return;
+                  if (groupModal.mode === 'create') {
+                    await createCalendarGroup(groupModal.name.trim(), groupModal.selectedCalendarIds);
+                  } else if (groupModal.groupId) {
+                    await updateCalendarGroup(groupModal.groupId, groupModal.name.trim(), groupModal.selectedCalendarIds);
+                  }
+                  setGroupModal(null);
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
+              >
+                <Text style={styles.modalSaveText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Share Link */}
       {slug && (
@@ -402,40 +436,83 @@ const styles = StyleSheet.create({
   },
   addGroupButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addGroupText: { fontSize: 13, color: '#4285F4', fontWeight: '600' },
-  groupInputCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
-  groupNameInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#333',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  groupCreateBtn: {
-    backgroundColor: '#4285F4',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 8,
-  },
-  groupCreateBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   groupSection: { marginBottom: 4 },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 6,
-    gap: 8,
+    gap: 6,
   },
-  groupToggleArea: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   groupName: { fontSize: 13, fontWeight: '600', color: '#555', textTransform: 'uppercase', letterSpacing: 0.3 },
   groupCount: { fontSize: 12, color: '#aaa' },
-  emptyGroupText: { fontSize: 13, color: '#bbb', textAlign: 'center', paddingVertical: 12 },
-  calActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  moveText: { fontSize: 12, color: '#4285F4', fontWeight: '500' },
+  groupActionBtn: { padding: 6 },
+  emptyGroupText: { fontSize: 13, color: '#bbb', textAlign: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   sectionTitleInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+  // グループ作成・編集モーダル
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#333', marginBottom: 20, textAlign: 'center' },
+  modalLabel: { fontSize: 13, fontWeight: '600', color: '#888', marginBottom: 6, marginTop: 12 },
+  modalInput: {
+    fontSize: 16,
+    color: '#333',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  modalCalList: { maxHeight: 260, marginBottom: 4 },
+  modalCalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalCalName: { flex: 1, fontSize: 15, color: '#333' },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: { backgroundColor: '#4285F4', borderColor: '#4285F4' },
+  modalButtons: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: '#666' },
+  modalSaveBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#4285F4',
+    alignItems: 'center',
+  },
+  modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

@@ -32,9 +32,11 @@ interface CalendarContextType {
   calendarGroups: CalendarGroup[];
   fetchCalendarList: () => Promise<GoogleCalendarInfo[]>;
   toggleCalendarVisibility: (calendarId: string) => Promise<void>;
-  createCalendarGroup: (name: string) => Promise<CalendarGroup>;
+  createCalendarGroup: (name: string, calendarIds?: string[]) => Promise<CalendarGroup>;
+  updateCalendarGroup: (id: string, name: string, calendarIds: string[]) => Promise<void>;
   deleteCalendarGroup: (id: string) => Promise<void>;
   moveCalendarToGroup: (calendarId: string, groupId: string | null) => Promise<void>;
+  setGroupVisibility: (calendarIds: string[], selected: boolean) => Promise<void>;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -160,8 +162,10 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         fetchCalendarList: google.fetchCalendarList,
         toggleCalendarVisibility: google.toggleCalendarVisibility,
         createCalendarGroup: google.createCalendarGroup,
+        updateCalendarGroup: google.updateCalendarGroup,
         deleteCalendarGroup: google.deleteCalendarGroup,
         moveCalendarToGroup: google.moveCalendarToGroup,
+        setGroupVisibility: google.setGroupVisibility,
       }}
     >
       {children}
