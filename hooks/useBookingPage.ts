@@ -1,31 +1,19 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { UserProfile } from '@/types';
-import { computeAvailableSlots } from '@/lib/booking-slots';
+import { computeAvailabilityGrid, DaySlots, SlotCell } from '@/lib/booking-slots';
 import { startOfDay, endOfDay, addDays } from 'date-fns';
-
-interface BookingSlot {
-  startTime: Date;
-  endTime: Date;
-}
-
-interface ExistingBooking {
-  start_time: string;
-  end_time: string;
-}
 
 export function useBookingPage(slug: string) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [slots, setSlots] = useState<BookingSlot[]>([]);
-  const [existingBookings, setExistingBookings] = useState<ExistingBooking[]>([]);
+  const [grid, setGrid] = useState<DaySlots[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load profile by slug
   useEffect(() => {
     async function loadProfile() {
+      if (!slug) return;
       setIsLoading(true);
       try {
         const { data, error: err } = await supabase
@@ -45,50 +33,44 @@ export function useBookingPage(slug: string) {
         setIsLoading(false);
       }
     }
-    if (slug) loadProfile();
+    loadProfile();
   }, [slug]);
 
-  // Load existing bookings when profile or date changes
   useEffect(() => {
-    async function loadBookings() {
+    async function loadBusy() {
       if (!profile) return;
 
-      const rangeStart = startOfDay(selectedDate).toISOString();
-      const rangeEnd = endOfDay(addDays(selectedDate, 14)).toISOString();
+      const startDate = startOfDay(new Date());
+      const endDate = endOfDay(addDays(startDate, 14));
 
-      const { data } = await supabase
-        .from('bookings')
-        .select('start_time, end_time')
-        .eq('host_email', profile.email)
-        .eq('status', 'confirmed')
-        .gte('start_time', rangeStart)
-        .lte('start_time', rangeEnd);
+      const [{ data: googleBusy }, { data: bookingsBusy }] = await Promise.all([
+        supabase
+          .from('host_busy_slots')
+          .select('start_time, end_time')
+          .eq('host_email', profile.email)
+          .gte('end_time', startDate.toISOString())
+          .lte('start_time', endDate.toISOString()),
+        supabase
+          .from('bookings')
+          .select('start_time, end_time')
+          .eq('host_email', profile.email)
+          .eq('status', 'confirmed')
+          .gte('end_time', startDate.toISOString())
+          .lte('start_time', endDate.toISOString()),
+      ]);
 
-      setExistingBookings((data as ExistingBooking[]) || []);
+      const allBusy = [...(googleBusy ?? []), ...(bookingsBusy ?? [])];
+      const duration = profile.booking_duration || 30;
+      const startHour = profile.booking_start_hour || 9;
+      const endHour = profile.booking_end_hour || 18;
+
+      setGrid(computeAvailabilityGrid(startDate, duration, startHour, endHour, allBusy));
     }
-    loadBookings();
-  }, [profile, selectedDate]);
-
-  // Compute available slots when date or bookings change
-  useEffect(() => {
-    if (!profile) return;
-
-    const duration = profile.booking_duration || 30;
-    const startHour = profile.booking_start_hour || 9;
-    const endHour = profile.booking_end_hour || 18;
-
-    const available = computeAvailableSlots(
-      selectedDate,
-      duration,
-      startHour,
-      endHour,
-      existingBookings,
-    );
-    setSlots(available);
-  }, [profile, selectedDate, existingBookings]);
+    loadBusy();
+  }, [profile]);
 
   const submitBooking = useCallback(async (
-    slot: BookingSlot,
+    slot: SlotCell,
     guestName: string,
     guestEmail: string,
     guestMemo: string,
@@ -107,13 +89,14 @@ export function useBookingPage(slug: string) {
         end_time: slot.endTime.toISOString(),
         status: 'confirmed',
       });
-
       if (err) throw err;
 
-      // Remove the booked slot from available
-      setSlots(prev => prev.filter(
-        s => s.startTime.getTime() !== slot.startTime.getTime(),
-      ));
+      setGrid(prev => prev.map(day => ({
+        ...day,
+        cells: day.cells.map(c =>
+          c.startTime.getTime() === slot.startTime.getTime() ? { ...c, available: false } : c
+        ),
+      })));
       return true;
     } catch (e) {
       console.error('Booking failed:', e);
@@ -123,14 +106,5 @@ export function useBookingPage(slug: string) {
     }
   }, [profile]);
 
-  return {
-    profile,
-    isLoading,
-    error,
-    selectedDate,
-    setSelectedDate,
-    slots,
-    isSubmitting,
-    submitBooking,
-  };
+  return { profile, isLoading, error, grid, isSubmitting, submitBooking };
 }

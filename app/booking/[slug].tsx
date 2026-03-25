@@ -2,25 +2,17 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useBookingPage } from '@/hooks/useBookingPage';
-import DateSelector from '@/components/booking/DateSelector';
-import TimeSlotGrid from '@/components/booking/TimeSlotGrid';
+import AvailabilityGrid from '@/components/booking/AvailabilityGrid';
 import BookingForm from '@/components/booking/BookingForm';
-import { CalendarCheck } from 'lucide-react-native';
-
-interface BookingSlot {
-  startTime: Date;
-  endTime: Date;
-}
+import { CalendarCheck, Clock } from 'lucide-react-native';
+import { SlotCell } from '@/lib/booking-slots';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 
 export default function BookingScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const {
-    profile, isLoading, error,
-    selectedDate, setSelectedDate,
-    slots, isSubmitting, submitBooking,
-  } = useBookingPage(slug || '');
-
-  const [selectedSlot, setSelectedSlot] = useState<BookingSlot | null>(null);
+  const { profile, isLoading, error, grid, isSubmitting, submitBooking } = useBookingPage(slug || '');
+  const [selectedSlot, setSelectedSlot] = useState<SlotCell | null>(null);
   const [isComplete, setIsComplete] = useState(false);
 
   if (isLoading) {
@@ -45,7 +37,7 @@ export default function BookingScreen() {
         <CalendarCheck size={64} color="#34A853" />
         <Text style={styles.completeTitle}>予約が完了しました</Text>
         <Text style={styles.completeSubtext}>
-          確認メールをお送りします。{'\n'}ありがとうございました。
+          ありがとうございました。{'\n'}確認メールをお送りします。
         </Text>
       </View>
     );
@@ -67,98 +59,86 @@ export default function BookingScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       {/* Host info */}
       <View style={styles.hostInfo}>
         <Text style={styles.hostName}>{profile.name || profile.email}</Text>
-        <Text style={styles.bookingTitle}>
-          {profile.booking_title || '予約'}
-        </Text>
-        <Text style={styles.duration}>
-          {profile.booking_duration || 30}分
-        </Text>
+        <View style={styles.durationBadge}>
+          <Clock size={13} color="#4285F4" />
+          <Text style={styles.durationText}>{profile.booking_duration || 30}分</Text>
+        </View>
       </View>
 
       {selectedSlot ? (
-        /* Phase 2: Booking Form */
-        <BookingForm
-          slot={selectedSlot}
-          isSubmitting={isSubmitting}
-          onSubmit={handleSubmit}
-          onBack={() => setSelectedSlot(null)}
-        />
-      ) : (
-        /* Phase 1: Date & Slot Selection */
-        <>
-          <Text style={styles.sectionLabel}>日付を選択</Text>
-          <DateSelector
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+        /* Phase 2: Booking form */
+        <ScrollView style={styles.formContainer}>
+          <View style={styles.selectedSlotBanner}>
+            <Text style={styles.selectedSlotText}>
+              {format(selectedSlot.startTime, 'M月d日(EEE) HH:mm', { locale: ja })}
+              {' 〜 '}
+              {format(selectedSlot.endTime, 'HH:mm')}
+            </Text>
+          </View>
+          <BookingForm
+            slot={selectedSlot}
+            isSubmitting={isSubmitting}
+            onSubmit={handleSubmit}
+            onBack={() => setSelectedSlot(null)}
           />
-
-          <Text style={styles.sectionLabel}>時間を選択</Text>
-          <TimeSlotGrid
-            slots={slots}
+        </ScrollView>
+      ) : (
+        /* Phase 1: Availability grid */
+        <>
+          <Text style={styles.sectionLabel}>日時を選択してください</Text>
+          <AvailabilityGrid
+            grid={grid}
             selectedSlot={selectedSlot}
             onSelectSlot={setSelectedSlot}
           />
         </>
       )}
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  content: { paddingBottom: 40 },
   center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 40,
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 40,
   },
   errorText: { fontSize: 16, color: '#999', textAlign: 'center' },
   hostInfo: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#e8ecf4',
   },
-  hostName: { fontSize: 20, fontWeight: '700', color: '#333' },
-  bookingTitle: { fontSize: 15, color: '#666', marginTop: 4 },
-  duration: {
-    fontSize: 13,
-    color: '#4285F4',
-    fontWeight: '500',
-    marginTop: 4,
-    backgroundColor: '#f0f7ff',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+  hostName: { fontSize: 17, fontWeight: '700', color: '#333' },
+  durationBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#f0f7ff', paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 12,
-    overflow: 'hidden',
   },
+  durationText: { fontSize: 13, color: '#4285F4', fontWeight: '600' },
   sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
+    fontSize: 13, color: '#888', fontWeight: '500',
+    paddingHorizontal: 16, paddingVertical: 8,
+    backgroundColor: '#f8f9fa',
   },
-  completeTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#333',
-    marginTop: 20,
+  formContainer: { flex: 1 },
+  selectedSlotBanner: {
+    backgroundColor: '#f0f7ff',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#d0e3ff',
   },
+  selectedSlotText: { fontSize: 15, fontWeight: '600', color: '#4285F4', textAlign: 'center' },
+  completeTitle: { fontSize: 22, fontWeight: '700', color: '#333', marginTop: 20 },
   completeSubtext: {
-    fontSize: 15,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginTop: 12,
+    fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22, marginTop: 12,
   },
 });

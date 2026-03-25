@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { CalendarEvent, EventFormData, UserProfile, ViewMode } from '@/types';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { supabase } from '@/lib/supabase';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addWeeks, subWeeks, addMonths, subMonths, addDays, subDays,
@@ -68,6 +69,20 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
       userProfileHook.loadProfile(google.userEmail);
     }
   }, [google.isAuthenticated, google.userEmail]);
+
+  // Sync Google Calendar events to Supabase for public booking page
+  useEffect(() => {
+    if (!google.events.length || !google.userEmail) return;
+    const rows = google.events.map(e => ({
+      event_id: e.id,
+      host_email: google.userEmail!,
+      start_time: e.startTime.toISOString(),
+      end_time: e.endTime.toISOString(),
+      is_all_day: e.isAllDay,
+      updated_at: new Date().toISOString(),
+    }));
+    supabase.from('host_busy_slots').upsert(rows, { onConflict: 'event_id,host_email' });
+  }, [google.events, google.userEmail]);
 
   useEffect(() => {
     refreshEvents();
