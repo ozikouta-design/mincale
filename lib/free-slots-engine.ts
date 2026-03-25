@@ -47,7 +47,11 @@ export function detectFreeSlots(
     // Collect busy periods for this day
     const dayBusy: BusyPeriod[] = events
       .filter(e => {
-        if (e.isAllDay) return true;
+        if (e.isAllDay) {
+          // Only block THIS day's all-day events
+          const eventDay = startOfDay(e.startTime);
+          return eventDay.getTime() === currentDay.getTime();
+        }
         return isBefore(e.startTime, workEnd) && isAfter(e.endTime, workStart);
       })
       .map(e => {
