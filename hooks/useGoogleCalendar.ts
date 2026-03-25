@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import { Platform } from 'react-native';
-import { CalendarEvent, EventFormData, GoogleCalendarInfo } from '@/types';
+import { CalendarEvent, EventFormData, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { startOfDay, endOfDay, subDays, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
@@ -37,6 +37,7 @@ const TOKEN_KEY = 'google_access_token';
 const REFRESH_TOKEN_KEY = 'google_refresh_token';
 const USER_EMAIL_KEY = 'google_user_email';
 const CALENDAR_LIST_KEY = 'google_calendar_list';
+const CALENDAR_GROUPS_KEY = 'google_calendar_groups';
 
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const SCOPES = [
@@ -73,6 +74,7 @@ export function useGoogleCalendar() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [calendarList, setCalendarList] = useState<GoogleCalendarInfo[]>([]);
+  const [calendarGroups, setCalendarGroups] = useState<CalendarGroup[]>([]);
   const calendarListRef = useRef<GoogleCalendarInfo[]>([]);
   useEffect(() => { calendarListRef.current = calendarList; }, [calendarList]);
 
@@ -186,25 +188,40 @@ export function useGoogleCalendar() {
         primary: !!item.primary,
         selected: true,
       }));
-      // Load persisted selections
+
+      // 保存済みの表示設定・グループ割り当てを復元
       const stored = await storage.getItem(CALENDAR_LIST_KEY);
+      let merged = list;
       if (stored) {
         try {
-          const visibility: Record<string, boolean> = JSON.parse(stored);
-          const merged = list.map(c => ({
+          const saved: Record<string, { selected: boolean; groupId?: string }> = JSON.parse(stored);
+          merged = list.map(c => ({
             ...c,
-            selected: visibility[c.id] !== undefined ? visibility[c.id] : true,
+            selected: saved[c.id]?.selected !== undefined ? saved[c.id].selected : true,
+            groupId: saved[c.id]?.groupId,
           }));
-          setCalendarList(merged);
-          return merged;
         } catch {}
       }
-      setCalendarList(list);
-      return list;
+      setCalendarList(merged);
+
+      // グループ一覧も復元
+      const storedGroups = await storage.getItem(CALENDAR_GROUPS_KEY);
+      if (storedGroups) {
+        try { setCalendarGroups(JSON.parse(storedGroups)); } catch {}
+      }
+
+      return merged;
     } catch (e) {
       console.error('fetchCalendarList error:', e);
       return [];
     }
+  }, []);
+
+  // カレンダーリストの状態（表示設定・グループ）をストレージに保存するヘルパー
+  const saveCalendarListState = useCallback((list: GoogleCalendarInfo[]) => {
+    const saved: Record<string, { selected: boolean; groupId?: string }> = {};
+    list.forEach(c => { saved[c.id] = { selected: c.selected, groupId: c.groupId }; });
+    storage.setItem(CALENDAR_LIST_KEY, JSON.stringify(saved));
   }, []);
 
   const toggleCalendarVisibility = useCallback(async (calendarId: string) => {
@@ -212,12 +229,50 @@ export function useGoogleCalendar() {
       const updated = prev.map(c =>
         c.id === calendarId ? { ...c, selected: !c.selected } : c,
       );
-      const visibility: Record<string, boolean> = {};
-      updated.forEach(c => { visibility[c.id] = c.selected; });
-      storage.setItem(CALENDAR_LIST_KEY, JSON.stringify(visibility));
+      saveCalendarListState(updated);
       return updated;
     });
+  }, [saveCalendarListState]);
+
+  // ── グループ管理 ──────────────────────────────────────
+
+  // 新しいカレンダーグループを作成する
+  const createCalendarGroup = useCallback(async (name: string): Promise<CalendarGroup> => {
+    const newGroup: CalendarGroup = { id: `group_${Date.now()}`, name };
+    setCalendarGroups(prev => {
+      const updated = [...prev, newGroup];
+      storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    return newGroup;
   }, []);
+
+  // カレンダーグループを削除し、所属カレンダーのグループIDをクリアする
+  const deleteCalendarGroup = useCallback(async (groupId: string) => {
+    setCalendarGroups(prev => {
+      const updated = prev.filter(g => g.id !== groupId);
+      storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    setCalendarList(prev => {
+      const updated = prev.map(c =>
+        c.groupId === groupId ? { ...c, groupId: undefined } : c,
+      );
+      saveCalendarListState(updated);
+      return updated;
+    });
+  }, [saveCalendarListState]);
+
+  // カレンダーをグループに割り当てる（groupId=nullで未分類に戻す）
+  const moveCalendarToGroup = useCallback(async (calendarId: string, groupId: string | null) => {
+    setCalendarList(prev => {
+      const updated = prev.map(c =>
+        c.id === calendarId ? { ...c, groupId: groupId ?? undefined } : c,
+      );
+      saveCalendarListState(updated);
+      return updated;
+    });
+  }, [saveCalendarListState]);
 
   const signIn = useCallback(async () => {
     if (Platform.OS === 'web') {
@@ -450,12 +505,16 @@ export function useGoogleCalendar() {
     events,
     userEmail,
     calendarList,
+    calendarGroups,
     signIn,
     signOut,
     checkAuthStatus,
     fetchEvents,
     fetchCalendarList,
     toggleCalendarVisibility,
+    createCalendarGroup,
+    deleteCalendarGroup,
+    moveCalendarToGroup,
     createEvent,
     updateEvent,
     deleteEvent,

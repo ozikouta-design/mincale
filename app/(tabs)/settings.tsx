@@ -1,22 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Alert, Share, ActivityIndicator, Switch,
+  TextInput, Alert, Share, ActivityIndicator, Switch, Platform,
 } from 'react-native';
 import {
   LogOut, Link2, Clock, Calendar as CalendarIcon,
-  Share2, ChevronRight, User, Save, Mail,
+  Share2, ChevronRight, User, Save, Mail, Plus, FolderPlus, Trash2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useCalendarContext } from '@/context/CalendarContext';
 
+// カレンダーのグループ選択ダイアログを表示するヘルパー
+function showGroupPicker(
+  calendarId: string,
+  groups: { id: string; name: string }[],
+  moveCalendarToGroup: (calId: string, groupId: string | null) => Promise<void>,
+) {
+  const buttons = [
+    ...groups.map(g => ({
+      text: g.name,
+      onPress: () => moveCalendarToGroup(calendarId, g.id),
+    })),
+    { text: '未分類に戻す', onPress: () => moveCalendarToGroup(calendarId, null) },
+    { text: 'キャンセル', style: 'cancel' as const },
+  ];
+  Alert.alert('グループを選択', undefined, buttons);
+}
+
 export default function SettingsScreen() {
-  const { isAuthenticated, signIn, signOut, userEmail, profile, saveProfile, calendarList, toggleCalendarVisibility } = useCalendarContext();
+  const {
+    isAuthenticated, signIn, signOut, userEmail, profile, saveProfile,
+    calendarList, calendarGroups, toggleCalendarVisibility,
+    createCalendarGroup, deleteCalendarGroup, moveCalendarToGroup,
+  } = useCalendarContext();
   const [slug, setSlug] = useState('');
   const [bookingDuration, setBookingDuration] = useState('30');
   const [startHour, setStartHour] = useState('9');
   const [endHour, setEndHour] = useState('18');
   const [isSaving, setIsSaving] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showGroupInput, setShowGroupInput] = useState(false);
 
   // Load profile values
   useEffect(() => {
@@ -171,28 +194,151 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Calendar Visibility */}
+      {/* カレンダーグループ管理 */}
       {calendarList.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>表示カレンダー</Text>
-          <View style={styles.card}>
-            {calendarList.map((cal, i) => (
-              <React.Fragment key={cal.id}>
-                {i > 0 && <View style={styles.divider} />}
-                <View style={styles.row}>
-                  <View style={styles.rowLeft}>
-                    <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
-                    <Text style={styles.rowText} numberOfLines={1}>{cal.summary}</Text>
-                  </View>
-                  <Switch
-                    value={cal.selected}
-                    onValueChange={() => toggleCalendarVisibility(cal.id)}
-                    trackColor={{ true: '#4285F4' }}
-                  />
-                </View>
-              </React.Fragment>
-            ))}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>カレンダー管理</Text>
+            <TouchableOpacity
+              onPress={() => setShowGroupInput(v => !v)}
+              style={styles.addGroupButton}
+            >
+              <FolderPlus size={16} color="#4285F4" />
+              <Text style={styles.addGroupText}>グループを作成</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* グループ作成フォーム */}
+          {showGroupInput && (
+            <View style={[styles.card, styles.groupInputCard]}>
+              <TextInput
+                style={styles.groupNameInput}
+                value={newGroupName}
+                onChangeText={setNewGroupName}
+                placeholder="グループ名を入力"
+                placeholderTextColor="#999"
+                autoFocus
+              />
+              <TouchableOpacity
+                style={[styles.groupCreateBtn, !newGroupName.trim() && styles.disabled]}
+                disabled={!newGroupName.trim()}
+                onPress={async () => {
+                  await createCalendarGroup(newGroupName.trim());
+                  setNewGroupName('');
+                  setShowGroupInput(false);
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
+              >
+                <Text style={styles.groupCreateBtnText}>作成</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* 既存グループとそのカレンダー */}
+          {calendarGroups.map(group => {
+            const groupCals = calendarList.filter(c => c.groupId === group.id);
+            const allSelected = groupCals.every(c => c.selected);
+            return (
+              <View key={group.id} style={styles.groupSection}>
+                <View style={styles.groupHeader}>
+                  <TouchableOpacity
+                    style={styles.groupToggleArea}
+                    onPress={() => {
+                      // グループ全体の表示切り替え
+                      groupCals.forEach(c => {
+                        if (c.selected === allSelected) toggleCalendarVisibility(c.id);
+                      });
+                    }}
+                  >
+                    <Switch
+                      value={allSelected}
+                      onValueChange={() => {
+                        groupCals.forEach(c => {
+                          if (c.selected === allSelected) toggleCalendarVisibility(c.id);
+                        });
+                      }}
+                      trackColor={{ true: '#4285F4' }}
+                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                    />
+                    <Text style={styles.groupName}>{group.name}</Text>
+                    <Text style={styles.groupCount}>{groupCals.length}件</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(`グループ「${group.name}」を削除`, 'カレンダーはグループなしに戻ります', [
+                        { text: 'キャンセル', style: 'cancel' },
+                        { text: '削除', style: 'destructive', onPress: () => deleteCalendarGroup(group.id) },
+                      ]);
+                    }}
+                  >
+                    <Trash2 size={16} color="#ccc" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.card}>
+                  {groupCals.length === 0 ? (
+                    <Text style={styles.emptyGroupText}>カレンダーがありません</Text>
+                  ) : (
+                    groupCals.map((cal, i) => (
+                      <React.Fragment key={cal.id}>
+                        {i > 0 && <View style={styles.divider} />}
+                        <View style={styles.row}>
+                          <View style={styles.rowLeft}>
+                            <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
+                            <Text style={styles.rowText} numberOfLines={1}>{cal.summary}</Text>
+                          </View>
+                          <View style={styles.calActions}>
+                            <TouchableOpacity onPress={() => showGroupPicker(cal.id, calendarGroups, moveCalendarToGroup)}>
+                              <Text style={styles.moveText}>移動</Text>
+                            </TouchableOpacity>
+                            <Switch
+                              value={cal.selected}
+                              onValueChange={() => toggleCalendarVisibility(cal.id)}
+                              trackColor={{ true: '#4285F4' }}
+                            />
+                          </View>
+                        </View>
+                      </React.Fragment>
+                    ))
+                  )}
+                </View>
+              </View>
+            );
+          })}
+
+          {/* 未分類のカレンダー */}
+          {calendarList.filter(c => !c.groupId).length > 0 && (
+            <View style={styles.groupSection}>
+              <View style={styles.groupHeader}>
+                <Text style={[styles.groupName, { color: '#888' }]}>未分類</Text>
+                <Text style={styles.groupCount}>{calendarList.filter(c => !c.groupId).length}件</Text>
+              </View>
+              <View style={styles.card}>
+                {calendarList.filter(c => !c.groupId).map((cal, i) => (
+                  <React.Fragment key={cal.id}>
+                    {i > 0 && <View style={styles.divider} />}
+                    <View style={styles.row}>
+                      <View style={styles.rowLeft}>
+                        <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
+                        <Text style={styles.rowText} numberOfLines={1}>{cal.summary}</Text>
+                      </View>
+                      <View style={styles.calActions}>
+                        {calendarGroups.length > 0 && (
+                          <TouchableOpacity onPress={() => showGroupPicker(cal.id, calendarGroups, moveCalendarToGroup)}>
+                            <Text style={styles.moveText}>グループに追加</Text>
+                          </TouchableOpacity>
+                        )}
+                        <Switch
+                          value={cal.selected}
+                          onValueChange={() => toggleCalendarVisibility(cal.id)}
+                          trackColor={{ true: '#4285F4' }}
+                        />
+                      </View>
+                    </View>
+                  </React.Fragment>
+                ))}
+              </View>
+            </View>
+          )}
         </>
       )}
 
@@ -245,6 +391,51 @@ const styles = StyleSheet.create({
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 },
   rowText: { fontSize: 15, fontWeight: '500', flex: 1 },
   calDot: { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
+  // カレンダーグループ関連スタイル
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  addGroupButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  addGroupText: { fontSize: 13, color: '#4285F4', fontWeight: '600' },
+  groupInputCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
+  groupNameInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  groupCreateBtn: {
+    backgroundColor: '#4285F4',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  groupCreateBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  groupSection: { marginBottom: 4 },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  groupToggleArea: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  groupName: { fontSize: 13, fontWeight: '600', color: '#555', textTransform: 'uppercase', letterSpacing: 0.3 },
+  groupCount: { fontSize: 12, color: '#aaa' },
+  emptyGroupText: { fontSize: 13, color: '#bbb', textAlign: 'center', paddingVertical: 12 },
+  calActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  moveText: { fontSize: 12, color: '#4285F4', fontWeight: '500' },
+  sectionTitleInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

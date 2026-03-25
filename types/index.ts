@@ -75,6 +75,12 @@ export interface GoogleCalendarInfo {
   backgroundColor: string;
   primary?: boolean;
   selected: boolean;
+  groupId?: string; // 所属するカレンダーグループのID
+}
+
+export interface CalendarGroup {
+  id: string;    // UUID
+  name: string;  // グループ名
 }
 
 export interface DayData {

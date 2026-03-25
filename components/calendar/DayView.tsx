@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Dimensions, Pressable } from 'react-native';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Dimensions, Pressable, Animated } from 'react-native';
 import { isSameDay, differenceInMinutes, startOfDay, setHours, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useRouter } from 'expo-router';
@@ -15,6 +15,10 @@ export default function DayView() {
   const { currentDate, events } = useCalendarContext();
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
+
+  // 長押し時のゴーストブロック状態
+  const [ghostTop, setGhostTop] = useState<number | null>(null);
+  const ghostAnim = useRef(new Animated.Value(0)).current;
 
   const handleEventPress = useCallback((event: CalendarEvent) => {
     router.push({ pathname: '/event/[id]', params: { id: event.id } });
@@ -58,16 +62,42 @@ export default function DayView() {
             onLongPress={(e) => {
               const y = e.nativeEvent.locationY;
               const totalMinutes = Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30;
-              const startDate = new Date(currentDate);
-              startDate.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
-              const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-              router.push({
-                pathname: '/event/create',
-                params: { startTime: startDate.toISOString(), endTime: endDate.toISOString() },
+              const snapTop = (totalMinutes / 60) * HOUR_HEIGHT;
+
+              // ゴーストブロックをフワッと表示してから予定作成画面へ遷移
+              setGhostTop(snapTop);
+              ghostAnim.setValue(0);
+              Animated.timing(ghostAnim, {
+                toValue: 1,
+                duration: 220,
+                useNativeDriver: true,
+              }).start(() => {
+                const startDate = new Date(currentDate);
+                startDate.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
+                const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                router.push({
+                  pathname: '/event/create',
+                  params: { startTime: startDate.toISOString(), endTime: endDate.toISOString() },
+                });
+                setTimeout(() => setGhostTop(null), 500);
               });
             }}
             delayLongPress={500}
           >
+            {/* 長押しゴーストブロック（プレビュー枠） */}
+            {ghostTop !== null && (
+              <Animated.View
+                style={[
+                  styles.ghostBlock,
+                  {
+                    top: ghostTop,
+                    opacity: ghostAnim,
+                    transform: [{ scaleY: ghostAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+                  },
+                ]}
+              />
+            )}
+
             {HOURS.map(hour => (
               <View
                 key={hour}
@@ -142,6 +172,18 @@ const styles = StyleSheet.create({
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: '#e8e8e8',
     height: 24 * HOUR_HEIGHT,
+  },
+  // 長押しゴーストブロック（プレビュー枠）
+  ghostBlock: {
+    position: 'absolute',
+    left: 4,
+    right: 8,
+    height: HOUR_HEIGHT,
+    backgroundColor: 'rgba(66, 133, 244, 0.25)',
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#4285F4',
+    zIndex: 5,
   },
   hourLine: {
     position: 'absolute',

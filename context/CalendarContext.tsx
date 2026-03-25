@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { CalendarEvent, EventFormData, UserProfile, ViewMode, GoogleCalendarInfo } from '@/types';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import { CalendarEvent, EventFormData, UserProfile, ViewMode, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { supabase } from '@/lib/supabase';
@@ -29,8 +29,12 @@ interface CalendarContextType {
   updateEvent: (eventId: string, data: EventFormData) => Promise<boolean>;
   deleteEvent: (eventId: string) => Promise<boolean>;
   calendarList: GoogleCalendarInfo[];
+  calendarGroups: CalendarGroup[];
   fetchCalendarList: () => Promise<GoogleCalendarInfo[]>;
   toggleCalendarVisibility: (calendarId: string) => Promise<void>;
+  createCalendarGroup: (name: string) => Promise<CalendarGroup>;
+  deleteCalendarGroup: (id: string) => Promise<void>;
+  moveCalendarToGroup: (calendarId: string, groupId: string | null) => Promise<void>;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -71,6 +75,13 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
       google.fetchCalendarList();
     }
   }, [google.isAuthenticated]);
+
+  // 選択されているカレンダーのイベントのみ表示する（クライアント側フィルタ）
+  const visibleEvents = useMemo(() => {
+    if (!google.calendarList.length) return google.events;
+    const selectedIds = new Set(google.calendarList.filter(c => c.selected).map(c => c.id));
+    return google.events.filter(e => !e.calendarId || selectedIds.has(e.calendarId));
+  }, [google.events, google.calendarList]);
 
   // Load profile when authenticated and email is available
   useEffect(() => {
@@ -129,7 +140,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         setViewMode,
         currentDate,
         setCurrentDate,
-        events: google.events,
+        events: visibleEvents,
         isLoading: google.isLoading,
         isAuthenticated: google.isAuthenticated,
         userEmail: google.userEmail,
@@ -145,8 +156,12 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         updateEvent: google.updateEvent,
         deleteEvent: google.deleteEvent,
         calendarList: google.calendarList,
+        calendarGroups: google.calendarGroups,
         fetchCalendarList: google.fetchCalendarList,
         toggleCalendarVisibility: google.toggleCalendarVisibility,
+        createCalendarGroup: google.createCalendarGroup,
+        deleteCalendarGroup: google.deleteCalendarGroup,
+        moveCalendarToGroup: google.moveCalendarToGroup,
       }}
     >
       {children}

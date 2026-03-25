@@ -15,8 +15,17 @@ const VIEW_MODES: { key: ViewMode; label: string }[] = [
   { key: 'month', label: '月' },
 ];
 
-export default function CalendarHeader() {
+interface CalendarHeaderProps {
+  // ナビゲーションボタンのオーバーライド（アニメーション用）
+  onNext?: () => void;
+  onPrev?: () => void;
+}
+
+export default function CalendarHeader({ onNext, onPrev }: CalendarHeaderProps) {
   const { viewMode, setViewMode, currentDate, goNext, goPrev, goToday, isAuthenticated } = useCalendarContext();
+  // 上位コンポーネントからオーバーライドがあればそちらを使う
+  const handleNext = onNext ?? goNext;
+  const handlePrev = onPrev ?? goPrev;
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const router = useRouter();
@@ -36,11 +45,11 @@ export default function CalendarHeader() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.topRow}>
         <View style={styles.navRow}>
-          <TouchableOpacity onPress={goPrev} style={styles.navButton}>
+          <TouchableOpacity onPress={handlePrev} style={styles.navButton}>
             <ChevronLeft size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-          <TouchableOpacity onPress={goNext} style={styles.navButton}>
+          <TouchableOpacity onPress={handleNext} style={styles.navButton}>
             <ChevronRight size={24} color={colors.text} />
           </TouchableOpacity>
         </View>
