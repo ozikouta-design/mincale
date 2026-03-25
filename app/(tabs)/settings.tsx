@@ -28,7 +28,7 @@ export default function SettingsScreen() {
     }
   }, [profile]);
 
-  const bookingUrl = slug ? `https://mincale.vercel.app/booking/${slug}` : '';
+  const bookingUrl = slug ? `https://mincale.vercel.app/booking/${encodeURIComponent(slug)}` : '';
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -105,7 +105,7 @@ export default function SettingsScreen() {
             <TextInput
               style={styles.input}
               value={slug}
-              onChangeText={setSlug}
+              onChangeText={(v) => setSlug(v.replace(/\s/g, '-'))}
               placeholder="your-name"
               autoCapitalize="none"
               autoCorrect={false}

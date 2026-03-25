@@ -23,9 +23,6 @@ export default function AvailabilityGrid({ grid, selectedSlot, onSelectSlot }: P
   const headerRef = useRef<ScrollView>(null);
   const gridRef = useRef<ScrollView>(null);
 
-  if (!grid.length) return null;
-  const timeCells = grid[0].cells;
-
   const monthGroups = useMemo(() => {
     const groups: { label: string; count: number }[] = [];
     let cur = '';
@@ -36,6 +33,9 @@ export default function AvailabilityGrid({ grid, selectedSlot, onSelectSlot }: P
     });
     return groups;
   }, [grid]);
+
+  if (!grid.length) return null;
+  const timeCells = grid[0].cells;
 
   const onGridScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     headerRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });

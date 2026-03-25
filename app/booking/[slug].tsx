@@ -10,8 +10,9 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
 export default function BookingScreen() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { profile, isLoading, error, grid, isSubmitting, submitBooking } = useBookingPage(slug || '');
+  const params = useLocalSearchParams<{ slug: string }>();
+  const slug = Array.isArray(params.slug) ? params.slug[0] : (params.slug || '');
+  const { profile, isLoading, error, grid, isSubmitting, submitBooking } = useBookingPage(slug);
   const [selectedSlot, setSelectedSlot] = useState<SlotCell | null>(null);
   const [isComplete, setIsComplete] = useState(false);
 
