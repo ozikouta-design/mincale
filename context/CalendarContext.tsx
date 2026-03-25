@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { CalendarEvent, EventFormData, UserProfile, ViewMode } from '@/types';
+import { CalendarEvent, EventFormData, UserProfile, ViewMode, GoogleCalendarInfo } from '@/types';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { supabase } from '@/lib/supabase';
@@ -28,6 +28,9 @@ interface CalendarContextType {
   createEvent: (data: EventFormData) => Promise<CalendarEvent | null>;
   updateEvent: (eventId: string, data: EventFormData) => Promise<boolean>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  calendarList: GoogleCalendarInfo[];
+  fetchCalendarList: () => Promise<GoogleCalendarInfo[]>;
+  toggleCalendarVisibility: (calendarId: string) => Promise<void>;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -62,6 +65,12 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     google.checkAuthStatus();
   }, []);
+
+  useEffect(() => {
+    if (google.isAuthenticated) {
+      google.fetchCalendarList();
+    }
+  }, [google.isAuthenticated]);
 
   // Load profile when authenticated and email is available
   useEffect(() => {
@@ -135,6 +144,9 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         createEvent: google.createEvent,
         updateEvent: google.updateEvent,
         deleteEvent: google.deleteEvent,
+        calendarList: google.calendarList,
+        fetchCalendarList: google.fetchCalendarList,
+        toggleCalendarVisibility: google.toggleCalendarVisibility,
       }}
     >
       {children}

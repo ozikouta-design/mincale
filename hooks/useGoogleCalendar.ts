@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import { Platform } from 'react-native';
-import { CalendarEvent, EventFormData } from '@/types';
+import { CalendarEvent, EventFormData, GoogleCalendarInfo } from '@/types';
 import { startOfDay, endOfDay, subDays, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
@@ -36,6 +36,7 @@ const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '';
 const TOKEN_KEY = 'google_access_token';
 const REFRESH_TOKEN_KEY = 'google_refresh_token';
 const USER_EMAIL_KEY = 'google_user_email';
+const CALENDAR_LIST_KEY = 'google_calendar_list';
 
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const SCOPES = [
@@ -71,6 +72,9 @@ export function useGoogleCalendar() {
   const [isLoading, setIsLoading] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [calendarList, setCalendarList] = useState<GoogleCalendarInfo[]>([]);
+  const calendarListRef = useRef<GoogleCalendarInfo[]>([]);
+  useEffect(() => { calendarListRef.current = calendarList; }, [calendarList]);
 
   const redirectUri = AuthSession.makeRedirectUri({ scheme: 'calendar' });
 
@@ -164,6 +168,55 @@ export function useGoogleCalendar() {
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
     return storage.getItem(TOKEN_KEY);
+  }, []);
+
+  const fetchCalendarList = useCallback(async (): Promise<GoogleCalendarInfo[]> => {
+    const token = await storage.getItem(TOKEN_KEY);
+    if (!token) return [];
+    try {
+      const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const list: GoogleCalendarInfo[] = (data.items || []).map((item: any) => ({
+        id: item.id,
+        summary: item.summary || item.id,
+        backgroundColor: item.backgroundColor || '#4285F4',
+        primary: !!item.primary,
+        selected: true,
+      }));
+      // Load persisted selections
+      const stored = await storage.getItem(CALENDAR_LIST_KEY);
+      if (stored) {
+        try {
+          const visibility: Record<string, boolean> = JSON.parse(stored);
+          const merged = list.map(c => ({
+            ...c,
+            selected: visibility[c.id] !== undefined ? visibility[c.id] : true,
+          }));
+          setCalendarList(merged);
+          return merged;
+        } catch {}
+      }
+      setCalendarList(list);
+      return list;
+    } catch (e) {
+      console.error('fetchCalendarList error:', e);
+      return [];
+    }
+  }, []);
+
+  const toggleCalendarVisibility = useCallback(async (calendarId: string) => {
+    setCalendarList(prev => {
+      const updated = prev.map(c =>
+        c.id === calendarId ? { ...c, selected: !c.selected } : c,
+      );
+      const visibility: Record<string, boolean> = {};
+      updated.forEach(c => { visibility[c.id] = c.selected; });
+      storage.setItem(CALENDAR_LIST_KEY, JSON.stringify(visibility));
+      return updated;
+    });
   }, []);
 
   const signIn = useCallback(async () => {
@@ -264,19 +317,30 @@ export function useGoogleCalendar() {
       const timeMin = startOfDay(startDate).toISOString();
       const timeMax = endOfDay(endDate).toISOString();
 
-      const res = await fetch(
-        `${CALENDAR_API}?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
-        { headers: { Authorization: `Bearer ${token}` } },
+      // Use calendarListRef to avoid stale closure & re-render cascades
+      const currentList = calendarListRef.current;
+      const calIds = currentList.filter(c => c.selected).map(c => c.id);
+      if (calIds.length === 0) calIds.push('primary');
+
+      const results = await Promise.all(
+        calIds.map(async calId => {
+          const res = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          if (!res.ok) {
+            if (res.status === 401) { setIsAuthenticated(false); await storage.removeItem(TOKEN_KEY); }
+            return [];
+          }
+          const data = await res.json();
+          return (data.items || []).map((item: any) => ({ ...item, _calendarId: calId })) as any[];
+        }),
       );
 
-      if (!res.ok) {
-        if (res.status === 401) { setIsAuthenticated(false); await storage.removeItem(TOKEN_KEY); }
-        setIsLoading(false);
-        return [];
-      }
+      const calColorMap: Record<string, string> = {};
+      currentList.forEach(c => { calColorMap[c.id] = c.backgroundColor; });
 
-      const data = await res.json();
-      const mapped: CalendarEvent[] = (data.items || [])
+      const mapped: CalendarEvent[] = results.flat()
         .filter((item: any) => item.status !== 'cancelled')
         .map((item: any) => {
           const isAllDay = !!item.start?.date;
@@ -286,9 +350,10 @@ export function useGoogleCalendar() {
             startTime: isAllDay ? startOfDay(parseISO(item.start.date)) : parseISO(item.start.dateTime),
             endTime: isAllDay ? endOfDay(subDays(parseISO(item.end.date), 1)) : parseISO(item.end.dateTime),
             isAllDay,
-            colorHex: item.colorId ? getColorById(item.colorId) : '#4285F4',
+            colorHex: item.colorId ? getColorById(item.colorId) : (calColorMap[item._calendarId] || '#4285F4'),
             location: item.location,
             description: item.description,
+            calendarId: item._calendarId,
           };
         });
 
@@ -384,10 +449,13 @@ export function useGoogleCalendar() {
     isLoading,
     events,
     userEmail,
+    calendarList,
     signIn,
     signOut,
     checkAuthStatus,
     fetchEvents,
+    fetchCalendarList,
+    toggleCalendarVisibility,
     createEvent,
     updateEvent,
     deleteEvent,

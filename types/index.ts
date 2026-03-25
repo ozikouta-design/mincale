@@ -69,6 +69,14 @@ export interface EventFormData {
 
 export type ViewMode = "week" | "day" | "month";
 
+export interface GoogleCalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor: string;
+  primary?: boolean;
+  selected: boolean;
+}
+
 export interface DayData {
   dayIndex: number; // YYYYMMDD
   label: string;

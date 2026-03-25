@@ -88,12 +88,13 @@ export default function AvailabilityGrid({ grid, selectedSlot, onSelectSlot }: P
                       <Text style={[
                         styles.dateNum,
                         today && styles.todayNum,
-                        (sat || sun) && !today && styles.weekendNum,
+                        sat && !today && styles.satNum,
+                        sun && !today && styles.sunNum,
                       ]}>
                         {format(day.date, 'd')}
                       </Text>
                     </View>
-                    <Text style={[styles.weekdayLabel, (sat || sun) && styles.weekendLabel]}>
+                    <Text style={[styles.weekdayLabel, sat && styles.satLabel, sun && styles.sunLabel]}>
                       ({format(day.date, 'EEE', { locale: ja })})
                     </Text>
                   </View>
@@ -207,16 +208,18 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   todayBadge: { backgroundColor: '#4285F4' },
-  satBadge: { backgroundColor: '#ffe5e5' },
+  satBadge: { backgroundColor: '#e8f0fe' },
   dateNum: { fontSize: 15, fontWeight: '700', color: '#333' },
   todayNum: { color: '#fff' },
-  weekendNum: { color: '#EA4335' },
+  satNum: { color: '#4285F4' },
+  sunNum: { color: '#EA4335' },
   weekdayLabel: { fontSize: 11, color: '#999' },
-  weekendLabel: { color: '#EA4335' },
+  satLabel: { color: '#4285F4' },
+  sunLabel: { color: '#EA4335' },
 
   /* データ行 */
   dataRow: { flexDirection: 'row' },
-  satCol: { backgroundColor: '#fffafa' },
+  satCol: { backgroundColor: '#f0f7ff' },
   sunCol: { backgroundColor: '#fff9f9' },
   cell: {
     alignItems: 'center',

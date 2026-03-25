@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, PanResponder } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCalendarContext } from '@/context/CalendarContext';
 import CalendarHeader from '@/components/calendar/CalendarHeader';
@@ -9,7 +9,23 @@ import MonthView from '@/components/calendar/MonthView';
 import { LogIn } from 'lucide-react-native';
 
 export default function CalendarScreen() {
-  const { viewMode, isAuthenticated, isLoading, signIn } = useCalendarContext();
+  const { viewMode, isAuthenticated, isLoading, signIn, goNext, goPrev } = useCalendarContext();
+
+  const goNextRef = useRef(goNext);
+  const goPrevRef = useRef(goPrev);
+  goNextRef.current = goNext;
+  goPrevRef.current = goPrev;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 20 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx < -50) goNextRef.current();
+        else if (gs.dx > 50) goPrevRef.current();
+      },
+    })
+  ).current;
 
   if (!isAuthenticated) {
     return (
@@ -36,7 +52,7 @@ export default function CalendarScreen() {
           <ActivityIndicator size="small" color="#4285F4" />
         </View>
       )}
-      <View style={styles.content}>
+      <View style={styles.content} {...panResponder.panHandlers}>
         {viewMode === 'week' && <WeekView />}
         {viewMode === 'day' && <DayView />}
         {viewMode === 'month' && <MonthView />}

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { isSameDay, differenceInMinutes, startOfDay, setHours, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useRouter } from 'expo-router';
@@ -53,7 +53,21 @@ export default function DayView() {
           </View>
 
           {/* Event column */}
-          <View style={[styles.dayColumn, { width: CONTENT_WIDTH }]}>
+          <Pressable
+            style={[styles.dayColumn, { width: CONTENT_WIDTH }]}
+            onLongPress={(e) => {
+              const y = e.nativeEvent.locationY;
+              const totalMinutes = Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30;
+              const startDate = new Date(currentDate);
+              startDate.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
+              const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+              router.push({
+                pathname: '/event/create',
+                params: { startTime: startDate.toISOString(), endTime: endDate.toISOString() },
+              });
+            }}
+            delayLongPress={500}
+          >
             {HOURS.map(hour => (
               <View
                 key={hour}
@@ -100,7 +114,7 @@ export default function DayView() {
                 <View style={styles.nowLineBar} />
               </View>
             )}
-          </View>
+          </Pressable>
         </View>
       </ScrollView>
     </View>

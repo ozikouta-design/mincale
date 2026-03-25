@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Dimensions, Pressable } from 'react-native';
 import {
   startOfWeek, addDays, isSameDay, format, differenceInMinutes,
   startOfDay, setHours,
@@ -45,13 +45,25 @@ export default function WeekView() {
         <View style={{ width: TIME_AXIS_WIDTH }} />
         {days.map((day, i) => {
           const isToday = isSameDay(day, new Date());
+          const sat = day.getDay() === 6;
+          const sun = day.getDay() === 0;
           return (
             <View key={i} style={[styles.dayHeader, { width: DAY_WIDTH }]}>
-              <Text style={[styles.dayLabel, isToday && styles.todayLabel]}>
+              <Text style={[
+                styles.dayLabel,
+                isToday && styles.todayLabel,
+                !isToday && sat && styles.satLabel,
+                !isToday && sun && styles.sunLabel,
+              ]}>
                 {DAY_LABELS_JA[day.getDay()]}
               </Text>
               <View style={[styles.dateCircle, isToday && styles.todayCircle]}>
-                <Text style={[styles.dateText, isToday && styles.todayText]}>
+                <Text style={[
+                  styles.dateText,
+                  isToday && styles.todayText,
+                  !isToday && sat && styles.satText,
+                  !isToday && sun && styles.sunText,
+                ]}>
                   {format(day, 'd')}
                 </Text>
               </View>
@@ -92,7 +104,22 @@ export default function WeekView() {
 
           {/* Day columns */}
           {days.map((day, dayIdx) => (
-            <View key={dayIdx} style={[styles.dayColumn, { width: DAY_WIDTH }]}>
+            <Pressable
+              key={dayIdx}
+              style={[styles.dayColumn, { width: DAY_WIDTH }]}
+              onLongPress={(e) => {
+                const y = e.nativeEvent.locationY;
+                const totalMinutes = Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30;
+                const startDate = new Date(day);
+                startDate.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
+                const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                router.push({
+                  pathname: '/event/create',
+                  params: { startTime: startDate.toISOString(), endTime: endDate.toISOString() },
+                });
+              }}
+              delayLongPress={500}
+            >
               {/* Hour lines */}
               {HOURS.map(hour => (
                 <View
@@ -144,7 +171,7 @@ export default function WeekView() {
                   <View style={styles.nowLineBar} />
                 </View>
               )}
-            </View>
+            </Pressable>
           ))}
         </View>
       </ScrollView>
@@ -166,6 +193,8 @@ const styles = StyleSheet.create({
   },
   dayLabel: { fontSize: 11, color: '#666', marginBottom: 2 },
   todayLabel: { color: '#4285F4' },
+  satLabel: { color: '#4285F4' },
+  sunLabel: { color: '#EA4335' },
   dateCircle: {
     width: 28,
     height: 28,
@@ -176,6 +205,8 @@ const styles = StyleSheet.create({
   todayCircle: { backgroundColor: '#4285F4' },
   dateText: { fontSize: 14, fontWeight: '500', color: '#333' },
   todayText: { color: '#fff', fontWeight: '700' },
+  satText: { color: '#4285F4' },
+  sunText: { color: '#EA4335' },
   allDayRow: {
     flexDirection: 'row',
     borderBottomWidth: StyleSheet.hairlineWidth,

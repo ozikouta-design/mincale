@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Alert, Share, ActivityIndicator,
+  TextInput, Alert, Share, ActivityIndicator, Switch,
 } from 'react-native';
 import {
   LogOut, Link2, Clock, Calendar as CalendarIcon,
@@ -11,7 +11,7 @@ import * as Haptics from 'expo-haptics';
 import { useCalendarContext } from '@/context/CalendarContext';
 
 export default function SettingsScreen() {
-  const { isAuthenticated, signIn, signOut, userEmail, profile, saveProfile } = useCalendarContext();
+  const { isAuthenticated, signIn, signOut, userEmail, profile, saveProfile, calendarList, toggleCalendarVisibility } = useCalendarContext();
   const [slug, setSlug] = useState('');
   const [bookingDuration, setBookingDuration] = useState('30');
   const [startHour, setStartHour] = useState('9');
@@ -171,6 +171,31 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Calendar Visibility */}
+      {calendarList.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>表示カレンダー</Text>
+          <View style={styles.card}>
+            {calendarList.map((cal, i) => (
+              <React.Fragment key={cal.id}>
+                {i > 0 && <View style={styles.divider} />}
+                <View style={styles.row}>
+                  <View style={styles.rowLeft}>
+                    <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
+                    <Text style={styles.rowText} numberOfLines={1}>{cal.summary}</Text>
+                  </View>
+                  <Switch
+                    value={cal.selected}
+                    onValueChange={() => toggleCalendarVisibility(cal.id)}
+                    trackColor={{ true: '#4285F4' }}
+                  />
+                </View>
+              </React.Fragment>
+            ))}
+          </View>
+        </>
+      )}
+
       {/* Share Link */}
       {slug && (
         <>
@@ -217,8 +242,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  rowText: { fontSize: 15, fontWeight: '500' },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 },
+  rowText: { fontSize: 15, fontWeight: '500', flex: 1 },
+  calDot: { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
