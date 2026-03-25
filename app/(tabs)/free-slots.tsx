@@ -26,10 +26,10 @@ export default function FreeSlotsScreen() {
   }, [events, startDate, endDate, detect, profile]);
 
   useEffect(() => {
-    if (events.length > 0) {
+    if (isAuthenticated) {
       handleDetect();
     }
-  }, [events, startDate, endDate]);
+  }, [events, startDate, endDate, isAuthenticated]);
 
   const handleCopyAll = async () => {
     const text = formatFreeSlots(freeSlots);

@@ -32,7 +32,7 @@ export function useBookingPage(slug: string) {
           .from('user_profiles')
           .select('*')
           .eq('slug', slug)
-          .single();
+          .maybeSingle();
 
         if (err || !data) {
           setError('予約ページが見つかりません');
