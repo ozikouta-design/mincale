@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData, UserProfile, ViewMode, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -7,6 +8,30 @@ import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addWeeks, subWeeks, addMonths, subMonths, addDays, subDays,
 } from 'date-fns';
+
+const SYNC_RANGE_KEY = 'calendar_sync_range_days';
+
+async function loadSyncRange(): Promise<number> {
+  try {
+    if (Platform.OS === 'web') {
+      return parseInt(localStorage.getItem(SYNC_RANGE_KEY) || '0', 10) || 0;
+    }
+    const SecureStore = await import('expo-secure-store');
+    const val = await SecureStore.getItemAsync(SYNC_RANGE_KEY);
+    return parseInt(val || '0', 10) || 0;
+  } catch { return 0; }
+}
+
+async function saveSyncRange(days: number): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(SYNC_RANGE_KEY, String(days));
+      return;
+    }
+    const SecureStore = await import('expo-secure-store');
+    await SecureStore.setItemAsync(SYNC_RANGE_KEY, String(days));
+  } catch {}
+}
 
 interface CalendarContextType {
   viewMode: ViewMode;
@@ -26,8 +51,8 @@ interface CalendarContextType {
   refreshEvents: () => Promise<void>;
   saveProfile: (updates: Partial<UserProfile>) => Promise<void>;
   createEvent: (data: EventFormData) => Promise<CalendarEvent | null>;
-  updateEvent: (eventId: string, data: EventFormData) => Promise<boolean>;
-  deleteEvent: (eventId: string) => Promise<boolean>;
+  updateEvent: (eventId: string, data: EventFormData, calendarId?: string) => Promise<boolean>;
+  deleteEvent: (eventId: string, calendarId?: string) => Promise<boolean>;
   calendarList: GoogleCalendarInfo[];
   calendarGroups: CalendarGroup[];
   fetchCalendarList: () => Promise<GoogleCalendarInfo[]>;
@@ -39,6 +64,8 @@ interface CalendarContextType {
   setGroupVisibility: (calendarIds: string[], selected: boolean) => Promise<void>;
   activeGroupId: string | null;
   setActiveGroupId: (id: string | null) => void;
+  syncRangeDays: number;
+  setSyncRangeDays: (days: number) => Promise<void>;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -47,8 +74,19 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [syncRangeDays, setSyncRangeDaysState] = useState<number>(0);
   const google = useGoogleCalendar();
   const userProfileHook = useUserProfile();
+
+  // 同期範囲をストレージから読み込む
+  useEffect(() => {
+    loadSyncRange().then(setSyncRangeDaysState);
+  }, []);
+
+  const setSyncRangeDays = useCallback(async (days: number) => {
+    setSyncRangeDaysState(days);
+    await saveSyncRange(days);
+  }, []);
 
   const getDateRange = useCallback(
     (date: Date, mode: ViewMode): [Date, Date] => {
@@ -66,10 +104,20 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
 
   const refreshEvents = useCallback(async () => {
     if (!google.isAuthenticated) return;
-    const [start, end] = getDateRange(currentDate, viewMode);
-    // Fetch extra padding for smooth navigation
-    await google.fetchEvents(subDays(start, 7), addDays(end, 7));
-  }, [google.isAuthenticated, currentDate, viewMode, getDateRange, google.fetchEvents]);
+    let start: Date, end: Date;
+    if (syncRangeDays > 0) {
+      // 同期範囲設定: 今日を基点に前後N日取得
+      const today = new Date();
+      start = subDays(today, syncRangeDays);
+      end = addDays(today, syncRangeDays);
+    } else {
+      // 都度: 現在のビュー範囲 ± 7日
+      const [rangeStart, rangeEnd] = getDateRange(currentDate, viewMode);
+      start = subDays(rangeStart, 7);
+      end = addDays(rangeEnd, 7);
+    }
+    await google.fetchEvents(start, end);
+  }, [google.isAuthenticated, currentDate, viewMode, getDateRange, google.fetchEvents, syncRangeDays]);
 
   useEffect(() => {
     google.checkAuthStatus();
@@ -178,6 +226,8 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         setGroupVisibility: google.setGroupVisibility,
         activeGroupId,
         setActiveGroupId,
+        syncRangeDays,
+        setSyncRangeDays,
       }}
     >
       {children}

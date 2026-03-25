@@ -483,12 +483,13 @@ export function useGoogleCalendar() {
       const token = await getAccessToken();
       if (!token) return null;
 
+      const calId = data.calendarId || 'primary';
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const body = data.isAllDay
         ? { summary: data.title, start: { date: data.startTime.toISOString().split('T')[0] }, end: { date: data.endTime.toISOString().split('T')[0] }, location: data.location || undefined, description: data.description || undefined }
         : { summary: data.title, start: { dateTime: data.startTime.toISOString(), timeZone }, end: { dateTime: data.endTime.toISOString(), timeZone }, location: data.location || undefined, description: data.description || undefined };
 
-      const res = await fetch(CALENDAR_API, {
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -507,17 +508,18 @@ export function useGoogleCalendar() {
     }
   }, [getAccessToken]);
 
-  const updateEvent = useCallback(async (eventId: string, data: EventFormData): Promise<boolean> => {
+  const updateEvent = useCallback(async (eventId: string, data: EventFormData, calendarId?: string): Promise<boolean> => {
     try {
       const token = await getAccessToken();
       if (!token) return false;
 
+      const calId = calendarId || data.calendarId || 'primary';
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const body = data.isAllDay
         ? { summary: data.title, start: { date: data.startTime.toISOString().split('T')[0] }, end: { date: data.endTime.toISOString().split('T')[0] }, location: data.location || undefined, description: data.description || undefined }
         : { summary: data.title, start: { dateTime: data.startTime.toISOString(), timeZone }, end: { dateTime: data.endTime.toISOString(), timeZone }, location: data.location || undefined, description: data.description || undefined };
 
-      const res = await fetch(`${CALENDAR_API}/${eventId}`, {
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${eventId}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -534,12 +536,13 @@ export function useGoogleCalendar() {
     }
   }, [getAccessToken]);
 
-  const deleteEvent = useCallback(async (eventId: string): Promise<boolean> => {
+  const deleteEvent = useCallback(async (eventId: string, calendarId?: string): Promise<boolean> => {
     try {
       const token = await getAccessToken();
       if (!token) return false;
 
-      const res = await fetch(`${CALENDAR_API}/${eventId}`, {
+      const calId = calendarId || 'primary';
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${eventId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

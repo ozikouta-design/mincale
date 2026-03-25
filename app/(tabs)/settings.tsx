@@ -15,6 +15,7 @@ export default function SettingsScreen() {
     isAuthenticated, signIn, signOut, userEmail, profile, saveProfile,
     calendarList, calendarGroups, toggleCalendarVisibility,
     createCalendarGroup, updateCalendarGroup, deleteCalendarGroup, setGroupVisibility,
+    syncRangeDays, setSyncRangeDays,
   } = useCalendarContext();
   const [slug, setSlug] = useState('');
   const [bookingDuration, setBookingDuration] = useState('30');
@@ -182,6 +183,35 @@ export default function SettingsScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* 同期範囲設定 */}
+      {isAuthenticated && (
+        <>
+          <Text style={styles.sectionTitle}>同期範囲</Text>
+          <View style={styles.card}>
+            {[
+              { label: '都度（現在のビューのみ）', value: 0 },
+              { label: '前後 30日', value: 30 },
+              { label: '前後 60日', value: 60 },
+              { label: '前後 90日', value: 90 },
+              { label: '前後 120日', value: 120 },
+            ].map(({ label, value }, i, arr) => (
+              <React.Fragment key={value}>
+                {i > 0 && <View style={styles.divider} />}
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => setSyncRangeDays(value)}
+                >
+                  <Text style={styles.rowText}>{label}</Text>
+                  {syncRangeDays === value && (
+                    <View style={styles.selectedDot} />
+                  )}
+                </TouchableOpacity>
+              </React.Fragment>
+            ))}
+          </View>
+        </>
+      )}
 
       {/* カレンダーグループ管理 */}
       {calendarList.length > 0 && (
@@ -425,6 +455,7 @@ const styles = StyleSheet.create({
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 },
   rowText: { fontSize: 15, fontWeight: '500', flex: 1 },
   calDot: { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
+  selectedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4285F4' },
   // カレンダーグループ関連スタイル
   sectionHeader: {
     flexDirection: 'row',

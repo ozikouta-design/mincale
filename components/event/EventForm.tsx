@@ -4,10 +4,11 @@ import {
   ScrollView, Switch, Platform, Alert,
 } from 'react-native';
 import DatePickerField from './DatePickerField';
-import { MapPin, FileText, Trash2 } from 'lucide-react-native';
+import { MapPin, FileText, Trash2, ChevronDown, Check, CalendarDays } from 'lucide-react-native';
 import { EventFormData } from '@/types';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { useCalendarContext } from '@/context/CalendarContext';
 
 interface EventFormProps {
   initialData?: Partial<EventFormData>;
@@ -17,18 +18,25 @@ interface EventFormProps {
 }
 
 export default function EventForm({ initialData, onSubmit, onDelete, isSubmitting }: EventFormProps) {
+  const { calendarList } = useCalendarContext();
   const [title, setTitle] = useState(initialData?.title || '');
   const [isAllDay, setIsAllDay] = useState(initialData?.isAllDay || false);
   const [startTime, setStartTime] = useState(initialData?.startTime || getDefaultStart());
   const [endTime, setEndTime] = useState(initialData?.endTime || getDefaultEnd());
   const [location, setLocation] = useState(initialData?.location || '');
   const [description, setDescription] = useState(initialData?.description || '');
+  const [calendarId, setCalendarId] = useState<string>(
+    initialData?.calendarId || calendarList.find(c => c.primary)?.id || calendarList[0]?.id || 'primary',
+  );
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 
   // Picker visibility state (Android shows as dialog)
   const [showStartDate, setShowStartDate] = useState(false);
   const [showStartTime, setShowStartTime] = useState(false);
   const [showEndDate, setShowEndDate] = useState(false);
   const [showEndTime, setShowEndTime] = useState(false);
+
+  const selectedCalendar = calendarList.find(c => c.id === calendarId);
 
   const handleSubmit = () => {
     if (!title.trim()) {
@@ -39,7 +47,7 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
       Alert.alert('エラー', '終了時刻は開始時刻より後にしてください');
       return;
     }
-    onSubmit({ title: title.trim(), startTime, endTime, isAllDay, location, description });
+    onSubmit({ title: title.trim(), startTime, endTime, isAllDay, location, description, calendarId });
   };
 
   const onChangeStartDate = (date: Date) => {
@@ -149,6 +157,39 @@ export default function EventForm({ initialData, onSubmit, onDelete, isSubmittin
       )}
 
       <View style={styles.divider} />
+
+      {/* Calendar Selector */}
+      {calendarList.length > 0 && (
+        <>
+          <TouchableOpacity style={styles.row} onPress={() => setShowCalendarPicker(v => !v)}>
+            <View style={styles.calRowLeft}>
+              <CalendarDays size={20} color="#666" />
+              <Text style={styles.label}>カレンダー</Text>
+            </View>
+            <View style={styles.calRowRight}>
+              <View style={[styles.calDot, { backgroundColor: selectedCalendar?.backgroundColor || '#4285F4' }]} />
+              <Text style={styles.calName} numberOfLines={1}>{selectedCalendar?.summary || 'マイカレンダー'}</Text>
+              <ChevronDown size={16} color="#999" style={{ transform: [{ rotate: showCalendarPicker ? '180deg' : '0deg' }] }} />
+            </View>
+          </TouchableOpacity>
+          {showCalendarPicker && (
+            <View style={styles.calPickerList}>
+              {calendarList.map(cal => (
+                <TouchableOpacity
+                  key={cal.id}
+                  style={styles.calPickerRow}
+                  onPress={() => { setCalendarId(cal.id); setShowCalendarPicker(false); }}
+                >
+                  <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
+                  <Text style={styles.calPickerName} numberOfLines={1}>{cal.summary}</Text>
+                  {calendarId === cal.id && <Check size={16} color="#4285F4" strokeWidth={2.5} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          <View style={styles.divider} />
+        </>
+      )}
 
       {/* Location */}
       <View style={styles.inputRow}>
@@ -274,4 +315,27 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   deleteText: { color: '#EA4335', fontSize: 16, fontWeight: '500' },
+  calRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  calRowRight: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end', maxWidth: '60%' },
+  calDot: { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
+  calName: { fontSize: 15, color: '#4285F4', flexShrink: 1 },
+  calPickerList: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginHorizontal: 0,
+    marginBottom: 4,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#e0e0e0',
+  },
+  calPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e8e8e8',
+  },
+  calPickerName: { flex: 1, fontSize: 15, color: '#333' },
 });

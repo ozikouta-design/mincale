@@ -20,7 +20,7 @@ export default function EventBlock({ event, style, onPress }: Props) {
       ]}
       activeOpacity={0.7}
     >
-      <Text style={styles.title} numberOfLines={1}>
+      <Text style={styles.title}>
         {event.title}
       </Text>
       {!event.isAllDay && (

@@ -29,6 +29,7 @@ export default function EditEventScreen() {
     isAllDay: event.isAllDay,
     location: event.location || '',
     description: event.description || '',
+    calendarId: event.calendarId,
   };
 
   const handleSubmit = async (data: EventFormData) => {
@@ -59,7 +60,7 @@ export default function EditEventScreen() {
           text: '削除',
           style: 'destructive',
           onPress: async () => {
-            const success = await deleteEvent(id!);
+            const success = await deleteEvent(id!, event.calendarId);
             if (success) {
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               await refreshEvents();

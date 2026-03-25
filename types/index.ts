@@ -65,6 +65,7 @@ export interface EventFormData {
   isAllDay: boolean;
   location: string;
   description: string;
+  calendarId?: string; // 追加先カレンダーのID（省略時は primary）
 }
 
 export type ViewMode = "week" | "day" | "month";
