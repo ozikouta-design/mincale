@@ -199,7 +199,7 @@ export default function SettingsScreen() {
 
           {/* 既存グループとそのカレンダー */}
           {calendarGroups.map(group => {
-            const groupCals = calendarList.filter(c => c.groupId === group.id);
+            const groupCals = calendarList.filter(c => (c.groupIds ?? []).includes(group.id));
             // グループ内カレンダーが全てONかどうか
             const allSelected = groupCals.length > 0 && groupCals.every(c => c.selected);
             return (
@@ -267,14 +267,14 @@ export default function SettingsScreen() {
           })}
 
           {/* 未分類のカレンダー */}
-          {calendarList.filter(c => !c.groupId).length > 0 && (
+          {calendarList.filter(c => !(c.groupIds ?? []).length).length > 0 && (
             <View style={styles.groupSection}>
               <View style={styles.groupHeader}>
                 <Text style={[styles.groupName, { color: '#888' }]}>未分類</Text>
-                <Text style={styles.groupCount}>{calendarList.filter(c => !c.groupId).length}件</Text>
+                <Text style={styles.groupCount}>{calendarList.filter(c => !(c.groupIds ?? []).length).length}件</Text>
               </View>
               <View style={styles.card}>
-                {calendarList.filter(c => !c.groupId).map((cal, i) => (
+                {calendarList.filter(c => !(c.groupIds ?? []).length).map((cal, i) => (
                   <React.Fragment key={cal.id}>
                     {i > 0 && <View style={styles.divider} />}
                     <View style={styles.row}>

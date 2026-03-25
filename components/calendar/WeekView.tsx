@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Dimensions, Pressable, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Dimensions, Animated } from 'react-native';
 import {
   startOfWeek, addDays, isSameDay, format, differenceInMinutes,
   startOfDay, setHours,
@@ -20,8 +20,11 @@ export default function WeekView() {
   const router = useRouter();
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
 
-  // 長押し時のゴーストブロック状態
-  const [ghost, setGhost] = useState<{ dayIdx: number; top: number } | null>(null);
+  // 長押しドラッグ用ゴーストブロック
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressingRef = useRef(false);
+  const ghostRef = useRef<{ dayIdx: number; startTop: number; endTop: number } | null>(null);
+  const [ghost, setGhost] = useState<{ dayIdx: number; startTop: number; endTop: number } | null>(null);
   const ghostAnim = useRef(new Animated.Value(0)).current;
 
   const handleEventPress = useCallback((event: CalendarEvent) => {
@@ -108,42 +111,69 @@ export default function WeekView() {
 
           {/* Day columns */}
           {days.map((day, dayIdx) => (
-            <Pressable
+            <View
               key={dayIdx}
               style={[styles.dayColumn, { width: DAY_WIDTH }]}
-              onLongPress={(e) => {
+              onStartShouldSetResponder={() => true}
+              onResponderTerminationRequest={() => !isLongPressingRef.current}
+              onResponderGrant={(e) => {
                 const y = e.nativeEvent.locationY;
-                const totalMinutes = Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30;
-                const snapTop = (totalMinutes / 60) * HOUR_HEIGHT;
-
-                // ゴーストブロックをフワッと表示してから予定作成画面へ遷移
-                setGhost({ dayIdx, top: snapTop });
-                ghostAnim.setValue(0);
-                Animated.timing(ghostAnim, {
-                  toValue: 1,
-                  duration: 220,
-                  useNativeDriver: true,
-                }).start(() => {
+                isLongPressingRef.current = false;
+                if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = setTimeout(() => {
+                  isLongPressingRef.current = true;
+                  const totalMin = Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30;
+                  const snapTop = (totalMin / 60) * HOUR_HEIGHT;
+                  const newGhost = { dayIdx, startTop: snapTop, endTop: snapTop + HOUR_HEIGHT };
+                  ghostRef.current = newGhost;
+                  setGhost(newGhost);
+                  ghostAnim.setValue(0);
+                  Animated.timing(ghostAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+                }, 500);
+              }}
+              onResponderMove={(e) => {
+                if (!isLongPressingRef.current || ghostRef.current?.dayIdx !== dayIdx) return;
+                const y = e.nativeEvent.locationY;
+                const { startTop } = ghostRef.current;
+                const rawEnd = (Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30 / 60) * HOUR_HEIGHT;
+                const endTop = Math.max(rawEnd, startTop + HOUR_HEIGHT / 2);
+                const updated = { dayIdx, startTop, endTop };
+                ghostRef.current = updated;
+                setGhost(updated);
+              }}
+              onResponderRelease={() => {
+                if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                if (isLongPressingRef.current && ghostRef.current?.dayIdx === dayIdx) {
+                  const { startTop, endTop } = ghostRef.current;
+                  const startMin = Math.round((startTop / HOUR_HEIGHT) * 60 / 30) * 30;
+                  const endMin = Math.round((endTop / HOUR_HEIGHT) * 60 / 30) * 30;
                   const startDate = new Date(day);
-                  startDate.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
-                  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                  startDate.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
+                  const endDate = new Date(day);
+                  endDate.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
                   router.push({
                     pathname: '/event/create',
                     params: { startTime: startDate.toISOString(), endTime: endDate.toISOString() },
                   });
-                  // 遷移後にゴーストをクリア
-                  setTimeout(() => setGhost(null), 500);
-                });
+                  setTimeout(() => { ghostRef.current = null; setGhost(null); }, 300);
+                }
+                isLongPressingRef.current = false;
               }}
-              delayLongPress={500}
+              onResponderTerminate={() => {
+                if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                isLongPressingRef.current = false;
+                ghostRef.current = null;
+                setGhost(null);
+              }}
             >
-              {/* 長押しゴーストブロック（プレビュー枠） */}
+              {/* 長押しゴーストブロック（ドラッグで終了時間を設定） */}
               {ghost?.dayIdx === dayIdx && (
                 <Animated.View
                   style={[
                     styles.ghostBlock,
                     {
-                      top: ghost.top,
+                      top: ghost.startTop,
+                      height: Math.max(ghost.endTop - ghost.startTop, HOUR_HEIGHT / 2),
                       opacity: ghostAnim,
                       transform: [{ scaleY: ghostAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
                     },
@@ -202,7 +232,7 @@ export default function WeekView() {
                   <View style={styles.nowLineBar} />
                 </View>
               )}
-            </Pressable>
+            </View>
           ))}
         </View>
       </ScrollView>
@@ -262,12 +292,11 @@ const styles = StyleSheet.create({
     borderLeftColor: '#e8e8e8',
     height: 24 * HOUR_HEIGHT,
   },
-  // 長押し時のゴーストブロック（プレビュー枠）
+  // 長押しゴーストブロック（ドラッグで高さが変わるため height はスタイルから除外）
   ghostBlock: {
     position: 'absolute',
     left: 2,
     right: 2,
-    height: HOUR_HEIGHT,
     backgroundColor: 'rgba(66, 133, 244, 0.25)',
     borderRadius: 4,
     borderWidth: 1.5,

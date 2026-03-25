@@ -194,11 +194,11 @@ export function useGoogleCalendar() {
       let merged = list;
       if (stored) {
         try {
-          const saved: Record<string, { selected: boolean; groupId?: string }> = JSON.parse(stored);
+          const saved: Record<string, { selected: boolean; groupIds?: string[] }> = JSON.parse(stored);
           merged = list.map(c => ({
             ...c,
             selected: saved[c.id]?.selected !== undefined ? saved[c.id].selected : true,
-            groupId: saved[c.id]?.groupId,
+            groupIds: saved[c.id]?.groupIds ?? [],
           }));
         } catch {}
       }
@@ -219,8 +219,8 @@ export function useGoogleCalendar() {
 
   // カレンダーリストの状態（表示設定・グループ）をストレージに保存するヘルパー
   const saveCalendarListState = useCallback((list: GoogleCalendarInfo[]) => {
-    const saved: Record<string, { selected: boolean; groupId?: string }> = {};
-    list.forEach(c => { saved[c.id] = { selected: c.selected, groupId: c.groupId }; });
+    const saved: Record<string, { selected: boolean; groupIds?: string[] }> = {};
+    list.forEach(c => { saved[c.id] = { selected: c.selected, groupIds: c.groupIds }; });
     storage.setItem(CALENDAR_LIST_KEY, JSON.stringify(saved));
   }, []);
 
@@ -247,7 +247,9 @@ export function useGoogleCalendar() {
     if (calendarIds.length > 0) {
       setCalendarList(prev => {
         const updated = prev.map(c =>
-          calendarIds.includes(c.id) ? { ...c, groupId: newGroup.id } : c,
+          calendarIds.includes(c.id)
+            ? { ...c, groupIds: [...new Set([...(c.groupIds ?? []), newGroup.id])] }
+            : c,
         );
         saveCalendarListState(updated);
         return updated;
@@ -264,20 +266,28 @@ export function useGoogleCalendar() {
       return updated;
     });
     setCalendarList(prev => {
-      const updated = prev.map(c =>
-        c.groupId === groupId ? { ...c, groupId: undefined } : c,
-      );
+      const updated = prev.map(c => ({
+        ...c,
+        groupIds: (c.groupIds ?? []).filter(id => id !== groupId),
+      }));
       saveCalendarListState(updated);
       return updated;
     });
   }, [saveCalendarListState]);
 
-  // カレンダーをグループに割り当てる（groupId=nullで未分類に戻す）
+  // カレンダーをグループに追加/削除する（groupId=nullで全グループから外す）
   const moveCalendarToGroup = useCallback(async (calendarId: string, groupId: string | null) => {
     setCalendarList(prev => {
-      const updated = prev.map(c =>
-        c.id === calendarId ? { ...c, groupId: groupId ?? undefined } : c,
-      );
+      const updated = prev.map(c => {
+        if (c.id !== calendarId) return c;
+        if (groupId === null) return { ...c, groupIds: [] };
+        const current = c.groupIds ?? [];
+        const already = current.includes(groupId);
+        return {
+          ...c,
+          groupIds: already ? current.filter(id => id !== groupId) : [...current, groupId],
+        };
+      });
       saveCalendarListState(updated);
       return updated;
     });
@@ -305,10 +315,13 @@ export function useGoogleCalendar() {
     // カレンダーのグループ割り当てを更新（追加・削除）
     setCalendarList(prev => {
       const updated = prev.map(c => {
+        const current = c.groupIds ?? [];
         if (calendarIds.includes(c.id)) {
-          return { ...c, groupId }; // このグループに割り当て
-        } else if (c.groupId === groupId) {
-          return { ...c, groupId: undefined }; // このグループから外す
+          // このグループに追加（重複なし）
+          return { ...c, groupIds: [...new Set([...current, groupId])] };
+        } else if (current.includes(groupId)) {
+          // このグループから外す
+          return { ...c, groupIds: current.filter(id => id !== groupId) };
         }
         return c;
       });

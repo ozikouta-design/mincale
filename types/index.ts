@@ -75,7 +75,7 @@ export interface GoogleCalendarInfo {
   backgroundColor: string;
   primary?: boolean;
   selected: boolean;
-  groupId?: string; // 所属するカレンダーグループのID
+  groupIds?: string[]; // 所属するカレンダーグループのID（複数可）
 }
 
 export interface CalendarGroup {

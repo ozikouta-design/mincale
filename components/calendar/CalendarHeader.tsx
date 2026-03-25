@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
@@ -22,7 +22,7 @@ interface CalendarHeaderProps {
 }
 
 export default function CalendarHeader({ onNext, onPrev }: CalendarHeaderProps) {
-  const { viewMode, setViewMode, currentDate, goNext, goPrev, goToday, isAuthenticated } = useCalendarContext();
+  const { viewMode, setViewMode, currentDate, goNext, goPrev, goToday, isAuthenticated, calendarGroups, activeGroupId, setActiveGroupId } = useCalendarContext();
   // 上位コンポーネントからオーバーライドがあればそちらを使う
   const handleNext = onNext ?? goNext;
   const handlePrev = onPrev ?? goPrev;
@@ -89,6 +89,35 @@ export default function CalendarHeader({ onNext, onPrev }: CalendarHeaderProps) 
           </TouchableOpacity>
         ))}
       </View>
+
+      {calendarGroups.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.groupChipRow}
+          contentContainerStyle={styles.groupChipContent}
+        >
+          <TouchableOpacity
+            onPress={() => setActiveGroupId(null)}
+            style={[styles.groupChip, activeGroupId === null && styles.groupChipActive]}
+          >
+            <Text style={[styles.groupChipText, activeGroupId === null && styles.groupChipTextActive]}>
+              全て
+            </Text>
+          </TouchableOpacity>
+          {calendarGroups.map(group => (
+            <TouchableOpacity
+              key={group.id}
+              onPress={() => setActiveGroupId(activeGroupId === group.id ? null : group.id)}
+              style={[styles.groupChip, activeGroupId === group.id && styles.groupChipActive]}
+            >
+              <Text style={[styles.groupChipText, activeGroupId === group.id && styles.groupChipTextActive]}>
+                {group.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -173,6 +202,35 @@ const styles = StyleSheet.create({
   },
   modeTextActive: {
     color: '#333',
+    fontWeight: '600',
+  },
+  groupChipRow: {
+    marginTop: 8,
+  },
+  groupChipContent: {
+    paddingHorizontal: 2,
+    gap: 6,
+    flexDirection: 'row',
+  },
+  groupChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  groupChipActive: {
+    backgroundColor: '#e8f0fe',
+    borderColor: '#4285F4',
+  },
+  groupChipText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  groupChipTextActive: {
+    color: '#4285F4',
     fontWeight: '600',
   },
 });

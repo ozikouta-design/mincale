@@ -37,6 +37,8 @@ interface CalendarContextType {
   deleteCalendarGroup: (id: string) => Promise<void>;
   moveCalendarToGroup: (calendarId: string, groupId: string | null) => Promise<void>;
   setGroupVisibility: (calendarIds: string[], selected: boolean) => Promise<void>;
+  activeGroupId: string | null;
+  setActiveGroupId: (id: string | null) => void;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -44,6 +46,7 @@ const CalendarContext = createContext<CalendarContextType | undefined>(undefined
 export function CalendarProvider({ children }: { children: React.ReactNode }) {
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const google = useGoogleCalendar();
   const userProfileHook = useUserProfile();
 
@@ -79,11 +82,18 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   }, [google.isAuthenticated]);
 
   // 選択されているカレンダーのイベントのみ表示する（クライアント側フィルタ）
+  // アクティブグループがある場合はそのグループメンバーのみ
   const visibleEvents = useMemo(() => {
     if (!google.calendarList.length) return google.events;
-    const selectedIds = new Set(google.calendarList.filter(c => c.selected).map(c => c.id));
-    return google.events.filter(e => !e.calendarId || selectedIds.has(e.calendarId));
-  }, [google.events, google.calendarList]);
+    let filtered = google.calendarList;
+    if (activeGroupId) {
+      filtered = filtered.filter(c => (c.groupIds ?? []).includes(activeGroupId));
+    } else {
+      filtered = filtered.filter(c => c.selected);
+    }
+    const visibleIds = new Set(filtered.map(c => c.id));
+    return google.events.filter(e => !e.calendarId || visibleIds.has(e.calendarId));
+  }, [google.events, google.calendarList, activeGroupId]);
 
   // Load profile when authenticated and email is available
   useEffect(() => {
@@ -166,6 +176,8 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         deleteCalendarGroup: google.deleteCalendarGroup,
         moveCalendarToGroup: google.moveCalendarToGroup,
         setGroupVisibility: google.setGroupVisibility,
+        activeGroupId,
+        setActiveGroupId,
       }}
     >
       {children}
