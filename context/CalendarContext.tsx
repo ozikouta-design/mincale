@@ -81,7 +81,8 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
       is_all_day: e.isAllDay,
       updated_at: new Date().toISOString(),
     }));
-    supabase.from('host_busy_slots').upsert(rows, { onConflict: 'event_id,host_email' });
+    supabase.from('host_busy_slots').upsert(rows, { onConflict: 'event_id,host_email' })
+      .then(({ error }) => { if (error) console.error('host_busy_slots sync error:', error); });
   }, [google.events, google.userEmail]);
 
   useEffect(() => {
