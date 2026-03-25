@@ -71,14 +71,21 @@ export default async function handler(req: any, res: any) {
 
   const rows = (items as any[])
     .filter(e => e.status !== 'cancelled')
-    .map(e => ({
-      event_id: e.id,
-      host_email: hostEmail,
-      start_time: e.start?.dateTime ?? `${e.start?.date}T00:00:00+09:00`,
-      end_time: e.end?.dateTime ?? `${e.end?.date}T23:59:59+09:00`,
-      is_all_day: !!e.start?.date,
-      updated_at: new Date().toISOString(),
-    }));
+    .map(e => {
+      const isAllDay = !!e.start?.date;
+      // Google Calendar の終日イベントの end.date は排他的（翌日）なので 1 秒引く
+      const endTime = isAllDay
+        ? new Date(new Date(`${e.end.date}T00:00:00+09:00`).getTime() - 1000).toISOString()
+        : e.end?.dateTime;
+      return {
+        event_id: e.id,
+        host_email: hostEmail,
+        start_time: isAllDay ? `${e.start.date}T00:00:00+09:00` : e.start?.dateTime,
+        end_time: endTime,
+        is_all_day: isAllDay,
+        updated_at: new Date().toISOString(),
+      };
+    });
 
   // 5. host_busy_slots に upsert
   if (rows.length > 0) {

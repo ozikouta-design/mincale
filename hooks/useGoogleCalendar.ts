@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData } from '@/types';
-import { startOfDay, endOfDay, parseISO } from 'date-fns';
+import { startOfDay, endOfDay, subDays, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
 // Platform-aware key-value storage
@@ -284,7 +284,7 @@ export function useGoogleCalendar() {
             id: item.id,
             title: item.summary || '(タイトルなし)',
             startTime: isAllDay ? startOfDay(parseISO(item.start.date)) : parseISO(item.start.dateTime),
-            endTime: isAllDay ? endOfDay(parseISO(item.end.date)) : parseISO(item.end.dateTime),
+            endTime: isAllDay ? endOfDay(subDays(parseISO(item.end.date), 1)) : parseISO(item.end.dateTime),
             isAllDay,
             colorHex: item.colorId ? getColorById(item.colorId) : '#4285F4',
             location: item.location,
