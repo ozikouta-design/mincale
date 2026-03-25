@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData, UserProfile, ViewMode, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
@@ -123,11 +123,28 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     google.checkAuthStatus();
   }, []);
 
+  // 認証後: カレンダーリスト取得 → 取得完了後にイベント再フェッチ
   useEffect(() => {
     if (google.isAuthenticated) {
-      google.fetchCalendarList();
+      google.fetchCalendarList().then(() => {
+        refreshEvents();
+      });
     }
   }, [google.isAuthenticated]);
+
+  // カレンダーが新たに有効化された時に再フェッチ（無効化は不要）
+  const prevSelectedIdsRef = useRef<string>('');
+  useEffect(() => {
+    if (!google.isAuthenticated || !google.calendarList.length) return;
+    const selectedIds = google.calendarList
+      .filter(c => c.selected).map(c => c.id).sort().join(',');
+    const prev = prevSelectedIdsRef.current;
+    prevSelectedIdsRef.current = selectedIds;
+    if (!prev) return; // 初回セット時はスキップ（上の fetchCalendarList 後の refreshEvents に任せる）
+    const prevSet = new Set(prev.split(','));
+    const hasNew = selectedIds.split(',').some(id => id && !prevSet.has(id));
+    if (hasNew) refreshEvents();
+  }, [google.calendarList]);
 
   // 選択されているカレンダーのイベントのみ表示する（クライアント側フィルタ）
   // アクティブグループがある場合はそのグループメンバーのみ
@@ -166,8 +183,8 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   }, [google.events, google.userEmail]);
 
   useEffect(() => {
-    refreshEvents();
-  }, [currentDate, viewMode, google.isAuthenticated]);
+    if (google.isAuthenticated) refreshEvents();
+  }, [currentDate, viewMode]);
 
   const goNext = useCallback(() => {
     setCurrentDate(prev => {

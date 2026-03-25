@@ -76,7 +76,11 @@ export function useGoogleCalendar() {
   const [calendarList, setCalendarList] = useState<GoogleCalendarInfo[]>([]);
   const [calendarGroups, setCalendarGroups] = useState<CalendarGroup[]>([]);
   const calendarListRef = useRef<GoogleCalendarInfo[]>([]);
+  const calendarGroupsRef = useRef<CalendarGroup[]>([]);
+  const userEmailRef = useRef<string | null>(null);
   useEffect(() => { calendarListRef.current = calendarList; }, [calendarList]);
+  useEffect(() => { calendarGroupsRef.current = calendarGroups; }, [calendarGroups]);
+  useEffect(() => { userEmailRef.current = userEmail; }, [userEmail]);
 
   const redirectUri = AuthSession.makeRedirectUri({ scheme: 'calendar' });
 
@@ -190,25 +194,48 @@ export function useGoogleCalendar() {
       }));
 
       // 保存済みの表示設定・グループ割り当てを復元
-      const stored = await storage.getItem(CALENDAR_LIST_KEY);
-      let merged = list;
-      if (stored) {
+      // 優先度: Supabase (アカウント依存) > localStorage (デバイス依存)
+      let savedStates: Record<string, { selected: boolean; groupIds?: string[] }> = {};
+      let savedGroups: CalendarGroup[] = [];
+
+      const email = userEmailRef.current;
+      if (email) {
         try {
-          const saved: Record<string, { selected: boolean; groupIds?: string[] }> = JSON.parse(stored);
-          merged = list.map(c => ({
-            ...c,
-            selected: saved[c.id]?.selected !== undefined ? saved[c.id].selected : true,
-            groupIds: saved[c.id]?.groupIds ?? [],
-          }));
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('calendar_settings')
+            .eq('email', email)
+            .single();
+          const settings = data?.calendar_settings as any;
+          if (settings?.states) savedStates = settings.states;
+          if (settings?.groups) savedGroups = settings.groups;
         } catch {}
       }
-      setCalendarList(merged);
-
-      // グループ一覧も復元
-      const storedGroups = await storage.getItem(CALENDAR_GROUPS_KEY);
-      if (storedGroups) {
-        try { setCalendarGroups(JSON.parse(storedGroups)); } catch {}
+      // Supabase にデータがなければ localStorage をフォールバック
+      if (!Object.keys(savedStates).length) {
+        const stored = await storage.getItem(CALENDAR_LIST_KEY);
+        if (stored) {
+          try { savedStates = JSON.parse(stored); } catch {}
+        }
       }
+      if (!savedGroups.length) {
+        const storedGroups = await storage.getItem(CALENDAR_GROUPS_KEY);
+        if (storedGroups) {
+          try { savedGroups = JSON.parse(storedGroups); } catch {}
+        }
+      }
+
+      const merged = list.map(c => ({
+        ...c,
+        selected: savedStates[c.id]?.selected !== undefined ? savedStates[c.id].selected : true,
+        groupIds: savedStates[c.id]?.groupIds ?? [],
+      }));
+
+      // ref を即時更新（fetchEvents が calendarListRef を使うため）
+      calendarListRef.current = merged;
+      setCalendarList(merged);
+      calendarGroupsRef.current = savedGroups;
+      setCalendarGroups(savedGroups);
 
       return merged;
     } catch (e) {
@@ -217,118 +244,119 @@ export function useGoogleCalendar() {
     }
   }, []);
 
-  // カレンダーリストの状態（表示設定・グループ）をストレージに保存するヘルパー
-  const saveCalendarListState = useCallback((list: GoogleCalendarInfo[]) => {
-    const saved: Record<string, { selected: boolean; groupIds?: string[] }> = {};
-    list.forEach(c => { saved[c.id] = { selected: c.selected, groupIds: c.groupIds }; });
-    storage.setItem(CALENDAR_LIST_KEY, JSON.stringify(saved));
+  // calendar_settings（グループ+状態）を Supabase と localStorage に保存するヘルパー
+  const saveCalendarSettings = useCallback((
+    groups: CalendarGroup[],
+    list: GoogleCalendarInfo[],
+  ) => {
+    const states: Record<string, { selected: boolean; groupIds?: string[] }> = {};
+    list.forEach(c => { states[c.id] = { selected: c.selected, groupIds: c.groupIds }; });
+    // localStorage（フォールバック）
+    storage.setItem(CALENDAR_LIST_KEY, JSON.stringify(states));
+    storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(groups));
+    // Supabase（アカウント依存）
+    const email = userEmailRef.current;
+    if (email) {
+      supabase.from('user_profiles')
+        .update({ calendar_settings: { groups, states }, updated_at: new Date().toISOString() })
+        .eq('email', email)
+        .then(({ error }) => { if (error) console.error('calendar_settings save error:', error); });
+    }
   }, []);
 
+  // 後方互換用エイリアス（calendarList のみ更新時）
+  const saveCalendarListState = useCallback((list: GoogleCalendarInfo[]) => {
+    saveCalendarSettings(calendarGroupsRef.current, list);
+  }, [saveCalendarSettings]);
+
   const toggleCalendarVisibility = useCallback(async (calendarId: string) => {
-    setCalendarList(prev => {
-      const updated = prev.map(c =>
-        c.id === calendarId ? { ...c, selected: !c.selected } : c,
-      );
-      saveCalendarListState(updated);
-      return updated;
-    });
-  }, [saveCalendarListState]);
+    const newList = calendarListRef.current.map(c =>
+      c.id === calendarId ? { ...c, selected: !c.selected } : c,
+    );
+    calendarListRef.current = newList;
+    setCalendarList(newList);
+    saveCalendarSettings(calendarGroupsRef.current, newList);
+  }, [saveCalendarSettings]);
 
   // ── グループ管理 ──────────────────────────────────────
 
   // 新しいカレンダーグループを作成する（初期カレンダーIDも指定可能）
   const createCalendarGroup = useCallback(async (name: string, calendarIds: string[] = []): Promise<CalendarGroup> => {
     const newGroup: CalendarGroup = { id: `group_${Date.now()}`, name };
-    setCalendarGroups(prev => {
-      const updated = [...prev, newGroup];
-      storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
-      return updated;
-    });
-    if (calendarIds.length > 0) {
-      setCalendarList(prev => {
-        const updated = prev.map(c =>
+    const newGroups = [...calendarGroupsRef.current, newGroup];
+    const newList = calendarIds.length > 0
+      ? calendarListRef.current.map(c =>
           calendarIds.includes(c.id)
             ? { ...c, groupIds: [...new Set([...(c.groupIds ?? []), newGroup.id])] }
             : c,
-        );
-        saveCalendarListState(updated);
-        return updated;
-      });
+        )
+      : calendarListRef.current;
+    calendarGroupsRef.current = newGroups;
+    setCalendarGroups(newGroups);
+    if (calendarIds.length > 0) {
+      calendarListRef.current = newList;
+      setCalendarList(newList);
     }
+    saveCalendarSettings(newGroups, newList);
     return newGroup;
-  }, [saveCalendarListState]);
+  }, [saveCalendarSettings]);
 
   // カレンダーグループを削除し、所属カレンダーのグループIDをクリアする
   const deleteCalendarGroup = useCallback(async (groupId: string) => {
-    setCalendarGroups(prev => {
-      const updated = prev.filter(g => g.id !== groupId);
-      storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
-      return updated;
-    });
-    setCalendarList(prev => {
-      const updated = prev.map(c => ({
-        ...c,
-        groupIds: (c.groupIds ?? []).filter(id => id !== groupId),
-      }));
-      saveCalendarListState(updated);
-      return updated;
-    });
-  }, [saveCalendarListState]);
+    const newGroups = calendarGroupsRef.current.filter(g => g.id !== groupId);
+    const newList = calendarListRef.current.map(c => ({
+      ...c,
+      groupIds: (c.groupIds ?? []).filter(id => id !== groupId),
+    }));
+    calendarGroupsRef.current = newGroups;
+    setCalendarGroups(newGroups);
+    calendarListRef.current = newList;
+    setCalendarList(newList);
+    saveCalendarSettings(newGroups, newList);
+  }, [saveCalendarSettings]);
 
   // カレンダーをグループに追加/削除する（groupId=nullで全グループから外す）
   const moveCalendarToGroup = useCallback(async (calendarId: string, groupId: string | null) => {
-    setCalendarList(prev => {
-      const updated = prev.map(c => {
-        if (c.id !== calendarId) return c;
-        if (groupId === null) return { ...c, groupIds: [] };
-        const current = c.groupIds ?? [];
-        const already = current.includes(groupId);
-        return {
-          ...c,
-          groupIds: already ? current.filter(id => id !== groupId) : [...current, groupId],
-        };
-      });
-      saveCalendarListState(updated);
-      return updated;
+    const newList = calendarListRef.current.map(c => {
+      if (c.id !== calendarId) return c;
+      if (groupId === null) return { ...c, groupIds: [] };
+      const current = c.groupIds ?? [];
+      const already = current.includes(groupId);
+      return { ...c, groupIds: already ? current.filter(id => id !== groupId) : [...current, groupId] };
     });
-  }, [saveCalendarListState]);
+    calendarListRef.current = newList;
+    setCalendarList(newList);
+    saveCalendarSettings(calendarGroupsRef.current, newList);
+  }, [saveCalendarSettings]);
 
   // グループのメンバーを一括ON/OFFする（グループスイッチ用）
   const setGroupVisibility = useCallback(async (calendarIds: string[], selected: boolean) => {
-    setCalendarList(prev => {
-      const updated = prev.map(c =>
-        calendarIds.includes(c.id) ? { ...c, selected } : c,
-      );
-      saveCalendarListState(updated);
-      return updated;
-    });
-  }, [saveCalendarListState]);
+    const newList = calendarListRef.current.map(c =>
+      calendarIds.includes(c.id) ? { ...c, selected } : c,
+    );
+    calendarListRef.current = newList;
+    setCalendarList(newList);
+    saveCalendarSettings(calendarGroupsRef.current, newList);
+  }, [saveCalendarSettings]);
 
   // グループ名とカレンダーメンバーを更新する（編集用）
   const updateCalendarGroup = useCallback(async (groupId: string, name: string, calendarIds: string[]) => {
-    // グループ名を更新
-    setCalendarGroups(prev => {
-      const updated = prev.map(g => g.id === groupId ? { ...g, name } : g);
-      storage.setItem(CALENDAR_GROUPS_KEY, JSON.stringify(updated));
-      return updated;
+    const newGroups = calendarGroupsRef.current.map(g => g.id === groupId ? { ...g, name } : g);
+    const newList = calendarListRef.current.map(c => {
+      const current = c.groupIds ?? [];
+      if (calendarIds.includes(c.id)) {
+        return { ...c, groupIds: [...new Set([...current, groupId])] };
+      } else if (current.includes(groupId)) {
+        return { ...c, groupIds: current.filter(id => id !== groupId) };
+      }
+      return c;
     });
-    // カレンダーのグループ割り当てを更新（追加・削除）
-    setCalendarList(prev => {
-      const updated = prev.map(c => {
-        const current = c.groupIds ?? [];
-        if (calendarIds.includes(c.id)) {
-          // このグループに追加（重複なし）
-          return { ...c, groupIds: [...new Set([...current, groupId])] };
-        } else if (current.includes(groupId)) {
-          // このグループから外す
-          return { ...c, groupIds: current.filter(id => id !== groupId) };
-        }
-        return c;
-      });
-      saveCalendarListState(updated);
-      return updated;
-    });
-  }, [saveCalendarListState]);
+    calendarGroupsRef.current = newGroups;
+    setCalendarGroups(newGroups);
+    calendarListRef.current = newList;
+    setCalendarList(newList);
+    saveCalendarSettings(newGroups, newList);
+  }, [saveCalendarSettings]);
 
   const signIn = useCallback(async () => {
     if (Platform.OS === 'web') {
