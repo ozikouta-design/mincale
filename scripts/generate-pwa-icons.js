@@ -1,0 +1,63 @@
+/**
+ * みんカレ PWA アイコン生成スクリプト
+ * node scripts/generate-pwa-icons.js
+ */
+const fs = require('fs');
+const path = require('path');
+
+// SVG テンプレート（512x512ベース）
+function createSvg(size) {
+  const scale = size / 100;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F8EF7"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="cal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#E0EDFF" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <!-- 背景 -->
+  <rect x="0" y="0" width="100" height="100" rx="22" ry="22" fill="url(#bg)"/>
+  <!-- カレンダーボディ -->
+  <rect x="12" y="26" width="76" height="58" rx="8" ry="8" fill="url(#cal)"/>
+  <!-- ヘッダー -->
+  <rect x="12" y="26" width="76" height="22" rx="8" ry="8" fill="#2563EB"/>
+  <rect x="12" y="38" width="76" height="10" fill="#2563EB"/>
+  <!-- ピン 左 -->
+  <rect x="27" y="18" width="8" height="18" rx="4" ry="4" fill="#1D4ED8"/>
+  <!-- ピン 右 -->
+  <rect x="65" y="18" width="8" height="18" rx="4" ry="4" fill="#1D4ED8"/>
+  <!-- グリッド線 -->
+  <line x1="12" y1="64" x2="88" y2="64" stroke="#C7D9F8" stroke-width="1"/>
+  <!-- 日付ドット 行1 -->
+  <circle cx="28" cy="56" r="5" fill="#3B82F6" opacity="0.5"/>
+  <circle cx="50" cy="56" r="5" fill="#3B82F6" opacity="0.5"/>
+  <circle cx="72" cy="56" r="5" fill="#EF4444"/>
+  <!-- 日付ドット 行2 -->
+  <circle cx="28" cy="74" r="5" fill="#3B82F6" opacity="0.5"/>
+  <circle cx="50" cy="74" r="5" fill="#3B82F6" opacity="0.5"/>
+  <circle cx="72" cy="74" r="5" fill="#3B82F6" opacity="0.5"/>
+  <!-- Mウェーブ -->
+  <path d="M 32 43 L 37 33 L 42 43 L 47 33 L 52 43" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- 人物 左 -->
+  <circle cx="61" cy="35" r="3.2" fill="white" opacity="0.95"/>
+  <path d="M 56 46 Q 61 41 66 46" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.95"/>
+  <!-- 人物 右 -->
+  <circle cx="71" cy="35" r="3.2" fill="white" opacity="0.95"/>
+  <path d="M 66 46 Q 71 41 76 46" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.95"/>
+</svg>`;
+}
+
+const outDir = path.join(__dirname, '../public/icons');
+if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+// SVG ファイルを書き出す（ブラウザで直接使用可能）
+fs.writeFileSync(path.join(outDir, 'icon.svg'), createSvg(100));
+fs.writeFileSync(path.join(outDir, 'icon-512.svg'), createSvg(512));
+fs.writeFileSync(path.join(outDir, 'icon-192.svg'), createSvg(192));
+
+console.log('✅ SVG icons created in public/icons/');
+console.log('  icon.svg, icon-512.svg, icon-192.svg');
