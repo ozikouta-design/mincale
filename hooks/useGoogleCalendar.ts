@@ -86,7 +86,7 @@ export function useGoogleCalendar() {
   // Expo Go では auth.expo.io プロキシを直接指定（useProxy は SDK54で削除済み）
   const isExpoGo = Constants.appOwnership === 'expo';
   const redirectUri = isExpoGo
-    ? 'https://auth.expo.io/@ozikouta-design/calendar'  // Expo Go: Google Console URI 5
+    ? 'https://auth.expo.io/@ishikawa1129/calendar'  // Expo Go: Google Console URI 5
     : AuthSession.makeRedirectUri({ scheme: 'calendar' });  // standalone ビルド
 
   // Native uses expo-auth-session hooks
