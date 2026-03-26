@@ -466,7 +466,12 @@ export function useGoogleCalendar() {
       // Use calendarListRef to avoid stale closure & re-render cascades
       const currentList = calendarListRef.current;
       const calIds = currentList.filter(c => c.selected).map(c => c.id);
-      if (calIds.length === 0) calIds.push('primary');
+      if (calIds.length === 0) {
+        // すべてのカレンダーが非表示 → イベントなし
+        setEvents([]);
+        setIsLoading(false);
+        return [];
+      }
 
       const results = await Promise.all(
         calIds.map(async calId => {

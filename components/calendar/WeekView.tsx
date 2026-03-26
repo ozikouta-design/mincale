@@ -184,6 +184,7 @@ export default function WeekView() {
               style={[styles.dayColumn, { width: DAY_WIDTH }]}
               // capture phase で子（TouchableOpacity）より先にタッチを受け取る
               onStartShouldSetResponderCapture={() => true}
+              onStartShouldSetResponder={() => true}
               onResponderTerminationRequest={() => !isLongPressingRef.current}
               onResponderGrant={(e) => {
                 const y = e.nativeEvent.locationY;
@@ -381,6 +382,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: '#e8e8e8',
     height: 24 * HOUR_HEIGHT,
+    // @ts-ignore web only
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    cursor: 'default',
+    touchAction: 'none',
   },
   // 新規作成ゴーストブロック
   ghostBlock: {

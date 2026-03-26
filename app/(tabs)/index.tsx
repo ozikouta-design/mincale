@@ -11,11 +11,13 @@ import DayView from '@/components/calendar/DayView';
 import MonthView from '@/components/calendar/MonthView';
 import { LogIn } from 'lucide-react-native';
 import MincaleLogo from '@/components/MincaleLogo';
+import { useBookingNotifications } from '@/hooks/useBookingNotifications';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function CalendarScreen() {
-  const { viewMode, isAuthenticated, isLoading, signIn, goNext, goPrev, currentDate } = useCalendarContext();
+  const { viewMode, isAuthenticated, isLoading, signIn, goNext, goPrev, currentDate, userEmail } = useCalendarContext();
+  useBookingNotifications(userEmail);
 
   // スライドアニメーション
   const slideAnim = useRef(new Animated.Value(0)).current;

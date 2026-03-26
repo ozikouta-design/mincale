@@ -83,10 +83,41 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     loadSyncRange().then(setSyncRangeDaysState);
   }, []);
 
+  // 同期範囲変更時に自動リフレッシュ
+  const prevSyncRangeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevSyncRangeRef.current === null) {
+      prevSyncRangeRef.current = syncRangeDays;
+      return;
+    }
+    if (prevSyncRangeRef.current !== syncRangeDays) {
+      prevSyncRangeRef.current = syncRangeDays;
+      if (google.isAuthenticated) refreshEvents();
+    }
+  }, [syncRangeDays]);
+
   const setSyncRangeDays = useCallback(async (days: number) => {
     setSyncRangeDaysState(days);
     await saveSyncRange(days);
   }, []);
+
+  // ビューモードをストレージから復元・保存
+  useEffect(() => {
+    try {
+      const saved = Platform.OS === 'web'
+        ? localStorage.getItem('calendar_view_mode')
+        : null; // native は SecureStore 非同期なので省略
+      if (saved && ['week', 'day', 'month'].includes(saved)) {
+        setViewMode(saved as ViewMode);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (Platform.OS === 'web') localStorage.setItem('calendar_view_mode', viewMode);
+    } catch {}
+  }, [viewMode]);
 
   const getDateRange = useCallback(
     (date: Date, mode: ViewMode): [Date, Date] => {
@@ -149,7 +180,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   // 選択されているカレンダーのイベントのみ表示する（クライアント側フィルタ）
   // アクティブグループがある場合はそのグループメンバーのみ
   const visibleEvents = useMemo(() => {
-    if (!google.calendarList.length) return google.events;
+    if (!google.calendarList.length) return [];
     let filtered = google.calendarList;
     if (activeGroupId) {
       filtered = filtered.filter(c => (c.groupIds ?? []).includes(activeGroupId));
@@ -157,7 +188,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
       filtered = filtered.filter(c => c.selected);
     }
     const visibleIds = new Set(filtered.map(c => c.id));
-    return google.events.filter(e => !e.calendarId || visibleIds.has(e.calendarId));
+    return google.events.filter(e => e.calendarId && visibleIds.has(e.calendarId));
   }, [google.events, google.calendarList, activeGroupId]);
 
   // Load profile when authenticated and email is available
