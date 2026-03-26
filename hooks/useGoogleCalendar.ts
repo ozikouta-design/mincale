@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import * as AuthSession from 'expo-auth-session';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { startOfDay, endOfDay, subDays, parseISO } from 'date-fns';
@@ -82,7 +83,12 @@ export function useGoogleCalendar() {
   useEffect(() => { calendarGroupsRef.current = calendarGroups; }, [calendarGroups]);
   useEffect(() => { userEmailRef.current = userEmail; }, [userEmail]);
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'calendar' });
+  // Expo Go では auth.expo.io プロキシを使用、スタンドアロンビルドでは scheme を使用
+  const redirectUri = AuthSession.makeRedirectUri(
+    Constants.appOwnership === 'expo'
+      ? { scheme: 'calendar', path: '/' }  // Expo Go: exp://... 形式
+      : { scheme: 'calendar' }             // standalone ビルド
+  );
 
   // Native uses expo-auth-session hooks
   const [request, , promptAsync] = AuthSession.useAuthRequest(
