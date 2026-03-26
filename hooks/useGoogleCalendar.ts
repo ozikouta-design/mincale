@@ -83,13 +83,11 @@ export function useGoogleCalendar() {
   useEffect(() => { calendarGroupsRef.current = calendarGroups; }, [calendarGroups]);
   useEffect(() => { userEmailRef.current = userEmail; }, [userEmail]);
 
-  // Expo Go では auth.expo.io プロキシを使用、スタンドアロンビルドでは scheme を使用
+  // Expo Go では auth.expo.io プロキシを直接指定（useProxy は SDK54で削除済み）
   const isExpoGo = Constants.appOwnership === 'expo';
-  const redirectUri = AuthSession.makeRedirectUri(
-    isExpoGo
-      ? { useProxy: true }   // Expo Go: https://auth.expo.io/@ozikouta-design/calendar
-      : { scheme: 'calendar' }  // standalone ビルド
-  );
+  const redirectUri = isExpoGo
+    ? 'https://auth.expo.io/@ozikouta-design/calendar'  // Expo Go: Google Console URI 5
+    : AuthSession.makeRedirectUri({ scheme: 'calendar' });  // standalone ビルド
 
   // Native uses expo-auth-session hooks
   const [request, , promptAsync] = AuthSession.useAuthRequest(
@@ -393,7 +391,7 @@ export function useGoogleCalendar() {
 
     // Native: existing expo-auth-session popup/redirect flow
     try {
-      const result = await promptAsync(isExpoGo ? { useProxy: true } : {});
+      const result = await promptAsync();
       if (result?.type === 'success' && result.params?.code) {
         const tokenResponse = await AuthSession.exchangeCodeAsync(
           {
