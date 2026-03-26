@@ -84,10 +84,11 @@ export function useGoogleCalendar() {
   useEffect(() => { userEmailRef.current = userEmail; }, [userEmail]);
 
   // Expo Go では auth.expo.io プロキシを使用、スタンドアロンビルドでは scheme を使用
+  const isExpoGo = Constants.appOwnership === 'expo';
   const redirectUri = AuthSession.makeRedirectUri(
-    Constants.appOwnership === 'expo'
-      ? { scheme: 'calendar', path: '/' }  // Expo Go: exp://... 形式
-      : { scheme: 'calendar' }             // standalone ビルド
+    isExpoGo
+      ? { useProxy: true }   // Expo Go: https://auth.expo.io/@ozikouta-design/calendar
+      : { scheme: 'calendar' }  // standalone ビルド
   );
 
   // Native uses expo-auth-session hooks
@@ -392,7 +393,7 @@ export function useGoogleCalendar() {
 
     // Native: existing expo-auth-session popup/redirect flow
     try {
-      const result = await promptAsync();
+      const result = await promptAsync(isExpoGo ? { useProxy: true } : {});
       if (result?.type === 'success' && result.params?.code) {
         const tokenResponse = await AuthSession.exchangeCodeAsync(
           {
