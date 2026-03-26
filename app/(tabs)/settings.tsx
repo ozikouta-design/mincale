@@ -16,7 +16,7 @@ export default function SettingsScreen() {
     isAuthenticated, signIn, signOut, userEmail, profile, saveProfile,
     calendarList, calendarGroups, toggleCalendarVisibility,
     createCalendarGroup, updateCalendarGroup, deleteCalendarGroup, setGroupVisibility,
-    syncRangeDays, setSyncRangeDays,
+    syncRangeDays, setSyncRangeDays, isLoading, refreshEvents, fetchCalendarList,
   } = useCalendarContext();
   const [slug, setSlug] = useState('');
   const [bookingDuration, setBookingDuration] = useState('30');
@@ -228,6 +228,26 @@ export default function SettingsScreen() {
       )}
 
       {/* カレンダーグループ管理 */}
+      {isAuthenticated && calendarList.length === 0 && !isLoading && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>カレンダー管理</Text>
+          </View>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={async () => {
+                await fetchCalendarList();
+              }}
+            >
+              <View style={styles.rowLeft}>
+                <CalendarIcon size={18} color="#4285F4" />
+                <Text style={[styles.rowText, { color: '#4285F4' }]}>カレンダーを再読み込み</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
       {calendarList.length > 0 && (
         <>
           {/* ヘッダー：タイトル＋グループ作成ボタン */}
@@ -581,6 +601,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  disabled: { opacity: 0.4 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

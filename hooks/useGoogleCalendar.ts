@@ -189,7 +189,15 @@ export function useGoogleCalendar() {
       const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return [];
+      if (!res.ok) {
+        // 401: トークン期限切れ → クリーンにログアウト
+        if (res.status === 401) {
+          setIsAuthenticated(false);
+          await storage.removeItem(TOKEN_KEY);
+          await storage.removeItem(REFRESH_TOKEN_KEY);
+        }
+        return [];
+      }
       const data = await res.json();
       const list: GoogleCalendarInfo[] = (data.items || []).map((item: any) => ({
         id: item.id,
