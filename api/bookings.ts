@@ -13,6 +13,19 @@ export default async function handler(req: any, res: any) {
     Authorization: `Bearer ${serviceRoleKey}`,
   };
 
+  // GET: 予約一覧取得（RLSバイパス）
+  if (req.method === 'GET') {
+    const hostEmail = req.query?.host_email;
+    if (!hostEmail) return res.status(400).json({ error: 'host_email query param required' });
+    const listRes = await fetch(
+      `${supabaseUrl}/rest/v1/bookings?host_email=eq.${encodeURIComponent(hostEmail)}&order=start_time.desc`,
+      { headers: sbHeaders },
+    );
+    if (!listRes.ok) return res.status(500).json({ error: 'Failed to fetch bookings' });
+    const data = await listRes.json();
+    return res.status(200).json(data);
+  }
+
   // PATCH: ステータス更新（confirm / decline）
   if (req.method === 'PATCH') {
     const { bookingId, status } = req.body;

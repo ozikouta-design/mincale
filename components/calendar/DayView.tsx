@@ -33,6 +33,9 @@ export default function DayView() {
   const interactionRef = useRef<Interaction | null>(null);
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const ghostAnim = useRef(new Animated.Value(0)).current;
+  // 短タップ検出用
+  const grantYRef = useRef(0);
+  const grantTimeRef = useRef(0);
 
   const handleEventPress = useCallback((event: CalendarEvent) => {
     router.push({ pathname: '/event/[id]', params: { id: event.id } });
@@ -143,10 +146,13 @@ export default function DayView() {
             <View
               key={cal.id}
               style={[styles.dayColumn, { width: COL_WIDTH }]}
-              onStartShouldSetResponder={() => true}
+              // capture phase で子（TouchableOpacity）より先にタッチを受け取る
+              onStartShouldSetResponderCapture={() => true}
               onResponderTerminationRequest={() => !isLongPressingRef.current}
               onResponderGrant={(e) => {
                 const y = e.nativeEvent.locationY;
+                grantYRef.current = y;
+                grantTimeRef.current = Date.now();
                 isLongPressingRef.current = false;
                 if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                 longPressTimerRef.current = setTimeout(() => {
@@ -216,6 +222,13 @@ export default function DayView() {
                       setInteraction(null);
                     });
                   }
+                } else if (!isLongPressingRef.current) {
+                  // 短タップ → 予定がある位置ならイベント詳細へ
+                  const elapsed = Date.now() - grantTimeRef.current;
+                  if (elapsed < 500) {
+                    const found = findEventAt(grantYRef.current, cal.id);
+                    if (found) handleEventPress(found.event);
+                  }
                 }
                 isLongPressingRef.current = false;
               }}
@@ -267,7 +280,7 @@ export default function DayView() {
                   <View key={event.id}>
                     <EventBlock
                       event={event}
-                      onPress={isDragging || isResizing ? undefined : handleEventPress}
+                      onPress={undefined}
                       style={{
                         position: 'absolute',
                         top,

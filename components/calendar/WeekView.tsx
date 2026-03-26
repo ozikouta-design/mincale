@@ -41,6 +41,9 @@ export default function WeekView() {
   const interactionRef = useRef<Interaction | null>(null);
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const ghostAnim = useRef(new Animated.Value(0)).current;
+  // 短タップ検出用
+  const grantYRef = useRef(0);
+  const grantTimeRef = useRef(0);
 
   const handleEventPress = useCallback((event: CalendarEvent) => {
     router.push({ pathname: '/event/[id]', params: { id: event.id } });
@@ -179,10 +182,13 @@ export default function WeekView() {
             <View
               key={dayIdx}
               style={[styles.dayColumn, { width: DAY_WIDTH }]}
-              onStartShouldSetResponder={() => true}
+              // capture phase で子（TouchableOpacity）より先にタッチを受け取る
+              onStartShouldSetResponderCapture={() => true}
               onResponderTerminationRequest={() => !isLongPressingRef.current}
               onResponderGrant={(e) => {
                 const y = e.nativeEvent.locationY;
+                grantYRef.current = y;
+                grantTimeRef.current = Date.now();
                 isLongPressingRef.current = false;
                 if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                 longPressTimerRef.current = setTimeout(() => {
@@ -238,14 +244,19 @@ export default function WeekView() {
                     const endDate = new Date(day);
                     endDate.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
                     router.push({ pathname: '/event/create', params: { startTime: startDate.toISOString(), endTime: endDate.toISOString() } });
+                    setTimeout(() => { interactionRef.current = null; setInteraction(null); }, 300);
                   } else {
                     finalizeInteraction(state, day).then(() => {
                       interactionRef.current = null;
                       setInteraction(null);
                     });
                   }
-                  if (state.mode === 'new') {
-                    setTimeout(() => { interactionRef.current = null; setInteraction(null); }, 300);
+                } else if (!isLongPressingRef.current) {
+                  // 短タップ → 予定がある位置ならイベント詳細へ
+                  const elapsed = Date.now() - grantTimeRef.current;
+                  if (elapsed < 500) {
+                    const found = findEventAt(grantYRef.current, day);
+                    if (found) handleEventPress(found.event);
                   }
                 }
                 isLongPressingRef.current = false;
@@ -301,7 +312,7 @@ export default function WeekView() {
                   <View key={event.id}>
                     <EventBlock
                       event={event}
-                      onPress={isDragging || isResizing ? undefined : handleEventPress}
+                      onPress={undefined}
                       style={{
                         position: 'absolute',
                         top,
