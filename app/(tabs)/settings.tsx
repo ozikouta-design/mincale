@@ -265,7 +265,6 @@ export default function SettingsScreen() {
                 {calendarGroups.map((group, i) => {
                   const groupCals = calendarList.filter(c => (c.groupIds ?? []).includes(group.id));
                   const allSelected = groupCals.length > 0 && groupCals.every(c => c.selected);
-                  const someSelected = groupCals.some(c => c.selected);
                   return (
                     <React.Fragment key={group.id}>
                       {i > 0 && <View style={styles.divider} />}

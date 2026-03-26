@@ -53,6 +53,7 @@ interface CalendarContextType {
   createEvent: (data: EventFormData) => Promise<CalendarEvent | null>;
   updateEvent: (eventId: string, data: EventFormData, calendarId?: string) => Promise<boolean>;
   deleteEvent: (eventId: string, calendarId?: string) => Promise<boolean>;
+  deleteRecurringEvent: (eventId: string, calendarId: string | undefined, recurringEventId: string, originalStartTime: Date, mode: 'single' | 'following' | 'all') => Promise<boolean>;
   calendarList: GoogleCalendarInfo[];
   calendarGroups: CalendarGroup[];
   fetchCalendarList: () => Promise<GoogleCalendarInfo[]>;
@@ -83,17 +84,12 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     loadSyncRange().then(setSyncRangeDaysState);
   }, []);
 
-  // 同期範囲変更時に自動リフレッシュ
-  const prevSyncRangeRef = useRef<number | null>(null);
+  // 同期範囲変更時に自動リフレッシュ（初回マウント時はスキップ）
+  const syncRangeMountedRef = useRef(false);
   useEffect(() => {
-    if (prevSyncRangeRef.current === null) {
-      prevSyncRangeRef.current = syncRangeDays;
-      return;
-    }
-    if (prevSyncRangeRef.current !== syncRangeDays) {
-      prevSyncRangeRef.current = syncRangeDays;
-      if (google.isAuthenticated) refreshEvents();
-    }
+    if (!syncRangeMountedRef.current) { syncRangeMountedRef.current = true; return; }
+    if (google.isAuthenticated) refreshEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncRangeDays]);
 
   const setSyncRangeDays = useCallback(async (days: number) => {
@@ -180,14 +176,18 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   // 選択されているカレンダーのイベントのみ表示する（クライアント側フィルタ）
   // アクティブグループがある場合はそのグループメンバーのみ
   const visibleEvents = useMemo(() => {
+    // カレンダーリスト未取得中はイベントを全て非表示（フィルタ不能のため）
     if (!google.calendarList.length) return [];
     let filtered = google.calendarList;
     if (activeGroupId) {
+      // グループフィルタ中は selected に関わらずグループメンバーを表示
       filtered = filtered.filter(c => (c.groupIds ?? []).includes(activeGroupId));
     } else {
+      // 通常モード: selected=true のカレンダーのみ
       filtered = filtered.filter(c => c.selected);
     }
     const visibleIds = new Set(filtered.map(c => c.id));
+    // calendarId が未設定のイベントは表示しない（フィルタバグ防止）
     return google.events.filter(e => e.calendarId && visibleIds.has(e.calendarId));
   }, [google.events, google.calendarList, activeGroupId]);
 
@@ -263,6 +263,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
         createEvent: google.createEvent,
         updateEvent: google.updateEvent,
         deleteEvent: google.deleteEvent,
+        deleteRecurringEvent: google.deleteRecurringEvent,
         calendarList: google.calendarList,
         calendarGroups: google.calendarGroups,
         fetchCalendarList: google.fetchCalendarList,

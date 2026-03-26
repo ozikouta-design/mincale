@@ -8,6 +8,7 @@ export interface CalendarEvent {
   location?: string;
   description?: string;
   calendarId?: string;
+  recurringEventId?: string; // 繰り返し予定のマスターイベントID
 }
 
 export interface FreeSlot {

@@ -505,6 +505,7 @@ export function useGoogleCalendar() {
             location: item.location,
             description: item.description,
             calendarId: item._calendarId,
+            recurringEventId: item.recurringEventId,
           };
         });
 
@@ -598,6 +599,77 @@ export function useGoogleCalendar() {
     }
   }, [getAccessToken]);
 
+  /**
+   * 繰り返し予定を削除する
+   * mode: 'single'=この予定のみ, 'following'=これ以降の全て, 'all'=全ての繰り返し
+   */
+  const deleteRecurringEvent = useCallback(async (
+    eventId: string,
+    calendarId: string | undefined,
+    recurringEventId: string,
+    originalStartTime: Date,
+    mode: 'single' | 'following' | 'all',
+  ): Promise<boolean> => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return false;
+      const calId = calendarId || 'primary';
+
+      if (mode === 'single') {
+        // この予定のみ削除（インスタンスを直接DELETE）
+        const res = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${eventId}`,
+          { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+        );
+        return res.ok || res.status === 410;
+      }
+
+      if (mode === 'all') {
+        // 全ての繰り返しを削除（マスターイベントをDELETE）
+        const res = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${recurringEventId}`,
+          { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+        );
+        return res.ok || res.status === 410;
+      }
+
+      // mode === 'following': マスターのRRULEにUNTILを追加してこの予定以降を終了
+      const masterRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${recurringEventId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!masterRes.ok) return false;
+      const master = await masterRes.json();
+
+      // この予定の開始日の前日をUNTILとして設定
+      const until = new Date(originalStartTime);
+      until.setDate(until.getDate() - 1);
+      const untilStr = until.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+      const recurrence: string[] = (master.recurrence || []).map((r: string) => {
+        if (r.startsWith('RRULE:')) {
+          const parts = r.slice(6).split(';').filter((p: string) => !p.startsWith('UNTIL=') && !p.startsWith('COUNT='));
+          parts.push(`UNTIL=${untilStr}`);
+          return 'RRULE:' + parts.join(';');
+        }
+        return r;
+      });
+
+      const patchRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${recurringEventId}`,
+        {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recurrence }),
+        },
+      );
+      return patchRes.ok;
+    } catch (error) {
+      console.error('Failed to delete recurring event:', error);
+      return false;
+    }
+  }, [getAccessToken]);
+
   return {
     isAuthenticated,
     isLoading,
@@ -619,6 +691,7 @@ export function useGoogleCalendar() {
     createEvent,
     updateEvent,
     deleteEvent,
+    deleteRecurringEvent,
     request,
   };
 }

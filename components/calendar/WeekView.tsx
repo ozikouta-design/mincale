@@ -182,9 +182,9 @@ export default function WeekView() {
             <View
               key={dayIdx}
               style={[styles.dayColumn, { width: DAY_WIDTH }]}
-              // capture phase で子（TouchableOpacity）より先にタッチを受け取る
+              // capture phase で子（EventBlock）より先にタッチを受け取る
+              // ※ ScrollView への伝播は onResponderTerminationRequest で許可する
               onStartShouldSetResponderCapture={() => true}
-              onStartShouldSetResponder={() => true}
               onResponderTerminationRequest={() => !isLongPressingRef.current}
               onResponderGrant={(e) => {
                 const y = e.nativeEvent.locationY;
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     userSelect: 'none',
     WebkitUserSelect: 'none',
     cursor: 'default',
-    touchAction: 'none',
+    // touchAction は設定しない: ブラウザの縦スクロールを妨げないようにする
   },
   // 新規作成ゴーストブロック
   ghostBlock: {
