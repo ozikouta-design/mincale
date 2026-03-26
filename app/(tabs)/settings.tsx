@@ -5,9 +5,10 @@ import {
 } from 'react-native';
 import {
   LogOut, Link2, Clock, Calendar as CalendarIcon,
-  Share2, ChevronRight, User, Save, Mail, FolderPlus, Trash2, Pencil, Check,
+  Share2, ChevronRight, User, Save, Mail, FolderPlus, Trash2, Pencil, Check, Copy,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import { useCalendarContext } from '@/context/CalendarContext';
 
 export default function SettingsScreen() {
@@ -71,6 +72,19 @@ export default function SettingsScreen() {
       message: `予約はこちらから: ${bookingUrl}`,
       url: bookingUrl,
     });
+  };
+
+  const [copied, setCopied] = useState(false);
+  const handleCopyUrl = async () => {
+    if (!bookingUrl) return;
+    if (Platform.OS === 'web') {
+      try { await navigator.clipboard.writeText(bookingUrl); } catch { /* fallback */ }
+    } else {
+      await Clipboard.setStringAsync(bookingUrl);
+    }
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -417,7 +431,14 @@ export default function SettingsScreen() {
         <>
           <Text style={styles.sectionTitle}>予約リンク</Text>
           <View style={styles.card}>
-            <Text style={styles.urlText}>{bookingUrl}</Text>
+            <View style={styles.urlRow}>
+              <Text style={styles.urlText} numberOfLines={1} ellipsizeMode="middle">{bookingUrl}</Text>
+              <TouchableOpacity onPress={handleCopyUrl} style={styles.copyButton} activeOpacity={0.7}>
+                {copied
+                  ? <Check size={16} color="#22C55E" />
+                  : <Copy size={16} color="#4285F4" />}
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity onPress={handleShareLink} style={styles.shareButton}>
               <Share2 size={18} color="#fff" />
               <Text style={styles.shareButtonText}>リンクを共有</Text>
@@ -590,12 +611,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   saveButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  urlText: {
-    fontSize: 13,
-    color: '#4285F4',
+  urlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 12,
+    gap: 8,
+  },
+  urlText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#4285F4',
+  },
+  copyButton: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#F0F4FF',
   },
   shareButton: {
     flexDirection: 'row',

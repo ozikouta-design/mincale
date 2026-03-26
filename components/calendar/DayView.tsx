@@ -145,8 +145,9 @@ export default function DayView() {
           {columns.map((cal, calIdx) => (
             <View
               key={cal.id}
-              style={[styles.dayColumn, { width: COL_WIDTH }]}
-              // capture phase で子（TouchableOpacity）より先にタッチを受け取る
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              style={[styles.dayColumn, { width: COL_WIDTH } as any]}
+              onStartShouldSetResponder={() => true}
               onStartShouldSetResponderCapture={() => true}
               onResponderTerminationRequest={() => !isLongPressingRef.current}
               onResponderGrant={(e) => {
@@ -358,6 +359,10 @@ const styles = StyleSheet.create({
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: '#e8e8e8',
     height: 24 * HOUR_HEIGHT,
+    // @ts-ignore web only
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    cursor: 'default',
   },
   ghostBlock: {
     position: 'absolute',

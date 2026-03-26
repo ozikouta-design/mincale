@@ -10,6 +10,7 @@ import WeekView from '@/components/calendar/WeekView';
 import DayView from '@/components/calendar/DayView';
 import MonthView from '@/components/calendar/MonthView';
 import { LogIn } from 'lucide-react-native';
+import MincaleLogo from '@/components/MincaleLogo';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -65,14 +66,16 @@ export default function CalendarScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loginContainer}>
-          <Text style={styles.appTitle}>Calendar</Text>
+          <MincaleLogo size={96} />
+          <Text style={styles.appTitle}>みんカレ</Text>
           <Text style={styles.loginSubtext}>
             Googleアカウントでログインして{'\n'}カレンダーを同期しましょう
           </Text>
-          <TouchableOpacity onPress={signIn} style={styles.loginButton} activeOpacity={0.7}>
+          <TouchableOpacity onPress={signIn} style={styles.loginButton} activeOpacity={0.8}>
             <LogIn size={20} color="#fff" />
             <Text style={styles.loginButtonText}>Googleでログイン</Text>
           </TouchableOpacity>
+          <Text style={styles.loginNote}>カレンダーの読み取り・書き込み権限を使用します</Text>
         </View>
       </SafeAreaView>
     );
@@ -117,16 +120,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
+    gap: 0,
   },
   appTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#4285F4',
-    marginBottom: 12,
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#2563EB',
+    marginTop: 16,
+    marginBottom: 8,
+    letterSpacing: 1,
   },
   loginSubtext: {
     fontSize: 15,
-    color: '#666',
+    color: '#64748B',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 32,
@@ -135,19 +141,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#4285F4',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 24,
-    shadowColor: '#4285F4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 32,
+    paddingVertical: 15,
+    borderRadius: 28,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+    marginBottom: 16,
   },
   loginButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  loginNote: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
   },
 });
