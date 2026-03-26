@@ -14,6 +14,8 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
 // Find the actual entry file
 const candidates = [
+  './dist/cjs/lucide-react-native.js',
+  './dist/esm/lucide-react-native.js',
   './dist/esm/lucide-react-native/src/lucide-react-native.js',
   './src/lucide-react-native.js',
 ];
