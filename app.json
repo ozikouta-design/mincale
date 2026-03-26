@@ -27,7 +27,13 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./public/icons/favicon-32.png",
+      "name": "みんカレ",
+      "shortName": "みんカレ",
+      "description": "Googleカレンダーと連携するスマートなスケジュール管理アプリ",
+      "lang": "ja",
+      "themeColor": "#2563EB",
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
       "expo-router",
