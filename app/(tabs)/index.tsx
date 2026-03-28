@@ -10,9 +10,10 @@ import CalendarHeader from '@/components/calendar/CalendarHeader';
 import WeekView from '@/components/calendar/WeekView';
 import DayView from '@/components/calendar/DayView';
 import MonthView from '@/components/calendar/MonthView';
-import { LogIn, MessageCircle, X, Send } from 'lucide-react-native';
+import { MessageCircle, X, Send } from 'lucide-react-native';
 import { C, SHADOW, R } from '@/constants/design';
 import MincaleLogo from '@/components/MincaleLogo';
+import GoogleLogo from '@/components/GoogleLogo';
 import { useBookingNotifications } from '@/hooks/useBookingNotifications';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -116,9 +117,11 @@ export default function CalendarScreen() {
           <Text style={styles.loginSubtext}>
             Googleアカウントでログインして{'\n'}カレンダーを同期しましょう
           </Text>
-          <TouchableOpacity onPress={signIn} style={styles.loginButton} activeOpacity={0.8}>
-            <LogIn size={20} color="#fff" />
-            <Text style={styles.loginButtonText}>Googleでログイン</Text>
+          <TouchableOpacity onPress={signIn} style={styles.loginButton} activeOpacity={0.85}>
+            <View style={styles.loginButtonIcon}>
+              <GoogleLogo size={20} />
+            </View>
+            <Text style={styles.loginButtonText}>Sign in with Google</Text>
           </TouchableOpacity>
           <Text style={styles.loginNote}>カレンダーの読み取り・書き込み権限を使用します</Text>
         </View>
@@ -252,22 +255,35 @@ const styles = StyleSheet.create({
   loginButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: C.primary,
-    paddingHorizontal: 32,
-    paddingVertical: 15,
-    borderRadius: R.full,
-    shadowColor: C.primaryDark,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    backgroundColor: '#FFFFFF',
+    paddingRight: 24,
+    paddingVertical: 0,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    height: 48,
+    shadowColor: 'rgba(0,0,0,0.1)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  loginButtonIcon: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#dadce0',
+    marginRight: 12,
   },
   loginButtonText: {
-    color: C.inverse,
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#3c4043',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.25,
   },
   loginNote: {
     fontSize: 11,
