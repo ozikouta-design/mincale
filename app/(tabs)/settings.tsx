@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import {
   LogOut, Link2, Clock, Calendar as CalendarIcon,
-  Share2, ChevronRight, User, Save, Mail, FolderPlus, Trash2, Pencil, Check, Copy,
+  Share2, ChevronRight, User, Save, Mail, FolderPlus, Trash2, Pencil, Check, Copy, Bell, BellOff,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
@@ -219,6 +219,85 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </React.Fragment>
         ))}
+      </View>
+
+      {/* 通知設定 */}
+      <Text style={styles.sectionTitle}>通知</Text>
+      <View style={styles.card}>
+        {/* マスターON/OFF */}
+        <View style={styles.row}>
+          <View style={styles.rowLeft}>
+            {settings.notificationsEnabled
+              ? <Bell size={20} color={C.primary} />
+              : <BellOff size={20} color={C.textMuted} />}
+            <Text style={styles.rowText}>通知を受け取る</Text>
+          </View>
+          <Switch
+            value={settings.notificationsEnabled}
+            onValueChange={async (val) => {
+              if (val && Platform.OS === 'web' && typeof Notification !== 'undefined') {
+                if (Notification.permission === 'default') {
+                  await Notification.requestPermission().catch(() => {});
+                }
+                if (Notification.permission === 'denied') {
+                  Alert.alert(
+                    '通知がブロックされています',
+                    'ブラウザの設定から通知を許可してください。',
+                  );
+                  return;
+                }
+              }
+              updateSettings({ notificationsEnabled: val });
+            }}
+            trackColor={{ false: C.border, true: C.primary }}
+          />
+        </View>
+
+        {settings.notificationsEnabled && (
+          <>
+            <View style={styles.divider} />
+            {/* 新規予約通知 */}
+            <View style={styles.row}>
+              <Text style={[styles.rowText, { color: C.textSub }]}>新規予約の通知</Text>
+              <Switch
+                value={settings.notifyNewBooking}
+                onValueChange={(val) => updateSettings({ notifyNewBooking: val })}
+                trackColor={{ false: C.border, true: C.primary }}
+              />
+            </View>
+            <View style={styles.divider} />
+            {/* ステータス変更通知 */}
+            <View style={styles.row}>
+              <Text style={[styles.rowText, { color: C.textSub }]}>予約確定・キャンセル通知</Text>
+              <Switch
+                value={settings.notifyBookingStatus}
+                onValueChange={(val) => updateSettings({ notifyBookingStatus: val })}
+                trackColor={{ false: C.border, true: C.primary }}
+              />
+            </View>
+            <View style={styles.divider} />
+            {/* リマインダー時間 */}
+            <Text style={[styles.subLabel, { paddingHorizontal: 16, paddingTop: 12 }]}>予定リマインダー</Text>
+            {([
+              { label: '5分前', value: 5 },
+              { label: '10分前', value: 10 },
+              { label: '15分前', value: 15 },
+              { label: '30分前', value: 30 },
+              { label: '1時間前', value: 60 },
+            ] as { label: string; value: 5 | 10 | 15 | 30 | 60 }[]).map(({ label, value }, i) => (
+              <React.Fragment key={value}>
+                {i > 0 && <View style={styles.divider} />}
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => updateSettings({ reminderMinutesBefore: value })}
+                >
+                  <Text style={[styles.rowText, { color: C.textSub }]}>{label}</Text>
+                  {settings.reminderMinutesBefore === value && <View style={styles.selectedDot} />}
+                </TouchableOpacity>
+              </React.Fragment>
+            ))}
+          </>
+        )}
       </View>
 
       {/* Booking Configuration */}

@@ -11,6 +11,10 @@ export interface AppSettings {
   calendarStartHour: number;                         // カレンダー表示開始時刻
   highlightWeekends: boolean;                        // 週末ハイライト
   defaultGroupId: string | null;                     // デフォルト表示グループ
+  notificationsEnabled: boolean;                     // 通知ON/OFF
+  reminderMinutesBefore: 5 | 10 | 15 | 30 | 60;    // 予定リマインダー(分前)
+  notifyNewBooking: boolean;                         // 新規予約通知
+  notifyBookingStatus: boolean;                      // 予約ステータス変更通知
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -21,6 +25,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   calendarStartHour: 8,
   highlightWeekends: true,
   defaultGroupId: null,
+  notificationsEnabled: true,
+  reminderMinutesBefore: 30,
+  notifyNewBooking: true,
+  notifyBookingStatus: true,
 };
 
 interface AppSettingsContextType {

@@ -55,6 +55,8 @@ export default function WeekView() {
   // 短タップ検出用
   const grantYRef = useRef(0);
   const grantTimeRef = useRef(0);
+  const grantPageYRef = useRef(0);   // 移動量検出用（ドラッグ後に詳細画面を開かないため）
+  const movedSignificantlyRef = useRef(false);
 
   const handleEventPress = useCallback((event: CalendarEvent) => {
     router.push({ pathname: '/event/[id]', params: { id: event.id } });
@@ -204,6 +206,8 @@ export default function WeekView() {
                 const y = e.nativeEvent.locationY;
                 grantYRef.current = y;
                 grantTimeRef.current = Date.now();
+                grantPageYRef.current = e.nativeEvent.pageY;
+                movedSignificantlyRef.current = false;
                 isLongPressingRef.current = false;
                 if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                 longPressTimerRef.current = setTimeout(() => {
@@ -229,6 +233,10 @@ export default function WeekView() {
                 }, 500);
               }}
               onResponderMove={(e) => {
+                // 8px以上の移動はドラッグとみなす（タップ誤検出を防止）
+                if (Math.abs(e.nativeEvent.pageY - grantPageYRef.current) > 8) {
+                  movedSignificantlyRef.current = true;
+                }
                 if (!isLongPressingRef.current || !interactionRef.current) return;
                 const state = interactionRef.current;
                 if (state.dayIdx !== dayIdx) return;
@@ -267,8 +275,8 @@ export default function WeekView() {
                       setInteraction(null);
                     });
                   }
-                } else if (!isLongPressingRef.current) {
-                  // 短タップ → 予定がある位置ならイベント詳細へ
+                } else if (!isLongPressingRef.current && !movedSignificantlyRef.current) {
+                  // 短タップ（移動なし）→ 予定がある位置ならイベント詳細へ
                   const elapsed = Date.now() - grantTimeRef.current;
                   if (elapsed < 500) {
                     const found = findEventAt(grantYRef.current, day);

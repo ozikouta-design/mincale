@@ -15,6 +15,7 @@ import { C, SHADOW, R } from '@/constants/design';
 import MincaleLogo from '@/components/MincaleLogo';
 import GoogleLogo from '@/components/GoogleLogo';
 import { useBookingNotifications } from '@/hooks/useBookingNotifications';
+import { useEventReminders } from '@/hooks/useEventReminders';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SMS_LAST_PHONE_KEY = 'sms_last_phone';
@@ -33,8 +34,9 @@ function saveLastPhone(phone: string) {
 }
 
 export default function CalendarScreen() {
-  const { viewMode, isAuthenticated, isLoading, signIn, goNext, goPrev, currentDate, userEmail, profile } = useCalendarContext();
+  const { viewMode, isAuthenticated, isLoading, signIn, goNext, goPrev, currentDate, userEmail, profile, events } = useCalendarContext();
   useBookingNotifications(userEmail);
+  useEventReminders(events);
 
   // SMS モーダル
   const [smsVisible, setSmsVisible] = useState(false);
