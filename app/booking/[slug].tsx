@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, Image, ScrollView, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useBookingPage } from '@/hooks/useBookingPage';
 import AvailabilityGrid from '@/components/booking/AvailabilityGrid';
@@ -75,6 +75,7 @@ export default function BookingScreen() {
   const duration = profile.booking_duration || 30;
   const startHour = profile.booking_start_hour || 9;
   const endHour = profile.booking_end_hour || 18;
+  const displayName = profile.name || profile.slug || profile.email;
 
   return (
     <View style={styles.container}>
@@ -115,10 +116,14 @@ export default function BookingScreen() {
           <View style={styles.hostCard}>
             <View style={styles.hostRow}>
               <View style={styles.hostAvatar}>
-                <User size={24} color="#4285F4" />
+                {profile.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+                ) : (
+                  <User size={24} color="#4285F4" />
+                )}
               </View>
               <View style={styles.hostInfo}>
-                <Text style={styles.hostName}>{profile.name || profile.email}</Text>
+                <Text style={styles.hostName}>{displayName}</Text>
                 <View style={styles.hostMeta}>
                   <Clock size={13} color="#888" />
                   <Text style={styles.hostMetaText}>{duration}分間の予約</Text>
@@ -183,7 +188,9 @@ const styles = StyleSheet.create({
     width: 48, height: 48, borderRadius: 24,
     backgroundColor: '#e8f0fe',
     alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImage: { width: 48, height: 48, borderRadius: 24 },
   hostInfo: { flex: 1 },
   hostName: { fontSize: 17, fontWeight: '700', color: '#222', marginBottom: 4 },
   hostMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },

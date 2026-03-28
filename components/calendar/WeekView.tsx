@@ -31,6 +31,45 @@ function getEventLayout(event: CalendarEvent, day: Date) {
   return { top, height };
 }
 
+// 重複イベントに列割り当てを計算（Google カレンダー方式）
+function computeEventColumns(dayEvents: CalendarEvent[], day: Date) {
+  if (dayEvents.length === 0) return [];
+  const items = dayEvents
+    .map(e => ({ event: e, ...getEventLayout(e, day) }))
+    .sort((a, b) => a.event.startTime.getTime() - b.event.startTime.getTime());
+
+  // 貪欲法で列インデックスを割り当て
+  const colEnds: number[] = [];
+  const colIdx: number[] = [];
+  for (const item of items) {
+    const col = colEnds.findIndex(end => end <= item.top + 1);
+    const assigned = col === -1 ? colEnds.length : col;
+    colEnds[assigned] = item.top + item.height;
+    colIdx.push(assigned);
+  }
+
+  // 各イベントの colCount = 重複グループ内の最大列数
+  const n = items.length;
+  const colCount = new Array(n).fill(1);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (items[j].top < items[i].top + items[i].height) {
+        const maxCol = Math.max(colIdx[i], colIdx[j]) + 1;
+        colCount[i] = Math.max(colCount[i], maxCol);
+        colCount[j] = Math.max(colCount[j], maxCol);
+      }
+    }
+  }
+
+  return items.map((item, i) => ({
+    event: item.event,
+    top: item.top,
+    height: item.height,
+    colIndex: colIdx[i],
+    colCount: colCount[i],
+  }));
+}
+
 function formatHour(hour: number, timeFormat: '24h' | '12h'): string {
   if (timeFormat === '24h') return `${hour.toString().padStart(2, '0')}:00`;
   if (hour === 0) return '12 AM';
@@ -327,8 +366,10 @@ export default function WeekView() {
               ))}
 
               {/* Events */}
-              {getEventsForDay(day).map(event => {
-                const { top, height } = getEventLayout(event, day);
+              {computeEventColumns(getEventsForDay(day), day).map(({ event, top, height, colIndex, colCount }) => {
+                const colWidth = (DAY_WIDTH - 2) / colCount;
+                const left = 1 + colIndex * colWidth;
+                const width = colWidth - 1;
                 // ドラッグ/リサイズ中は元の予定を薄く表示
                 const isDragging = interaction?.mode === 'drag' && interaction.event.id === event.id && interaction.dayIdx === dayIdx;
                 const isResizing = interaction?.mode === 'resize' && interaction.event.id === event.id && interaction.dayIdx === dayIdx;
@@ -340,15 +381,15 @@ export default function WeekView() {
                       style={{
                         position: 'absolute',
                         top,
-                        left: 1,
-                        right: 1,
+                        left,
+                        width,
                         height,
                         opacity: isDragging || isResizing ? 0.3 : 1,
                       }}
                     />
                     {/* リサイズハンドル */}
                     {!isDragging && !isResizing && (
-                      <View style={[styles.resizeHandle, { top: top + height - RESIZE_HANDLE_HEIGHT, left: 1, right: 1 }]} />
+                      <View style={[styles.resizeHandle, { top: top + height - RESIZE_HANDLE_HEIGHT, left, width }]} />
                     )}
                   </View>
                 );

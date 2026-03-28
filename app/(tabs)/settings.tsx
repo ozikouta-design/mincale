@@ -333,7 +333,8 @@ export default function SettingsScreen() {
         <View style={[styles.inputRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
           <Text style={styles.inputLabel}>予約可能曜日</Text>
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-            {(['日', '月', '火', '水', '木', '金', '土'] as const).map((label, idx) => {
+            {Array.from({ length: 7 }, (_, i) => (settings.weekStartsOn + i) % 7).map((idx) => {
+              const label = ['日', '月', '火', '水', '木', '金', '土'][idx];
               const active = bookingDays.includes(idx);
               const isSun = idx === 0;
               const isSat = idx === 6;
