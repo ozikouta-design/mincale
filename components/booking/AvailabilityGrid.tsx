@@ -143,8 +143,8 @@ export default function AvailabilityGrid({ grid, selectedSlot, onSelectSlot }: P
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  row: { flexDirection: 'row', flex: 1 },
+  container: { backgroundColor: '#fff' },
+  row: { flexDirection: 'row' },
 
   /* 固定左カラム */
   leftColumn: {

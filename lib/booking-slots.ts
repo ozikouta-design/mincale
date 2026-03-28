@@ -45,7 +45,7 @@ export function computeAvailabilityGrid(
       });
 
       cells.push({ startTime: new Date(slotStart), endTime: new Date(slotEnd), available: !isPast && !isBusy });
-      slotStart = addMinutes(slotStart, 15);
+      slotStart = addMinutes(slotStart, 30);
     }
 
     grid.push({ date, cells });
@@ -103,7 +103,7 @@ export function computeAvailableSlots(
       slots.push({ startTime: new Date(cursor), endTime: new Date(slotEnd) });
     }
 
-    cursor = addMinutes(cursor, 15);
+    cursor = addMinutes(cursor, 30);
   }
 
   return slots;
@@ -111,7 +111,7 @@ export function computeAvailableSlots(
 
 function roundUpToSlot(date: Date, _slotMinutes: number): Date {
   const minutes = date.getMinutes();
-  const rounded = Math.ceil(minutes / 15) * 15;
+  const rounded = Math.ceil(minutes / 30) * 30;
   const result = new Date(date);
   result.setMinutes(rounded, 0, 0);
   return result;

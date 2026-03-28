@@ -20,13 +20,13 @@ const MEETING_TYPES = [
 interface Props {
   slot: BookingSlot;
   isSubmitting: boolean;
-  onSubmit: (guestName: string, guestEmail: string, guestMemo: string, meetingType: string) => void;
+  onSubmit: (guestName: string, guestPhone: string, guestMemo: string, meetingType: string) => void;
   onBack: () => void;
 }
 
 export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Props) {
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [memo, setMemo] = useState('');
   const [meetingType, setMeetingType] = useState('zoom');
 
@@ -35,7 +35,11 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
       Alert.alert('エラー', 'お名前を入力してください');
       return;
     }
-    onSubmit(name.trim(), email.trim(), memo.trim(), meetingType);
+    if (!phone.trim()) {
+      Alert.alert('エラー', '電話番号を入力してください');
+      return;
+    }
+    onSubmit(name.trim(), phone.trim(), memo.trim(), meetingType);
   };
 
   return (
@@ -60,16 +64,15 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
         placeholderTextColor="#ccc"
       />
 
-      {/* Email */}
-      <Text style={styles.label}>メールアドレス</Text>
+      {/* Phone */}
+      <Text style={styles.label}>電話番号 *</Text>
       <TextInput
         style={styles.input}
-        value={email}
-        onChangeText={setEmail}
-        placeholder="your@email.com"
+        value={phone}
+        onChangeText={setPhone}
+        placeholder="090-0000-0000"
         placeholderTextColor="#ccc"
-        keyboardType="email-address"
-        autoCapitalize="none"
+        keyboardType="phone-pad"
       />
 
       {/* Meeting Type */}

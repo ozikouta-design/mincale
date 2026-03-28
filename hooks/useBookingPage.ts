@@ -79,7 +79,7 @@ export function useBookingPage(slug: string) {
   const submitBooking = useCallback(async (
     slot: SlotCell,
     guestName: string,
-    guestEmail: string,
+    guestPhone: string,
     guestMemo: string,
     meetingType: string,
   ): Promise<boolean> => {
@@ -89,7 +89,7 @@ export function useBookingPage(slug: string) {
       const { error: err } = await supabase.from('bookings').insert({
         host_email: profile.email,
         guest_name: guestName,
-        guest_email: guestEmail || null,
+        guest_phone: guestPhone || null,
         guest_memo: guestMemo || null,
         meeting_type: meetingType,
         start_time: slot.startTime.toISOString(),
