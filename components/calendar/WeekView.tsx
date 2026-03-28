@@ -164,7 +164,7 @@ export default function WeekView() {
       )}
 
       {/* Time grid */}
-      <ScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.scrollView} scrollEnabled={!interaction} showsVerticalScrollIndicator={false}>
         <View style={styles.grid}>
           {/* Time labels */}
           <View style={{ width: TIME_AXIS_WIDTH }}>
