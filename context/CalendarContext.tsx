@@ -201,19 +201,42 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   }, [google.isAuthenticated, google.userEmail]);
 
   // Sync Google Calendar events to Supabase for public booking page
+  // 選択中（表示ON）のカレンダーのみ同期し、非表示カレンダーの予定は削除する
   useEffect(() => {
-    if (!google.events.length || !google.userEmail) return;
-    const rows = google.events.map(e => ({
-      event_id: e.id,
-      host_email: google.userEmail!,
-      start_time: e.startTime.toISOString(),
-      end_time: e.endTime.toISOString(),
-      is_all_day: e.isAllDay,
-      updated_at: new Date().toISOString(),
-    }));
-    supabase.from('host_busy_slots').upsert(rows, { onConflict: 'event_id,host_email' })
-      .then(({ error }) => { if (error) console.error('host_busy_slots sync error:', error); });
-  }, [google.events, google.userEmail]);
+    if (!google.userEmail || !google.calendarList.length) return;
+    const selectedIds = new Set(
+      google.calendarList.filter(c => c.selected).map(c => c.id)
+    );
+    const syncRows = google.events
+      .filter(e => e.calendarId && selectedIds.has(e.calendarId))
+      .map(e => ({
+        event_id: e.id,
+        host_email: google.userEmail!,
+        start_time: e.startTime.toISOString(),
+        end_time: e.endTime.toISOString(),
+        is_all_day: e.isAllDay,
+        updated_at: new Date().toISOString(),
+      }));
+    const deleteIds = google.events
+      .filter(e => e.calendarId && !selectedIds.has(e.calendarId))
+      .map(e => e.id);
+    (async () => {
+      if (syncRows.length > 0) {
+        const { error } = await supabase
+          .from('host_busy_slots')
+          .upsert(syncRows, { onConflict: 'event_id,host_email' });
+        if (error) console.error('host_busy_slots upsert error:', error);
+      }
+      if (deleteIds.length > 0) {
+        const { error } = await supabase
+          .from('host_busy_slots')
+          .delete()
+          .eq('host_email', google.userEmail!)
+          .in('event_id', deleteIds);
+        if (error) console.error('host_busy_slots delete error:', error);
+      }
+    })();
+  }, [google.events, google.calendarList, google.userEmail]);
 
   useEffect(() => {
     if (google.isAuthenticated) refreshEvents();
