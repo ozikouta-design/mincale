@@ -325,6 +325,34 @@ export default function SettingsScreen() {
         </>
       )}
 
+      {/* デフォルト表示カレンダー */}
+      {isAuthenticated && calendarGroups.length > 0 && (
+        <>
+          <Text style={styles.subLabel}>デフォルト表示カレンダー</Text>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => updateSettings({ defaultGroupId: null })}
+            >
+              <Text style={styles.rowText}>全カレンダー</Text>
+              {settings.defaultGroupId === null && <View style={styles.selectedDot} />}
+            </TouchableOpacity>
+            {calendarGroups.map((group, i) => (
+              <React.Fragment key={group.id}>
+                <View style={styles.divider} />
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => updateSettings({ defaultGroupId: group.id })}
+                >
+                  <Text style={styles.rowText}>{group.name}</Text>
+                  {settings.defaultGroupId === group.id && <View style={styles.selectedDot} />}
+                </TouchableOpacity>
+              </React.Fragment>
+            ))}
+          </View>
+        </>
+      )}
+
       {/* カレンダーグループ管理 */}
       {isAuthenticated && calendarList.length === 0 && !isLoading && (
         <>

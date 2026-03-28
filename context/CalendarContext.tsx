@@ -76,7 +76,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
   const { settings } = useAppSettings();
   const [viewMode, setViewMode] = useState<ViewMode>(settings.defaultView);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(settings.defaultGroupId ?? null);
   const [syncRangeDays, setSyncRangeDaysState] = useState<number>(0);
   const google = useGoogleCalendar();
   const userProfileHook = useUserProfile();

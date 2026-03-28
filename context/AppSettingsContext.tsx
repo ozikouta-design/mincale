@@ -10,6 +10,7 @@ export interface AppSettings {
   timeFormat: '24h' | '12h';                         // 時間表示形式
   calendarStartHour: number;                         // カレンダー表示開始時刻
   highlightWeekends: boolean;                        // 週末ハイライト
+  defaultGroupId: string | null;                     // デフォルト表示グループ
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -19,6 +20,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   timeFormat: '24h',
   calendarStartHour: 8,
   highlightWeekends: true,
+  defaultGroupId: null,
 };
 
 interface AppSettingsContextType {
