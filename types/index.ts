@@ -57,6 +57,7 @@ export interface UserProfile {
   booking_end_hour?: number;
   booking_days?: number[];
   booking_lead_time?: number;
+  block_all_day_events?: boolean;
 }
 
 export interface EventFormData {

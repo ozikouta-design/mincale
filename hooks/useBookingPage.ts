@@ -50,13 +50,19 @@ export function useBookingPage(slug: string) {
       const startDate = startOfDay(new Date());
       const endDate = endOfDay(addDays(startDate, 14));
 
+      let busyQuery = supabase
+        .from('host_busy_slots')
+        .select('start_time, end_time')
+        .eq('host_email', profile.email)
+        .gte('end_time', startDate.toISOString())
+        .lte('start_time', endDate.toISOString());
+
+      if (!profile.block_all_day_events) {
+        busyQuery = busyQuery.eq('is_all_day', false);
+      }
+
       const [{ data: googleBusy }, { data: bookingsBusy }] = await Promise.all([
-        supabase
-          .from('host_busy_slots')
-          .select('start_time, end_time')
-          .eq('host_email', profile.email)
-          .gte('end_time', startDate.toISOString())
-          .lte('start_time', endDate.toISOString()),
+        busyQuery,
         supabase
           .from('bookings')
           .select('start_time, end_time')

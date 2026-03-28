@@ -26,6 +26,7 @@ export default function SettingsScreen() {
   const [bookingDuration, setBookingDuration] = useState('30');
   const [startHour, setStartHour] = useState('9');
   const [endHour, setEndHour] = useState('18');
+  const [blockAllDayEvents, setBlockAllDayEvents] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // グループ作成・編集モーダルの状態
@@ -43,6 +44,7 @@ export default function SettingsScreen() {
       setBookingDuration(String(profile.booking_duration || 30));
       setStartHour(String(profile.booking_start_hour || 9));
       setEndHour(String(profile.booking_end_hour || 18));
+      setBlockAllDayEvents(profile.block_all_day_events ?? false);
     }
   }, [profile]);
 
@@ -56,6 +58,7 @@ export default function SettingsScreen() {
         booking_duration: parseInt(bookingDuration, 10) || 30,
         booking_start_hour: parseInt(startHour, 10) || 9,
         booking_end_hour: parseInt(endHour, 10) || 18,
+        block_all_day_events: blockAllDayEvents,
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('保存完了', '設定を保存しました');
@@ -319,6 +322,23 @@ export default function SettingsScreen() {
               <Text style={styles.timeUnit}>時</Text>
             </View>
           </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.row}>
+          <View style={styles.rowLeft}>
+            <CalendarIcon size={18} color={C.textSub} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowText}>終日予定で予約をブロック</Text>
+              <Text style={styles.calGroupLabel}>オフにすると誕生日・祝日は予約枠に影響しません</Text>
+            </View>
+          </View>
+          <Switch
+            value={blockAllDayEvents}
+            onValueChange={setBlockAllDayEvents}
+            trackColor={{ false: C.border, true: C.primary }}
+          />
         </View>
 
         <View style={styles.divider} />
