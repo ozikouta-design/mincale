@@ -7,6 +7,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { useRouter } from 'expo-router';
 import { useCalendarContext } from '@/context/CalendarContext';
+import { useAppSettings } from '@/context/AppSettingsContext';
 import { HOUR_HEIGHT, TIME_AXIS_WIDTH, HOURS, DAY_LABELS_JA } from '@/constants/calendar';
 import EventBlock from './EventBlock';
 import { CalendarEvent, EventFormData } from '@/types';
@@ -29,11 +30,20 @@ function getEventLayout(event: CalendarEvent, day: Date) {
   return { top, height };
 }
 
+function formatHour(hour: number, timeFormat: '24h' | '12h'): string {
+  if (timeFormat === '24h') return `${hour.toString().padStart(2, '0')}:00`;
+  if (hour === 0) return '12 AM';
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return '12 PM';
+  return `${hour - 12} PM`;
+}
+
 export default function WeekView() {
   const { currentDate, events, updateEvent, refreshEvents } = useCalendarContext();
+  const { settings } = useAppSettings();
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: settings.weekStartsOn });
 
   // ロングプレス・ドラッグ管理
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,10 +62,9 @@ export default function WeekView() {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   useEffect(() => {
-    const now = new Date();
-    const scrollTo = Math.max(0, (now.getHours() - 1) * HOUR_HEIGHT);
+    const scrollTo = settings.calendarStartHour * HOUR_HEIGHT;
     setTimeout(() => scrollRef.current?.scrollTo({ y: scrollTo, animated: false }), 100);
-  }, []);
+  }, [settings.calendarStartHour]);
 
   const getEventsForDay = (day: Date): CalendarEvent[] =>
     events.filter(e => !e.isAllDay && isSameDay(e.startTime, day));
@@ -171,7 +180,7 @@ export default function WeekView() {
             {HOURS.map(hour => (
               <View key={hour} style={[styles.hourRow, { height: HOUR_HEIGHT }]}>
                 <Text style={styles.hourText}>
-                  {hour.toString().padStart(2, '0')}:00
+                  {formatHour(hour, settings.timeFormat)}
                 </Text>
               </View>
             ))}
@@ -181,7 +190,11 @@ export default function WeekView() {
           {days.map((day, dayIdx) => (
             <View
               key={dayIdx}
-              style={[styles.dayColumn, { width: DAY_WIDTH }]}
+              style={[
+                styles.dayColumn,
+                { width: DAY_WIDTH },
+                settings.highlightWeekends && (day.getDay() === 0 || day.getDay() === 6) && styles.weekendColumn,
+              ]}
               // capture phase で子（EventBlock）より先にタッチを受け取る
               // ※ ScrollView への伝播は onResponderTerminationRequest で許可する
               onStartShouldSetResponderCapture={() => true}
@@ -205,7 +218,8 @@ export default function WeekView() {
                   } else {
                     const totalMin = Math.round((y / HOUR_HEIGHT) * 60 / 30) * 30;
                     const snapTop = (totalMin / 60) * HOUR_HEIGHT;
-                    newState = { mode: 'new', dayIdx, startTop: snapTop, endTop: snapTop + HOUR_HEIGHT };
+                    const durationH = (settings.defaultEventDuration / 60) * HOUR_HEIGHT;
+                    newState = { mode: 'new', dayIdx, startTop: snapTop, endTop: snapTop + durationH };
                   }
                   interactionRef.current = newState;
                   setInteraction(newState);
@@ -387,6 +401,9 @@ const styles = StyleSheet.create({
     WebkitUserSelect: 'none',
     cursor: 'default',
     // touchAction は設定しない: ブラウザの縦スクロールを妨げないようにする
+  },
+  weekendColumn: {
+    backgroundColor: 'rgba(0,0,0,0.018)',
   },
   // 新規作成ゴーストブロック
   ghostBlock: {

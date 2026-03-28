@@ -10,6 +10,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCalendarContext } from '@/context/CalendarContext';
+import { useAppSettings } from '@/context/AppSettingsContext';
 
 export default function SettingsScreen() {
   const {
@@ -18,6 +19,7 @@ export default function SettingsScreen() {
     createCalendarGroup, updateCalendarGroup, deleteCalendarGroup, setGroupVisibility,
     syncRangeDays, setSyncRangeDays, isLoading, refreshEvents, fetchCalendarList,
   } = useCalendarContext();
+  const { settings, updateSettings } = useAppSettings();
   const [slug, setSlug] = useState('');
   const [bookingDuration, setBookingDuration] = useState('30');
   const [startHour, setStartHour] = useState('9');
@@ -120,6 +122,102 @@ export default function SettingsScreen() {
             <ChevronRight size={18} color="#ccc" />
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* 表示設定 */}
+      <Text style={styles.sectionTitle}>表示設定</Text>
+
+      {/* 週の始め */}
+      <Text style={styles.subLabel}>週の始め</Text>
+      <View style={styles.card}>
+        {([
+          { label: '日曜日', value: 0 },
+          { label: '月曜日', value: 1 },
+          { label: '土曜日', value: 6 },
+        ] as { label: string; value: 0 | 1 | 6 }[]).map(({ label, value }, i) => (
+          <React.Fragment key={value}>
+            {i > 0 && <View style={styles.divider} />}
+            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ weekStartsOn: value })}>
+              <Text style={styles.rowText}>{label}</Text>
+              {settings.weekStartsOn === value && <View style={styles.selectedDot} />}
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
+      </View>
+
+      {/* デフォルト表示 */}
+      <Text style={styles.subLabel}>デフォルト表示</Text>
+      <View style={styles.card}>
+        {([
+          { label: '週表示', value: 'week' },
+          { label: '月表示', value: 'month' },
+          { label: '日表示', value: 'day' },
+        ] as { label: string; value: 'week' | 'month' | 'day' }[]).map(({ label, value }, i) => (
+          <React.Fragment key={value}>
+            {i > 0 && <View style={styles.divider} />}
+            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ defaultView: value })}>
+              <Text style={styles.rowText}>{label}</Text>
+              {settings.defaultView === value && <View style={styles.selectedDot} />}
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
+      </View>
+
+      {/* デフォルト予定時間 */}
+      <Text style={styles.subLabel}>デフォルト予定時間</Text>
+      <View style={styles.card}>
+        {([
+          { label: '15分', value: 15 },
+          { label: '30分', value: 30 },
+          { label: '1時間', value: 60 },
+          { label: '1時間30分', value: 90 },
+          { label: '2時間', value: 120 },
+        ] as { label: string; value: 15 | 30 | 60 | 90 | 120 }[]).map(({ label, value }, i) => (
+          <React.Fragment key={value}>
+            {i > 0 && <View style={styles.divider} />}
+            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ defaultEventDuration: value })}>
+              <Text style={styles.rowText}>{label}</Text>
+              {settings.defaultEventDuration === value && <View style={styles.selectedDot} />}
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
+      </View>
+
+      {/* 時間表示形式 + 週末ハイライト */}
+      <Text style={styles.subLabel}>その他の表示</Text>
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.row} onPress={() => updateSettings({ timeFormat: '24h' })}>
+          <Text style={styles.rowText}>24時間制</Text>
+          {settings.timeFormat === '24h' && <View style={styles.selectedDot} />}
+        </TouchableOpacity>
+        <View style={styles.divider} />
+        <TouchableOpacity style={styles.row} onPress={() => updateSettings({ timeFormat: '12h' })}>
+          <Text style={styles.rowText}>12時間制 (AM/PM)</Text>
+          {settings.timeFormat === '12h' && <View style={styles.selectedDot} />}
+        </TouchableOpacity>
+        <View style={styles.divider} />
+        <View style={styles.row}>
+          <Text style={styles.rowText}>週末をハイライト表示</Text>
+          <Switch
+            value={settings.highlightWeekends}
+            onValueChange={(val) => updateSettings({ highlightWeekends: val })}
+            trackColor={{ false: '#ccc', true: '#4285F4' }}
+          />
+        </View>
+      </View>
+
+      {/* カレンダー表示開始時刻 */}
+      <Text style={styles.subLabel}>カレンダー表示開始時刻</Text>
+      <View style={styles.card}>
+        {[6, 7, 8, 9, 10, 11, 12].map((hour, i) => (
+          <React.Fragment key={hour}>
+            {i > 0 && <View style={styles.divider} />}
+            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ calendarStartHour: hour })}>
+              <Text style={styles.rowText}>{hour}時</Text>
+              {settings.calendarStartHour === hour && <View style={styles.selectedDot} />}
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
       </View>
 
       {/* Booking Configuration */}
@@ -490,6 +588,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 8,
+  },
+  subLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#888',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 6,
   },
   card: {
     backgroundColor: '#fff',

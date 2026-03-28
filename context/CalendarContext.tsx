@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData, UserProfile, ViewMode, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAppSettings } from '@/context/AppSettingsContext';
 import { supabase } from '@/lib/supabase';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -72,7 +73,8 @@ interface CalendarContextType {
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
 
 export function CalendarProvider({ children }: { children: React.ReactNode }) {
-  const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const { settings } = useAppSettings();
+  const [viewMode, setViewMode] = useState<ViewMode>(settings.defaultView);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [syncRangeDays, setSyncRangeDaysState] = useState<number>(0);
@@ -97,12 +99,12 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     await saveSyncRange(days);
   }, []);
 
-  // ビューモードをストレージから復元・保存
+  // ビューモードをストレージから復元（なければ settings.defaultView を使用）
   useEffect(() => {
     try {
       const saved = Platform.OS === 'web'
         ? localStorage.getItem('calendar_view_mode')
-        : null; // native は SecureStore 非同期なので省略
+        : null;
       if (saved && ['week', 'day', 'month'].includes(saved)) {
         setViewMode(saved as ViewMode);
       }
@@ -119,7 +121,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     (date: Date, mode: ViewMode): [Date, Date] => {
       switch (mode) {
         case 'week':
-          return [startOfWeek(date, { weekStartsOn: 0 }), endOfWeek(date, { weekStartsOn: 0 })];
+          return [startOfWeek(date, { weekStartsOn: settings.weekStartsOn }), endOfWeek(date, { weekStartsOn: settings.weekStartsOn })];
         case 'month':
           return [startOfMonth(date), endOfMonth(date)];
         case 'day':

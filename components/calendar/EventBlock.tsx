@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { CalendarEvent } from '@/types';
 import { format } from 'date-fns';
+import { useAppSettings } from '@/context/AppSettingsContext';
 
 interface Props {
   event: CalendarEvent;
@@ -11,6 +12,9 @@ interface Props {
 }
 
 export default function EventBlock({ event, style, onPress }: Props) {
+  const { settings } = useAppSettings();
+  const timeStr = format(event.startTime, settings.timeFormat === '12h' ? 'h:mm a' : 'HH:mm');
+
   // カレンダーグリッド内では親がタッチを管理するため、TouchableOpacity はレンダリングしない
   if (!onPress) {
     return (
@@ -27,9 +31,7 @@ export default function EventBlock({ event, style, onPress }: Props) {
           {event.title}
         </Text>
         {!event.isAllDay && (
-          <Text style={styles.time} numberOfLines={1}>
-            {format(event.startTime, 'HH:mm')}
-          </Text>
+          <Text style={styles.time} numberOfLines={1}>{timeStr}</Text>
         )}
       </View>
     );
@@ -49,9 +51,7 @@ export default function EventBlock({ event, style, onPress }: Props) {
         {event.title}
       </Text>
       {!event.isAllDay && (
-        <Text style={styles.time} numberOfLines={1}>
-          {format(event.startTime, 'HH:mm')}
-        </Text>
+        <Text style={styles.time} numberOfLines={1}>{timeStr}</Text>
       )}
     </TouchableOpacity>
   );

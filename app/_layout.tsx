@@ -9,6 +9,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { CalendarProvider } from '@/context/CalendarContext';
+import { AppSettingsProvider } from '@/context/AppSettingsContext';
 
 // OAuth ポップアップが戻ってきた際に認証を完了させる（Web 必須）
 WebBrowser.maybeCompleteAuthSession();
@@ -72,6 +73,7 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AppSettingsProvider>
       <CalendarProvider>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -89,6 +91,7 @@ function RootLayoutNav() {
           />
         </Stack>
       </CalendarProvider>
+      </AppSettingsProvider>
     </ThemeProvider>
   );
 }
