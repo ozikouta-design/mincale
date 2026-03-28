@@ -12,6 +12,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useCalendarContext } from '@/context/CalendarContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { C, SHADOW, R } from '@/constants/design';
+import SettingPickerRow from '@/components/SettingPickerRow';
 
 export default function SettingsScreen() {
   const {
@@ -127,75 +128,58 @@ export default function SettingsScreen() {
 
       {/* 表示設定 */}
       <Text style={styles.sectionTitle}>表示設定</Text>
-
-      {/* 週の始め */}
-      <Text style={styles.subLabel}>週の始め</Text>
       <View style={styles.card}>
-        {([
-          { label: '日曜日', value: 0 },
-          { label: '月曜日', value: 1 },
-          { label: '土曜日', value: 6 },
-        ] as { label: string; value: 0 | 1 | 6 }[]).map(({ label, value }, i) => (
-          <React.Fragment key={value}>
-            {i > 0 && <View style={styles.divider} />}
-            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ weekStartsOn: value })}>
-              <Text style={styles.rowText}>{label}</Text>
-              {settings.weekStartsOn === value && <View style={styles.selectedDot} />}
-            </TouchableOpacity>
-          </React.Fragment>
-        ))}
-      </View>
-
-      {/* デフォルト表示 */}
-      <Text style={styles.subLabel}>デフォルト表示</Text>
-      <View style={styles.card}>
-        {([
-          { label: '週表示', value: 'week' },
-          { label: '月表示', value: 'month' },
-          { label: '日表示', value: 'day' },
-        ] as { label: string; value: 'week' | 'month' | 'day' }[]).map(({ label, value }, i) => (
-          <React.Fragment key={value}>
-            {i > 0 && <View style={styles.divider} />}
-            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ defaultView: value })}>
-              <Text style={styles.rowText}>{label}</Text>
-              {settings.defaultView === value && <View style={styles.selectedDot} />}
-            </TouchableOpacity>
-          </React.Fragment>
-        ))}
-      </View>
-
-      {/* デフォルト予定時間 */}
-      <Text style={styles.subLabel}>デフォルト予定時間</Text>
-      <View style={styles.card}>
-        {([
-          { label: '15分', value: 15 },
-          { label: '30分', value: 30 },
-          { label: '1時間', value: 60 },
-          { label: '1時間30分', value: 90 },
-          { label: '2時間', value: 120 },
-        ] as { label: string; value: 15 | 30 | 60 | 90 | 120 }[]).map(({ label, value }, i) => (
-          <React.Fragment key={value}>
-            {i > 0 && <View style={styles.divider} />}
-            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ defaultEventDuration: value })}>
-              <Text style={styles.rowText}>{label}</Text>
-              {settings.defaultEventDuration === value && <View style={styles.selectedDot} />}
-            </TouchableOpacity>
-          </React.Fragment>
-        ))}
-      </View>
-
-      {/* 時間表示形式 + 週末ハイライト */}
-      <Text style={styles.subLabel}>その他の表示</Text>
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.row} onPress={() => updateSettings({ timeFormat: '24h' })}>
-          <Text style={styles.rowText}>24時間制</Text>
-          {settings.timeFormat === '24h' && <View style={styles.selectedDot} />}
-        </TouchableOpacity>
+        <SettingPickerRow
+          label="週の始め"
+          value={settings.weekStartsOn}
+          options={[
+            { label: '日曜日', value: 0 as 0 | 1 | 6 },
+            { label: '月曜日', value: 1 as 0 | 1 | 6 },
+            { label: '土曜日', value: 6 as 0 | 1 | 6 },
+          ]}
+          onChange={(v) => updateSettings({ weekStartsOn: v })}
+        />
         <View style={styles.divider} />
-        <TouchableOpacity style={styles.row} onPress={() => updateSettings({ timeFormat: '12h' })}>
-          <Text style={styles.rowText}>12時間制 (AM/PM)</Text>
-          {settings.timeFormat === '12h' && <View style={styles.selectedDot} />}
-        </TouchableOpacity>
+        <SettingPickerRow
+          label="デフォルト表示"
+          value={settings.defaultView}
+          options={[
+            { label: '週表示', value: 'week' as const },
+            { label: '月表示', value: 'month' as const },
+            { label: '日表示', value: 'day' as const },
+          ]}
+          onChange={(v) => updateSettings({ defaultView: v })}
+        />
+        <View style={styles.divider} />
+        <SettingPickerRow
+          label="デフォルト予定時間"
+          value={settings.defaultEventDuration}
+          options={[
+            { label: '15分', value: 15 as 15 | 30 | 60 | 90 | 120 },
+            { label: '30分', value: 30 as 15 | 30 | 60 | 90 | 120 },
+            { label: '1時間', value: 60 as 15 | 30 | 60 | 90 | 120 },
+            { label: '1時間30分', value: 90 as 15 | 30 | 60 | 90 | 120 },
+            { label: '2時間', value: 120 as 15 | 30 | 60 | 90 | 120 },
+          ]}
+          onChange={(v) => updateSettings({ defaultEventDuration: v })}
+        />
+        <View style={styles.divider} />
+        <SettingPickerRow
+          label="時間表示形式"
+          value={settings.timeFormat}
+          options={[
+            { label: '24時間制', value: '24h' as const },
+            { label: '12時間制 (AM/PM)', value: '12h' as const },
+          ]}
+          onChange={(v) => updateSettings({ timeFormat: v })}
+        />
+        <View style={styles.divider} />
+        <SettingPickerRow
+          label="カレンダー表示開始"
+          value={settings.calendarStartHour}
+          options={[6, 7, 8, 9, 10, 11, 12].map(h => ({ label: `${h}時`, value: h }))}
+          onChange={(v) => updateSettings({ calendarStartHour: v })}
+        />
         <View style={styles.divider} />
         <View style={styles.row}>
           <Text style={styles.rowText}>週末をハイライト表示</Text>
@@ -205,20 +189,6 @@ export default function SettingsScreen() {
             trackColor={{ false: C.border, true: C.primary }}
           />
         </View>
-      </View>
-
-      {/* カレンダー表示開始時刻 */}
-      <Text style={styles.subLabel}>カレンダー表示開始時刻</Text>
-      <View style={styles.card}>
-        {[6, 7, 8, 9, 10, 11, 12].map((hour, i) => (
-          <React.Fragment key={hour}>
-            {i > 0 && <View style={styles.divider} />}
-            <TouchableOpacity style={styles.row} onPress={() => updateSettings({ calendarStartHour: hour })}>
-              <Text style={styles.rowText}>{hour}時</Text>
-              {settings.calendarStartHour === hour && <View style={styles.selectedDot} />}
-            </TouchableOpacity>
-          </React.Fragment>
-        ))}
       </View>
 
       {/* 通知設定 */}
@@ -277,25 +247,18 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.divider} />
             {/* リマインダー時間 */}
-            <Text style={[styles.subLabel, { paddingHorizontal: 16, paddingTop: 12 }]}>予定リマインダー</Text>
-            {([
-              { label: '5分前', value: 5 },
-              { label: '10分前', value: 10 },
-              { label: '15分前', value: 15 },
-              { label: '30分前', value: 30 },
-              { label: '1時間前', value: 60 },
-            ] as { label: string; value: 5 | 10 | 15 | 30 | 60 }[]).map(({ label, value }, i) => (
-              <React.Fragment key={value}>
-                {i > 0 && <View style={styles.divider} />}
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => updateSettings({ reminderMinutesBefore: value })}
-                >
-                  <Text style={[styles.rowText, { color: C.textSub }]}>{label}</Text>
-                  {settings.reminderMinutesBefore === value && <View style={styles.selectedDot} />}
-                </TouchableOpacity>
-              </React.Fragment>
-            ))}
+            <SettingPickerRow
+              label="予定リマインダー"
+              value={settings.reminderMinutesBefore}
+              options={[
+                { label: '5分前', value: 5 as 5 | 10 | 15 | 30 | 60 },
+                { label: '10分前', value: 10 as 5 | 10 | 15 | 30 | 60 },
+                { label: '15分前', value: 15 as 5 | 10 | 15 | 30 | 60 },
+                { label: '30分前', value: 30 as 5 | 10 | 15 | 30 | 60 },
+                { label: '1時間前', value: 60 as 5 | 10 | 15 | 30 | 60 },
+              ]}
+              onChange={(v) => updateSettings({ reminderMinutesBefore: v })}
+            />
           </>
         )}
       </View>
@@ -381,26 +344,18 @@ export default function SettingsScreen() {
         <>
           <Text style={styles.sectionTitle}>同期範囲</Text>
           <View style={styles.card}>
-            {[
-              { label: '都度（現在のビューのみ）', value: 0 },
-              { label: '前後 30日', value: 30 },
-              { label: '前後 60日', value: 60 },
-              { label: '前後 90日', value: 90 },
-              { label: '前後 120日', value: 120 },
-            ].map(({ label, value }, i, arr) => (
-              <React.Fragment key={value}>
-                {i > 0 && <View style={styles.divider} />}
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => setSyncRangeDays(value)}
-                >
-                  <Text style={styles.rowText}>{label}</Text>
-                  {syncRangeDays === value && (
-                    <View style={styles.selectedDot} />
-                  )}
-                </TouchableOpacity>
-              </React.Fragment>
-            ))}
+            <SettingPickerRow
+              label="同期範囲"
+              value={syncRangeDays}
+              options={[
+                { label: '都度（現在のビューのみ）', value: 0 },
+                { label: '前後 30日', value: 30 },
+                { label: '前後 60日', value: 60 },
+                { label: '前後 90日', value: 90 },
+                { label: '前後 120日', value: 120 },
+              ]}
+              onChange={(v) => setSyncRangeDays(v)}
+            />
           </View>
         </>
       )}
@@ -408,27 +363,17 @@ export default function SettingsScreen() {
       {/* デフォルト表示カレンダー */}
       {isAuthenticated && calendarGroups.length > 0 && (
         <>
-          <Text style={styles.subLabel}>デフォルト表示カレンダー</Text>
+          <Text style={styles.sectionTitle}>デフォルト表示</Text>
           <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => updateSettings({ defaultGroupId: null })}
-            >
-              <Text style={styles.rowText}>全カレンダー</Text>
-              {settings.defaultGroupId === null && <View style={styles.selectedDot} />}
-            </TouchableOpacity>
-            {calendarGroups.map((group, i) => (
-              <React.Fragment key={group.id}>
-                <View style={styles.divider} />
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => updateSettings({ defaultGroupId: group.id })}
-                >
-                  <Text style={styles.rowText}>{group.name}</Text>
-                  {settings.defaultGroupId === group.id && <View style={styles.selectedDot} />}
-                </TouchableOpacity>
-              </React.Fragment>
-            ))}
+            <SettingPickerRow
+              label="デフォルト表示カレンダー"
+              value={settings.defaultGroupId ?? '__all__'}
+              options={[
+                { label: '全カレンダー', value: '__all__' },
+                ...calendarGroups.map(g => ({ label: g.name, value: g.id })),
+              ]}
+              onChange={(v) => updateSettings({ defaultGroupId: v === '__all__' ? null : v })}
+            />
           </View>
         </>
       )}
