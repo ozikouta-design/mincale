@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { useCalendarContext } from '@/context/CalendarContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { HOUR_HEIGHT, TIME_AXIS_WIDTH, HOURS, DAY_LABELS_JA } from '@/constants/calendar';
+import { C } from '@/constants/design';
 import EventBlock from './EventBlock';
 import { CalendarEvent, EventFormData } from '@/types';
 
@@ -361,40 +362,42 @@ export default function WeekView() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: C.bg },
   headerRow: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 1,
+    borderBottomColor: C.borderLight,
     paddingBottom: 4,
+    backgroundColor: C.card,
   },
   dayHeader: { alignItems: 'center', paddingVertical: 4 },
-  dayLabel: { fontSize: 11, color: '#666', marginBottom: 2 },
-  todayLabel: { color: '#4285F4' },
-  satLabel: { color: '#4285F4' },
-  sunLabel: { color: '#EA4335' },
+  dayLabel: { fontSize: 11, color: C.textMuted, marginBottom: 2, fontWeight: '500' },
+  todayLabel: { color: C.primary },
+  satLabel: { color: C.saturday },
+  sunLabel: { color: C.sunday },
   dateCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  todayCircle: { backgroundColor: '#4285F4' },
-  dateText: { fontSize: 14, fontWeight: '500', color: '#333' },
-  todayText: { color: '#fff', fontWeight: '700' },
-  satText: { color: '#4285F4' },
-  sunText: { color: '#EA4335' },
+  todayCircle: { backgroundColor: C.today },
+  dateText: { fontSize: 14, fontWeight: '500', color: C.text },
+  todayText: { color: C.inverse, fontWeight: '700' },
+  satText: { color: C.saturday },
+  sunText: { color: C.sunday },
   allDayRow: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 1,
+    borderBottomColor: C.borderLight,
     paddingVertical: 4,
     minHeight: 28,
+    backgroundColor: C.card,
   },
-  allDayLabel: { fontSize: 10, color: '#999', textAlign: 'center', marginTop: 4 },
+  allDayLabel: { fontSize: 10, color: C.textMuted, textAlign: 'center', marginTop: 4 },
   allDayCell: { paddingHorizontal: 1 },
   scrollView: { flex: 1 },
   grid: { flexDirection: 'row' },
   hourRow: { justifyContent: 'flex-start' },
-  hourText: { fontSize: 10, color: '#999', textAlign: 'right', paddingRight: 8, marginTop: -6 },
+  hourText: { fontSize: 11, color: C.textMuted, textAlign: 'right', paddingRight: 8, marginTop: -6 },
   dayColumn: {
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: '#e8e8e8',
+    borderLeftWidth: 1,
+    borderLeftColor: C.borderLight,
     height: 24 * HOUR_HEIGHT,
     // @ts-ignore web only
     userSelect: 'none',
@@ -403,17 +406,17 @@ const styles = StyleSheet.create({
     // touchAction は設定しない: ブラウザの縦スクロールを妨げないようにする
   },
   weekendColumn: {
-    backgroundColor: 'rgba(0,0,0,0.018)',
+    backgroundColor: 'rgba(0,0,0,0.016)',
   },
   // 新規作成ゴーストブロック
   ghostBlock: {
     position: 'absolute',
     left: 2,
     right: 2,
-    backgroundColor: 'rgba(66, 133, 244, 0.25)',
-    borderRadius: 4,
+    backgroundColor: C.primaryGlow,
+    borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: '#4285F4',
+    borderColor: C.primary,
     zIndex: 10,
   },
   // ドラッグ/リサイズゴースト（既存予定）
@@ -421,14 +424,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 1,
     right: 1,
-    borderRadius: 4,
+    borderRadius: 6,
     paddingHorizontal: 4,
     paddingVertical: 2,
     zIndex: 10,
     borderWidth: 1.5,
-    borderColor: 'rgba(0,0,0,0.2)',
+    borderColor: 'rgba(0,0,0,0.15)',
   },
-  ghostEventTitle: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  ghostEventTitle: { color: C.inverse, fontSize: 11, fontWeight: '600' },
   resizeHandleActive: {
     position: 'absolute',
     bottom: 2,
@@ -447,7 +450,7 @@ const styles = StyleSheet.create({
   hourLine: {
     position: 'absolute',
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#e8e8e8',
+    backgroundColor: C.borderLight,
   },
   nowLine: {
     position: 'absolute',
@@ -457,6 +460,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
-  nowDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EA4335', marginLeft: -4 },
-  nowLineBar: { flex: 1, height: 2, backgroundColor: '#EA4335' },
+  nowDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.currentTime, marginLeft: -4 },
+  nowLineBar: { flex: 1, height: 2, backgroundColor: C.currentTime },
 });

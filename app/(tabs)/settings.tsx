@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCalendarContext } from '@/context/CalendarContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
+import { C, SHADOW, R } from '@/constants/design';
 
 export default function SettingsScreen() {
   const {
@@ -99,7 +100,7 @@ export default function SettingsScreen() {
             {userEmail && (
               <View style={styles.row}>
                 <View style={styles.rowLeft}>
-                  <Mail size={20} color="#666" />
+                  <Mail size={20} color={C.textSub} />
                   <Text style={styles.rowText}>{userEmail}</Text>
                 </View>
               </View>
@@ -107,19 +108,19 @@ export default function SettingsScreen() {
             {userEmail && <View style={styles.divider} />}
             <TouchableOpacity onPress={signOut} style={styles.row}>
               <View style={styles.rowLeft}>
-                <LogOut size={20} color="#EA4335" />
-                <Text style={[styles.rowText, { color: '#EA4335' }]}>ログアウト</Text>
+                <LogOut size={20} color={C.danger} />
+                <Text style={[styles.rowText, { color: C.danger }]}>ログアウト</Text>
               </View>
-              <ChevronRight size={18} color="#ccc" />
+              <ChevronRight size={18} color={C.textMuted} />
             </TouchableOpacity>
           </>
         ) : (
           <TouchableOpacity onPress={signIn} style={styles.row}>
             <View style={styles.rowLeft}>
-              <User size={20} color="#4285F4" />
-              <Text style={[styles.rowText, { color: '#4285F4' }]}>Googleでログイン</Text>
+              <User size={20} color={C.primary} />
+              <Text style={[styles.rowText, { color: C.primary }]}>Googleでログイン</Text>
             </View>
-            <ChevronRight size={18} color="#ccc" />
+            <ChevronRight size={18} color={C.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -201,7 +202,7 @@ export default function SettingsScreen() {
           <Switch
             value={settings.highlightWeekends}
             onValueChange={(val) => updateSettings({ highlightWeekends: val })}
-            trackColor={{ false: '#ccc', true: '#4285F4' }}
+            trackColor={{ false: C.border, true: C.primary }}
           />
         </View>
       </View>
@@ -224,7 +225,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>予約設定</Text>
       <View style={styles.card}>
         <View style={styles.inputRow}>
-          <Link2 size={18} color="#666" />
+          <Link2 size={18} color={C.textSub} />
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>予約URLスラッグ</Text>
             <TextInput
@@ -241,7 +242,7 @@ export default function SettingsScreen() {
         <View style={styles.divider} />
 
         <View style={styles.inputRow}>
-          <Clock size={18} color="#666" />
+          <Clock size={18} color={C.textSub} />
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>予約枠 (分)</Text>
             <TextInput
@@ -256,7 +257,7 @@ export default function SettingsScreen() {
         <View style={styles.divider} />
 
         <View style={styles.inputRow}>
-          <CalendarIcon size={18} color="#666" />
+          <CalendarIcon size={18} color={C.textSub} />
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>営業時間</Text>
             <View style={styles.timeRange}>
@@ -286,10 +287,10 @@ export default function SettingsScreen() {
           disabled={isSaving}
         >
           {isSaving ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={C.inverse} />
           ) : (
             <>
-              <Save size={18} color="#fff" />
+              <Save size={18} color={C.inverse} />
               <Text style={styles.saveButtonText}>保存</Text>
             </>
           )}
@@ -367,8 +368,8 @@ export default function SettingsScreen() {
               }}
             >
               <View style={styles.rowLeft}>
-                <CalendarIcon size={18} color="#4285F4" />
-                <Text style={[styles.rowText, { color: '#4285F4' }]}>カレンダーを再読み込み</Text>
+                <CalendarIcon size={18} color={C.primary} />
+                <Text style={[styles.rowText, { color: C.primary }]}>カレンダーを再読み込み</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -383,7 +384,7 @@ export default function SettingsScreen() {
               onPress={() => setGroupModal({ mode: 'create', name: '', selectedCalendarIds: [] })}
               style={styles.addGroupButton}
             >
-              <FolderPlus size={16} color="#4285F4" />
+              <FolderPlus size={16} color={C.primary} />
               <Text style={styles.addGroupText}>グループを作成</Text>
             </TouchableOpacity>
           </View>
@@ -392,8 +393,8 @@ export default function SettingsScreen() {
           <View style={styles.card}>
             <View style={styles.row}>
               <View style={styles.rowLeft}>
-                <CalendarIcon size={18} color="#4285F4" />
-                <Text style={[styles.rowText, { color: '#333' }]}>すべてのカレンダーを表示</Text>
+                <CalendarIcon size={18} color={C.primary} />
+                <Text style={[styles.rowText, { color: C.text }]}>すべてのカレンダーを表示</Text>
               </View>
               <Switch
                 value={calendarList.some(c => c.selected)}
@@ -429,7 +430,7 @@ export default function SettingsScreen() {
                               selectedCalendarIds: groupCals.map(c => c.id),
                             })}
                           >
-                            <Pencil size={15} color="#4285F4" />
+                            <Pencil size={15} color={C.primary} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.groupActionBtn}
@@ -446,12 +447,12 @@ export default function SettingsScreen() {
                               }
                             }}
                           >
-                            <Trash2 size={15} color="#EA4335" />
+                            <Trash2 size={15} color={C.danger} />
                           </TouchableOpacity>
                           <Switch
                             value={allSelected}
                             onValueChange={(val) => setGroupVisibility(groupCals.map(c => c.id), val)}
-                            trackColor={{ false: '#ccc', true: '#4285F4' }}
+                            trackColor={{ false: C.border, true: C.primary }}
                             style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
                           />
                         </View>
@@ -482,14 +483,14 @@ export default function SettingsScreen() {
                         {groupNames ? (
                           <Text style={styles.calGroupLabel}>{groupNames}</Text>
                         ) : (
-                          <Text style={[styles.calGroupLabel, { color: '#bbb' }]}>未分類</Text>
+                          <Text style={[styles.calGroupLabel, { color: C.textMuted }]}>未分類</Text>
                         )}
                       </View>
                     </View>
                     <Switch
                       value={cal.selected}
                       onValueChange={() => toggleCalendarVisibility(cal.id)}
-                      trackColor={{ false: '#ccc', true: '#4285F4' }}
+                      trackColor={{ false: C.border, true: C.primary }}
                     />
                   </View>
                 </React.Fragment>
@@ -543,7 +544,7 @@ export default function SettingsScreen() {
                     <View style={[styles.calDot, { backgroundColor: cal.backgroundColor }]} />
                     <Text style={styles.modalCalName} numberOfLines={1}>{cal.summary}</Text>
                     <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                      {checked && <Check size={12} color="#fff" strokeWidth={3} />}
+                      {checked && <Check size={12} color={C.inverse} strokeWidth={3} />}
                     </View>
                   </TouchableOpacity>
                 );
@@ -588,12 +589,12 @@ export default function SettingsScreen() {
               <Text style={styles.urlText} numberOfLines={1} ellipsizeMode="middle">{bookingUrl}</Text>
               <TouchableOpacity onPress={handleCopyUrl} style={styles.copyButton} activeOpacity={0.7}>
                 {copied
-                  ? <Check size={16} color="#22C55E" />
-                  : <Copy size={16} color="#4285F4" />}
+                  ? <Check size={16} color={C.success} />
+                  : <Copy size={16} color={C.primary} />}
               </TouchableOpacity>
             </View>
             <TouchableOpacity onPress={handleShareLink} style={styles.shareButton}>
-              <Share2 size={18} color="#fff" />
+              <Share2 size={18} color={C.inverse} />
               <Text style={styles.shareButtonText}>リンクを共有</Text>
             </TouchableOpacity>
           </View>
@@ -606,32 +607,36 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: { flex: 1, backgroundColor: C.bg },
   content: { paddingBottom: 40 },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#999',
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.primary,
     textTransform: 'uppercase',
+    letterSpacing: 0.8,
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 8,
   },
   subLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#888',
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 6,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: C.card,
     marginHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: R.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#e8ecf4',
+    borderColor: C.borderLight,
+    ...SHADOW.xs,
   },
   row: {
     flexDirection: 'row',
@@ -641,9 +646,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 },
-  rowText: { fontSize: 15, fontWeight: '500', flex: 1 },
+  rowText: { fontSize: 15, fontWeight: '500', color: C.text, flex: 1 },
   calDot: { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
-  selectedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4285F4' },
+  selectedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
   // カレンダーグループ関連スタイル
   sectionHeader: {
     flexDirection: 'row',
@@ -654,7 +659,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   addGroupButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addGroupText: { fontSize: 13, color: '#4285F4', fontWeight: '600' },
+  addGroupText: { fontSize: 13, color: C.primary, fontWeight: '600' },
   groupSection: { marginBottom: 4 },
   groupHeader: {
     flexDirection: 'row',
@@ -663,14 +668,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 6,
   },
-  groupName: { fontSize: 13, fontWeight: '600', color: '#555', textTransform: 'uppercase', letterSpacing: 0.3 },
-  groupCount: { fontSize: 12, color: '#aaa' },
-  groupCountInline: { fontSize: 12, color: '#aaa', marginLeft: 4 },
+  groupName: { fontSize: 13, fontWeight: '600', color: C.textSub, textTransform: 'uppercase', letterSpacing: 0.3 },
+  groupCount: { fontSize: 12, color: C.textMuted },
+  groupCountInline: { fontSize: 12, color: C.textMuted, marginLeft: 4 },
   groupRowActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   groupActionBtn: { padding: 6 },
-  emptyGroupText: { fontSize: 13, color: '#bbb', textAlign: 'center', paddingVertical: 12, paddingHorizontal: 16 },
+  emptyGroupText: { fontSize: 13, color: C.textMuted, textAlign: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   sectionTitleInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
-  calGroupLabel: { fontSize: 11, color: '#999', marginTop: 1 },
+  calGroupLabel: { fontSize: 11, color: C.textSub, marginTop: 1 },
   // グループ作成・編集モーダル
   modalOverlay: {
     flex: 1,
@@ -678,25 +683,25 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: C.card,
+    borderTopLeftRadius: R.xl,
+    borderTopRightRadius: R.xl,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 40,
     maxHeight: '80%',
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#333', marginBottom: 20, textAlign: 'center' },
-  modalLabel: { fontSize: 13, fontWeight: '600', color: '#888', marginBottom: 6, marginTop: 12 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 20, textAlign: 'center' },
+  modalLabel: { fontSize: 13, fontWeight: '600', color: C.textSub, marginBottom: 6, marginTop: 12 },
   modalInput: {
     fontSize: 16,
-    color: '#333',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
+    color: C.text,
+    backgroundColor: C.input,
+    borderRadius: R.sm,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: C.border,
   },
   modalCalList: { maxHeight: 260, marginBottom: 4 },
   modalCalRow: {
@@ -704,37 +709,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f0f0f0',
+    borderBottomWidth: 1,
+    borderBottomColor: C.borderLight,
   },
-  modalCalName: { flex: 1, fontSize: 15, color: '#333' },
+  modalCalName: { flex: 1, fontSize: 15, color: C.text },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#ccc',
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxChecked: { backgroundColor: '#4285F4', borderColor: '#4285F4' },
+  checkboxChecked: { backgroundColor: C.primary, borderColor: C.primary },
   modalButtons: { flexDirection: 'row', gap: 12, marginTop: 20 },
   modalCancelBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#f0f0f0',
+    borderRadius: R.sm,
+    backgroundColor: C.bg,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  modalCancelText: { fontSize: 15, fontWeight: '600', color: '#666' },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: C.textSub },
   modalSaveBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#4285F4',
+    borderRadius: R.sm,
+    backgroundColor: C.primary,
     alignItems: 'center',
   },
-  modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  modalSaveText: { fontSize: 15, fontWeight: '600', color: C.inverse },
   disabled: { opacity: 0.4 },
   inputRow: {
     flexDirection: 'row',
@@ -744,24 +751,24 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   inputGroup: { flex: 1 },
-  inputLabel: { fontSize: 13, color: '#666', marginBottom: 6 },
+  inputLabel: { fontSize: 13, color: C.textSub, marginBottom: 6 },
   input: {
     fontSize: 15,
-    color: '#333',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    color: C.text,
+    backgroundColor: C.input,
+    borderRadius: R.xs,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: C.border,
   },
   timeRange: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timeInput: { width: 60, textAlign: 'center' },
-  timeSeparator: { fontSize: 15, color: '#666' },
-  timeUnit: { fontSize: 13, color: '#666' },
+  timeSeparator: { fontSize: 15, color: C.textSub },
+  timeUnit: { fontSize: 13, color: C.textSub },
   divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#e8ecf4',
+    height: 1,
+    backgroundColor: C.borderLight,
     marginHorizontal: 16,
   },
   saveButton: {
@@ -769,13 +776,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#4285F4',
+    backgroundColor: C.primary,
     marginHorizontal: 16,
     marginVertical: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 13,
+    borderRadius: R.sm,
   },
-  saveButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  saveButtonText: { color: C.inverse, fontSize: 15, fontWeight: '700' },
   urlRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -787,23 +794,23 @@ const styles = StyleSheet.create({
   urlText: {
     flex: 1,
     fontSize: 13,
-    color: '#4285F4',
+    color: C.primary,
   },
   copyButton: {
     padding: 6,
-    borderRadius: 6,
-    backgroundColor: '#F0F4FF',
+    borderRadius: R.xs,
+    backgroundColor: C.primaryLight,
   },
   shareButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#34A853',
+    backgroundColor: C.success,
     marginHorizontal: 16,
     marginBottom: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 13,
+    borderRadius: R.sm,
   },
-  shareButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  shareButtonText: { color: C.inverse, fontSize: 15, fontWeight: '700' },
 });

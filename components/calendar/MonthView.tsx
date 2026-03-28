@@ -7,6 +7,7 @@ import {
 import { useCalendarContext } from '@/context/CalendarContext';
 import { DAY_LABELS_JA, MAX_VISIBLE_EVENTS_MONTH } from '@/constants/calendar';
 import { CalendarEvent } from '@/types';
+import { C } from '@/constants/design';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CELL_WIDTH = SCREEN_WIDTH / 7;
@@ -115,27 +116,29 @@ export default function MonthView() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: C.bg },
   headerRow: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 1,
+    borderBottomColor: C.borderLight,
     paddingVertical: 8,
+    backgroundColor: C.card,
   },
   headerCell: { alignItems: 'center' },
-  headerText: { fontSize: 12, color: '#666', fontWeight: '500' },
-  sundayText: { color: '#EA4335' },
-  saturdayText: { color: '#4285F4' },
+  headerText: { fontSize: 12, color: C.textMuted, fontWeight: '600' },
+  sundayText: { color: C.sunday },
+  saturdayText: { color: C.saturday },
   weekRow: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f0f0f0',
+    borderBottomWidth: 1,
+    borderBottomColor: C.borderLight,
   },
   dayCell: {
     minHeight: 80,
     paddingTop: 4,
     paddingHorizontal: 2,
     alignItems: 'center',
+    backgroundColor: C.card,
   },
   dateCircle: {
     width: 26,
@@ -144,16 +147,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  todayCircle: { backgroundColor: '#4285F4' },
-  dateText: { fontSize: 13, color: '#333' },
-  todayText: { color: '#fff', fontWeight: '700' },
-  otherMonthText: { color: '#ccc' },
+  todayCircle: { backgroundColor: C.today },
+  dateText: { fontSize: 13, color: C.text, fontWeight: '500' },
+  todayText: { color: C.inverse, fontWeight: '700' },
+  otherMonthText: { color: C.textMuted },
   eventArea: { width: '100%', marginTop: 2, gap: 1 },
   eventDot: {
-    borderRadius: 2,
-    paddingHorizontal: 2,
+    borderRadius: 3,
+    paddingHorizontal: 3,
     paddingVertical: 1,
   },
-  eventDotText: { fontSize: 9, color: '#fff', fontWeight: '500' },
-  moreText: { fontSize: 9, color: '#999', textAlign: 'center', marginTop: 1 },
+  eventDotText: { fontSize: 9, color: C.inverse, fontWeight: '600' },
+  moreText: { fontSize: 9, color: C.textMuted, textAlign: 'center', marginTop: 1 },
 });

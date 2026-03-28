@@ -6,6 +6,7 @@ import { Copy, RefreshCw } from 'lucide-react-native';
 import { addDays } from 'date-fns';
 import { useCalendarContext } from '@/context/CalendarContext';
 import { useFreeSlotsDetection } from '@/hooks/useFreeSlotsDetection';
+import { C, SHADOW, R } from '@/constants/design';
 import FreeSlotList from '@/components/free-slots/FreeSlotList';
 import DateRangePicker from '@/components/free-slots/DateRangePicker';
 import { formatFreeSlots } from '@/lib/text-formatter';
@@ -65,7 +66,7 @@ export default function FreeSlotsScreen() {
           {freeSlots.length}件の空き時間
         </Text>
         <TouchableOpacity onPress={handleDetect} style={styles.refreshButton}>
-          <RefreshCw size={16} color="#4285F4" />
+          <RefreshCw size={16} color={C.primary} />
         </TouchableOpacity>
       </View>
 
@@ -73,7 +74,7 @@ export default function FreeSlotsScreen() {
 
       {freeSlots.length > 0 && (
         <TouchableOpacity onPress={handleCopyAll} style={styles.copyAllButton} activeOpacity={0.7}>
-          <Copy size={18} color="#fff" />
+          <Copy size={18} color={C.inverse} />
           <Text style={styles.copyAllText}>すべてコピー</Text>
         </TouchableOpacity>
       )}
@@ -82,7 +83,7 @@ export default function FreeSlotsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: C.bg },
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -90,7 +91,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  summaryText: { fontSize: 14, color: '#666', fontWeight: '500' },
+  summaryText: { fontSize: 14, color: C.textSub, fontWeight: '500' },
   refreshButton: { padding: 6 },
   copyAllButton: {
     position: 'absolute',
@@ -99,28 +100,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#4285F4',
+    backgroundColor: C.primary,
     paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: 28,
-    shadowColor: '#4285F4',
+    borderRadius: R.full,
+    shadowColor: C.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  copyAllText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  copyAllText: { color: C.inverse, fontSize: 15, fontWeight: '700' },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
-    backgroundColor: '#fff',
+    backgroundColor: C.bg,
   },
-  emptyText: { fontSize: 16, fontWeight: '600', color: '#666' },
+  emptyText: { fontSize: 16, fontWeight: '600', color: C.textSub },
   emptySubtext: {
     fontSize: 13,
-    color: '#999',
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 8,

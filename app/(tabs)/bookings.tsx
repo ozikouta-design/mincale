@@ -4,6 +4,7 @@ import { CalendarX } from 'lucide-react-native';
 import { useBookings } from '@/hooks/useBookings';
 import BookingCard from '@/components/bookings/BookingCard';
 import { useCalendarContext } from '@/context/CalendarContext';
+import { C } from '@/constants/design';
 
 export default function BookingsScreen() {
   const { isAuthenticated, userEmail } = useCalendarContext();
@@ -25,7 +26,7 @@ export default function BookingsScreen() {
   if (bookings.length === 0 && !isLoading) {
     return (
       <View style={styles.emptyContainer}>
-        <CalendarX size={48} color="#ccc" />
+        <CalendarX size={48} color={C.textMuted} />
         <Text style={[styles.emptyText, { marginTop: 16 }]}>予約はまだありません</Text>
         <Text style={styles.emptySubtext}>
           設定タブから予約リンクを共有すると{'\n'}ここに予約が表示されます
@@ -49,7 +50,7 @@ export default function BookingsScreen() {
         )}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#4285F4" />
+          <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={C.primary} />
         }
         showsVerticalScrollIndicator={false}
       />
@@ -58,19 +59,19 @@ export default function BookingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: { flex: 1, backgroundColor: C.bg },
   listContent: { paddingTop: 12, paddingBottom: 20 },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
-    backgroundColor: '#fff',
+    backgroundColor: C.bg,
   },
-  emptyText: { fontSize: 16, fontWeight: '600', color: '#666' },
+  emptyText: { fontSize: 16, fontWeight: '600', color: C.textSub },
   emptySubtext: {
     fontSize: 13,
-    color: '#999',
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 8,

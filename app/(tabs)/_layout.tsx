@@ -1,19 +1,26 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Calendar, Clock, CalendarCheck, Settings } from 'lucide-react-native';
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
+import { C } from '@/constants/design';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#4285F4',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: C.primary,
+        tabBarInactiveTintColor: C.textMuted,
         tabBarStyle: {
-          borderTopColor: '#e0e0e0',
+          backgroundColor: C.card,
+          borderTopColor: C.borderLight,
+          borderTopWidth: 1,
+          paddingBottom: 6,
+          paddingTop: 6,
+          height: 60,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          letterSpacing: 0.1,
         },
       }}
     >

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { CalendarEvent } from '@/types';
 import { format } from 'date-fns';
 import { useAppSettings } from '@/context/AppSettingsContext';
+import { R } from '@/constants/design';
 
 interface Props {
   event: CalendarEvent;
@@ -15,24 +16,31 @@ export default function EventBlock({ event, style, onPress }: Props) {
   const { settings } = useAppSettings();
   const timeStr = format(event.startTime, settings.timeFormat === '12h' ? 'h:mm a' : 'HH:mm');
 
-  // カレンダーグリッド内では親がタッチを管理するため、TouchableOpacity はレンダリングしない
+  const inner = (
+    <>
+      <View style={[styles.accentBar, { backgroundColor: event.colorHex }]} />
+      <View style={styles.body}>
+        <Text style={[styles.title, { color: event.colorHex }]} numberOfLines={event.isAllDay ? 1 : undefined}>
+          {event.title}
+        </Text>
+        {!event.isAllDay && (
+          <Text style={[styles.time, { color: event.colorHex + 'BB' }]} numberOfLines={1}>{timeStr}</Text>
+        )}
+      </View>
+    </>
+  );
+
   if (!onPress) {
     return (
       <View
         style={[
           styles.container,
-          { backgroundColor: event.colorHex + 'E6' },
+          { backgroundColor: event.colorHex + '20' },
           style,
         ]}
-        // ポインターイベントを親に通す（Web ではこれが効く）
         pointerEvents="none"
       >
-        <Text style={styles.title} numberOfLines={event.isAllDay ? 1 : undefined}>
-          {event.title}
-        </Text>
-        {!event.isAllDay && (
-          <Text style={styles.time} numberOfLines={1}>{timeStr}</Text>
-        )}
+        {inner}
       </View>
     );
   }
@@ -42,17 +50,12 @@ export default function EventBlock({ event, style, onPress }: Props) {
       onPress={() => onPress(event)}
       style={[
         styles.container,
-        { backgroundColor: event.colorHex + 'E6' },
+        { backgroundColor: event.colorHex + '20' },
         style,
       ]}
       activeOpacity={0.7}
     >
-      <Text style={styles.title} numberOfLines={event.isAllDay ? 1 : undefined}>
-        {event.title}
-      </Text>
-      {!event.isAllDay && (
-        <Text style={styles.time} numberOfLines={1}>{timeStr}</Text>
-      )}
+      {inner}
     </TouchableOpacity>
   );
 }
@@ -61,25 +64,32 @@ const noSelectStyle = Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserS
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
+    borderRadius: R.xs,
     marginRight: 2,
     overflow: 'hidden',
     minHeight: 20,
+    flexDirection: 'row',
+    ...noSelectStyle,
+  },
+  accentBar: {
+    width: 3,
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
     ...noSelectStyle,
   },
   title: {
-    color: '#fff',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     lineHeight: 14,
     ...noSelectStyle,
   },
   time: {
-    color: 'rgba(255,255,255,0.85)',
     fontSize: 10,
     lineHeight: 12,
+    marginTop: 1,
     ...noSelectStyle,
   },
 });

@@ -11,6 +11,7 @@ import WeekView from '@/components/calendar/WeekView';
 import DayView from '@/components/calendar/DayView';
 import MonthView from '@/components/calendar/MonthView';
 import { LogIn, MessageCircle, X, Send } from 'lucide-react-native';
+import { C, SHADOW, R } from '@/constants/design';
 import MincaleLogo from '@/components/MincaleLogo';
 import { useBookingNotifications } from '@/hooks/useBookingNotifications';
 
@@ -130,7 +131,7 @@ export default function CalendarScreen() {
       <CalendarHeader onNext={navigateNext} onPrev={navigatePrev} />
       {isLoading && (
         <View style={styles.loadingBar}>
-          <ActivityIndicator size="small" color="#4285F4" />
+          <ActivityIndicator size="small" color={C.primary} />
         </View>
       )}
       <Animated.View
@@ -216,7 +217,7 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: C.bg,
   },
   content: {
     flex: 1,
@@ -231,18 +232,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 40,
     gap: 0,
+    backgroundColor: C.bg,
   },
   appTitle: {
     fontSize: 34,
     fontWeight: '800',
-    color: '#2563EB',
+    color: C.primary,
     marginTop: 16,
     marginBottom: 8,
     letterSpacing: 1,
   },
   loginSubtext: {
     fontSize: 15,
-    color: '#64748B',
+    color: C.textSub,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 32,
@@ -251,11 +253,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#2563EB',
+    backgroundColor: C.primary,
     paddingHorizontal: 32,
     paddingVertical: 15,
-    borderRadius: 28,
-    shadowColor: '#2563EB',
+    borderRadius: R.full,
+    shadowColor: C.primaryDark,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 12,
@@ -263,13 +265,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   loginButtonText: {
-    color: '#fff',
+    color: C.inverse,
     fontSize: 16,
     fontWeight: '700',
   },
   loginNote: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: C.textMuted,
     textAlign: 'center',
   },
   // FAB
@@ -279,15 +281,11 @@ const styles = StyleSheet.create({
     right: 20,
     width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: R.full,
     backgroundColor: '#25D366',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    ...SHADOW.fab,
   },
   // モーダル
   modalOverlay: {
@@ -296,9 +294,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: C.card,
+    borderTopLeftRadius: R.xl,
+    borderTopRightRadius: R.xl,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 40,
@@ -312,43 +310,43 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#333',
+    color: C.text,
   },
   modalClose: {
     padding: 4,
   },
   urlLabel: {
     fontSize: 12,
-    color: '#4285F4',
+    color: C.primary,
     marginBottom: 16,
   },
   fieldLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#888',
+    color: C.textSub,
     marginBottom: 6,
   },
   phoneInput: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#333',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
+    color: C.text,
+    backgroundColor: C.input,
+    borderRadius: R.sm,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: C.border,
     marginBottom: 16,
   },
   messageInput: {
     fontSize: 14,
-    color: '#333',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
+    color: C.text,
+    backgroundColor: C.input,
+    borderRadius: R.sm,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: C.border,
     minHeight: 110,
     textAlignVertical: 'top',
     marginBottom: 20,
@@ -360,20 +358,20 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#25D366',
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: R.md,
     marginBottom: 10,
   },
   sendButtonDisabled: {
     opacity: 0.4,
   },
   sendButtonText: {
-    color: '#fff',
+    color: C.inverse,
     fontSize: 16,
     fontWeight: '700',
   },
   sendNote: {
     fontSize: 11,
-    color: '#aaa',
+    color: C.textMuted,
     textAlign: 'center',
   },
 });

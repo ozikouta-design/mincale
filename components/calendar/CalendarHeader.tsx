@@ -6,112 +6,106 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useCalendarContext } from '@/context/CalendarContext';
 import { ViewMode } from '@/types';
-import { useColorScheme } from '@/components/useColorScheme';
-import Colors from '@/constants/Colors';
+import { C, SHADOW, R } from '@/constants/design';
 
 const VIEW_MODES: { key: ViewMode; label: string }[] = [
-  { key: 'day', label: '日' },
-  { key: 'week', label: '週' },
+  { key: 'day',   label: '日' },
+  { key: 'week',  label: '週' },
   { key: 'month', label: '月' },
 ];
 
 interface CalendarHeaderProps {
-  // ナビゲーションボタンのオーバーライド（アニメーション用）
   onNext?: () => void;
   onPrev?: () => void;
 }
 
 export default function CalendarHeader({ onNext, onPrev }: CalendarHeaderProps) {
-  const { viewMode, setViewMode, currentDate, goNext, goPrev, goToday, isAuthenticated, calendarGroups, activeGroupId, setActiveGroupId } = useCalendarContext();
-  // 上位コンポーネントからオーバーライドがあればそちらを使う
+  const {
+    viewMode, setViewMode, currentDate, goNext, goPrev, goToday,
+    isAuthenticated, calendarGroups, activeGroupId, setActiveGroupId,
+  } = useCalendarContext();
   const handleNext = onNext ?? goNext;
   const handlePrev = onPrev ?? goPrev;
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme];
   const router = useRouter();
 
   const title = (() => {
     switch (viewMode) {
-      case 'month':
-        return format(currentDate, 'yyyy年M月', { locale: ja });
-      case 'week':
-        return format(currentDate, 'yyyy年M月', { locale: ja });
-      case 'day':
-        return format(currentDate, 'M月d日(E)', { locale: ja });
+      case 'month': return format(currentDate, 'yyyy年 M月', { locale: ja });
+      case 'week':  return format(currentDate, 'yyyy年 M月', { locale: ja });
+      case 'day':   return format(currentDate, 'M月d日(E)', { locale: ja });
     }
   })();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={styles.container}>
       <View style={styles.topRow}>
-        <View style={styles.navRow}>
-          <TouchableOpacity onPress={handlePrev} style={styles.navButton}>
-            <ChevronLeft size={24} color={colors.text} />
+        {/* 左：ナビゲーション */}
+        <View style={styles.navGroup}>
+          <TouchableOpacity onPress={handlePrev} style={styles.navBtn} activeOpacity={0.6}>
+            <ChevronLeft size={18} color={C.textSub} strokeWidth={2.5} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-          <TouchableOpacity onPress={handleNext} style={styles.navButton}>
-            <ChevronRight size={24} color={colors.text} />
+          <Text style={styles.title}>{title}</Text>
+          <TouchableOpacity onPress={handleNext} style={styles.navBtn} activeOpacity={0.6}>
+            <ChevronRight size={18} color={C.textSub} strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
-        <View style={styles.rightButtons}>
-          <TouchableOpacity onPress={goToday} style={styles.todayButton}>
+
+        {/* 右：今日 + 表示切替 + 追加 */}
+        <View style={styles.rightGroup}>
+          <TouchableOpacity onPress={goToday} style={styles.todayBtn} activeOpacity={0.8}>
             <Text style={styles.todayText}>今日</Text>
           </TouchableOpacity>
+          <View style={styles.segmentWrap}>
+            {VIEW_MODES.map(({ key, label }) => (
+              <TouchableOpacity
+                key={key}
+                onPress={() => setViewMode(key)}
+                style={[styles.segBtn, viewMode === key && styles.segBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.segTxt, viewMode === key && styles.segTxtActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           {isAuthenticated && (
             <TouchableOpacity
               onPress={() => router.push('/event/create')}
-              style={styles.addButton}
+              style={styles.addBtn}
+              activeOpacity={0.8}
             >
-              <Plus size={20} color="#fff" />
+              <Plus size={16} color={C.inverse} strokeWidth={2.5} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      <View style={styles.modeRow}>
-        {VIEW_MODES.map(({ key, label }) => (
-          <TouchableOpacity
-            key={key}
-            onPress={() => setViewMode(key)}
-            style={[
-              styles.modeButton,
-              viewMode === key && styles.modeButtonActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.modeText,
-                viewMode === key && styles.modeTextActive,
-              ]}
-            >
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
+      {/* グループフィルターチップ */}
       {calendarGroups.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.groupChipRow}
-          contentContainerStyle={styles.groupChipContent}
+          style={styles.chipScroll}
+          contentContainerStyle={styles.chipContent}
         >
           <TouchableOpacity
             onPress={() => setActiveGroupId(null)}
-            style={[styles.groupChip, activeGroupId === null && styles.groupChipActive]}
+            style={[styles.chip, activeGroupId === null && styles.chipActive]}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.groupChipText, activeGroupId === null && styles.groupChipTextActive]}>
-              全て
+            <Text style={[styles.chipTxt, activeGroupId === null && styles.chipTxtActive]}>
+              すべて
             </Text>
           </TouchableOpacity>
           {calendarGroups.map(group => (
             <TouchableOpacity
               key={group.id}
               onPress={() => setActiveGroupId(activeGroupId === group.id ? null : group.id)}
-              style={[styles.groupChip, activeGroupId === group.id && styles.groupChipActive]}
+              style={[styles.chip, activeGroupId === group.id && styles.chipActive]}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.groupChipText, activeGroupId === group.id && styles.groupChipTextActive]}>
+              <Text style={[styles.chipTxt, activeGroupId === group.id && styles.chipTxtActive]}>
                 {group.name}
               </Text>
             </TouchableOpacity>
@@ -124,113 +118,118 @@ export default function CalendarHeader({ onNext, onPrev }: CalendarHeaderProps) 
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
     paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
+    backgroundColor: C.card,
+    borderBottomWidth: 1,
+    borderBottomColor: C.borderLight,
+    ...SHADOW.xs,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minHeight: 36,
   },
-  navRow: {
+  navGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
-  navButton: {
-    padding: 4,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    minWidth: 120,
-    textAlign: 'center',
-  },
-  rightButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  todayButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#4285F4',
-  },
-  addButton: {
+  navBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: '#34A853',
+    borderRadius: R.sm,
+    backgroundColor: C.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  todayText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.text,
+    minWidth: 110,
+    textAlign: 'center',
+    letterSpacing: -0.3,
   },
-  modeRow: {
+  rightGroup: {
     flexDirection: 'row',
-    gap: 4,
-    marginTop: 8,
-    alignSelf: 'center',
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
+    alignItems: 'center',
+    gap: 8,
+  },
+  todayBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: R.full,
+    backgroundColor: C.primary,
+  },
+  todayText: {
+    color: C.inverse,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  segmentWrap: {
+    flexDirection: 'row',
+    backgroundColor: C.bg,
+    borderRadius: R.sm,
     padding: 2,
   },
-  modeButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderRadius: 6,
+  segBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 7,
   },
-  modeButtonActive: {
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  segBtnActive: {
+    backgroundColor: C.card,
+    ...SHADOW.xs,
   },
-  modeText: {
+  segTxt: {
     fontSize: 13,
-    color: '#666',
+    color: C.textSub,
     fontWeight: '500',
   },
-  modeTextActive: {
-    color: '#333',
-    fontWeight: '600',
+  segTxtActive: {
+    color: C.primary,
+    fontWeight: '700',
   },
-  groupChipRow: {
+  addBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: R.full,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipScroll: {
     marginTop: 8,
   },
-  groupChipContent: {
+  chipContent: {
     paddingHorizontal: 2,
     gap: 6,
     flexDirection: 'row',
+    paddingBottom: 2,
   },
-  groupChip: {
+  chip: {
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#f0f0f0',
+    paddingVertical: 5,
+    borderRadius: R.full,
+    backgroundColor: C.bg,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  groupChipActive: {
-    backgroundColor: '#e8f0fe',
-    borderColor: '#4285F4',
+  chipActive: {
+    backgroundColor: C.primaryLight,
+    borderColor: C.primary,
   },
-  groupChipText: {
+  chipTxt: {
     fontSize: 12,
-    color: '#666',
+    color: C.textSub,
     fontWeight: '500',
   },
-  groupChipTextActive: {
-    color: '#4285F4',
-    fontWeight: '600',
+  chipTxtActive: {
+    color: C.primary,
+    fontWeight: '700',
   },
 });
