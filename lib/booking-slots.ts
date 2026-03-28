@@ -23,12 +23,15 @@ export function computeAvailabilityGrid(
   endHour: number,
   busyPeriods: BusyPeriod[],
   days = 14,
+  allowedDays?: number[], // 0=日, 1=月, ..., 6=土 (未指定の場合は全曜日)
 ): DaySlots[] {
   const now = new Date();
   const grid: DaySlots[] = [];
 
   for (let d = 0; d < days; d++) {
     const date = startOfDay(addDays(startDate, d));
+    const dayOfWeek = date.getDay();
+    const isDayAllowed = !allowedDays || allowedDays.length === 0 || allowedDays.includes(dayOfWeek);
     const cells: SlotCell[] = [];
     let slotStart = setSeconds(setMinutes(setHours(date, startHour), 0), 0);
     const dayEnd = setSeconds(setMinutes(setHours(date, endHour), 0), 0);
@@ -44,7 +47,11 @@ export function computeAvailabilityGrid(
         return isBefore(slotStart, be) && isAfter(slotEnd, bs);
       });
 
-      cells.push({ startTime: new Date(slotStart), endTime: new Date(slotEnd), available: !isPast && !isBusy });
+      cells.push({
+        startTime: new Date(slotStart),
+        endTime: new Date(slotEnd),
+        available: isDayAllowed && !isPast && !isBusy,
+      });
       slotStart = addMinutes(slotStart, 30);
     }
 

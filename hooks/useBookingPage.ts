@@ -76,8 +76,11 @@ export function useBookingPage(slug: string) {
       const duration = profile.booking_duration || 30;
       const startHour = profile.booking_start_hour || 9;
       const endHour = profile.booking_end_hour || 18;
+      const allowedDays = profile.booking_days && profile.booking_days.length > 0
+        ? profile.booking_days
+        : undefined;
 
-      setGrid(computeAvailabilityGrid(startDate, duration, startHour, endHour, allBusy));
+      setGrid(computeAvailabilityGrid(startDate, duration, startHour, endHour, allBusy, 14, allowedDays));
     }
     loadBusy();
   }, [profile]);

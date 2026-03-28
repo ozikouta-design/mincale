@@ -27,6 +27,7 @@ export default function SettingsScreen() {
   const [startHour, setStartHour] = useState('9');
   const [endHour, setEndHour] = useState('18');
   const [blockAllDayEvents, setBlockAllDayEvents] = useState(false);
+  const [bookingDays, setBookingDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [isSaving, setIsSaving] = useState(false);
 
   // グループ作成・編集モーダルの状態
@@ -45,6 +46,7 @@ export default function SettingsScreen() {
       setStartHour(String(profile.booking_start_hour || 9));
       setEndHour(String(profile.booking_end_hour || 18));
       setBlockAllDayEvents(profile.block_all_day_events ?? false);
+      setBookingDays(profile.booking_days && profile.booking_days.length > 0 ? profile.booking_days : [1, 2, 3, 4, 5]);
     }
   }, [profile]);
 
@@ -59,6 +61,7 @@ export default function SettingsScreen() {
         booking_start_hour: parseInt(startHour, 10) || 9,
         booking_end_hour: parseInt(endHour, 10) || 18,
         block_all_day_events: blockAllDayEvents,
+        booking_days: bookingDays,
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('保存完了', '設定を保存しました');
@@ -321,6 +324,46 @@ export default function SettingsScreen() {
               />
               <Text style={styles.timeUnit}>時</Text>
             </View>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* 予約可能曜日 */}
+        <View style={[styles.inputRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+          <Text style={styles.inputLabel}>予約可能曜日</Text>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {(['日', '月', '火', '水', '木', '金', '土'] as const).map((label, idx) => {
+              const active = bookingDays.includes(idx);
+              const isSun = idx === 0;
+              const isSat = idx === 6;
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => {
+                    setBookingDays(prev =>
+                      prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx].sort()
+                    );
+                  }}
+                  style={[
+                    styles.dayChip,
+                    active && styles.dayChipActive,
+                    active && isSun && { backgroundColor: '#EF4444', borderColor: '#EF4444' },
+                    active && isSat && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.dayChipText,
+                    !active && isSun && { color: '#EF4444' },
+                    !active && isSat && { color: '#3B82F6' },
+                    active && { color: '#fff' },
+                  ]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -857,4 +900,15 @@ const styles = StyleSheet.create({
     borderRadius: R.sm,
   },
   shareButtonText: { color: C.inverse, fontSize: 15, fontWeight: '700' },
+  dayChip: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: C.border,
+    backgroundColor: C.bg,
+  },
+  dayChipActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  dayChipText: { fontSize: 13, fontWeight: '600', color: C.textSub },
 });
