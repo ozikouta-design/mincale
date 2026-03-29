@@ -7,7 +7,53 @@ import { startOfDay, endOfDay, subDays, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { handleApiError } from '@/lib/error';
 
-// Platform-aware key-value storage
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '';
+const TOKEN_KEY = 'google_access_token';
+const REFRESH_TOKEN_KEY = 'google_refresh_token';
+const USER_EMAIL_KEY = 'google_user_email';
+const CALENDAR_LIST_KEY = 'google_calendar_list';
+const CALENDAR_GROUPS_KEY = 'google_calendar_groups';
+
+/**
+ * 認証トークン用ストレージ（セキュリティ重視）
+ * - Web: sessionStorage（タブ閉じると消える、XSS 被害を最小化）
+ *   リフレッシュトークンは web では保持しない（Supabase host_tokens にサーバー側保存済み）
+ * - Native: expo-secure-store（OS の暗号化キーチェーンを使用）
+ */
+const tokenStorage = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      if (key === REFRESH_TOKEN_KEY) return null; // web では不保持
+      try { return sessionStorage.getItem(key); } catch { return null; }
+    }
+    const SecureStore = await import('expo-secure-store');
+    return SecureStore.getItemAsync(key);
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      if (key === REFRESH_TOKEN_KEY) return; // web では不保持（サーバー側に保存済み）
+      try { sessionStorage.setItem(key, value); } catch {}
+      return;
+    }
+    const SecureStore = await import('expo-secure-store');
+    return SecureStore.setItemAsync(key, value);
+  },
+  removeItem: async (key: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      if (key === REFRESH_TOKEN_KEY) return;
+      try { sessionStorage.removeItem(key); } catch {}
+      return;
+    }
+    const SecureStore = await import('expo-secure-store');
+    return SecureStore.deleteItemAsync(key);
+  },
+};
+
+/**
+ * 非機密設定用ストレージ（利便性重視）
+ * - Web: localStorage（タブ閉じても維持、カレンダー表示設定など）
+ * - Native: expo-secure-store
+ */
 const storage = {
   getItem: async (key: string): Promise<string | null> => {
     if (Platform.OS === 'web') {
@@ -33,13 +79,6 @@ const storage = {
     return SecureStore.deleteItemAsync(key);
   },
 };
-
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '';
-const TOKEN_KEY = 'google_access_token';
-const REFRESH_TOKEN_KEY = 'google_refresh_token';
-const USER_EMAIL_KEY = 'google_user_email';
-const CALENDAR_LIST_KEY = 'google_calendar_list';
-const CALENDAR_GROUPS_KEY = 'google_calendar_groups';
 
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const SCOPES = [
@@ -142,9 +181,9 @@ export function useGoogleCalendar() {
         const tokens = await response.json();
         if (!tokens.access_token) return;
 
-        await storage.setItem(TOKEN_KEY, tokens.access_token);
+        await tokenStorage.setItem(TOKEN_KEY, tokens.access_token);
         if (tokens.refresh_token) {
-          await storage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
+          await tokenStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
         }
 
         // Fetch user email
@@ -155,7 +194,7 @@ export function useGoogleCalendar() {
           if (userRes.ok) {
             const userData = await userRes.json();
             if (userData.email) {
-              await storage.setItem(USER_EMAIL_KEY, userData.email);
+              await tokenStorage.setItem(USER_EMAIL_KEY, userData.email);
               setUserEmail(userData.email);
               // Save refresh token to Supabase for server-side calendar sync (via API to bypass RLS)
               if (tokens.refresh_token) {
@@ -180,11 +219,11 @@ export function useGoogleCalendar() {
   }, []);
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
-    return storage.getItem(TOKEN_KEY);
+    return tokenStorage.getItem(TOKEN_KEY);
   }, []);
 
   const fetchCalendarList = useCallback(async (): Promise<GoogleCalendarInfo[]> => {
-    const token = await storage.getItem(TOKEN_KEY);
+    const token = await tokenStorage.getItem(TOKEN_KEY);
     if (!token) return [];
     try {
       const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
@@ -194,8 +233,8 @@ export function useGoogleCalendar() {
         // 401: トークン期限切れ → クリーンにログアウト
         if (res.status === 401) {
           setIsAuthenticated(false);
-          await storage.removeItem(TOKEN_KEY);
-          await storage.removeItem(REFRESH_TOKEN_KEY);
+          await tokenStorage.removeItem(TOKEN_KEY);
+          await tokenStorage.removeItem(REFRESH_TOKEN_KEY);
         }
         return [];
       }
@@ -413,9 +452,9 @@ export function useGoogleCalendar() {
         );
 
         if (tokenResponse.accessToken) {
-          await storage.setItem(TOKEN_KEY, tokenResponse.accessToken);
+          await tokenStorage.setItem(TOKEN_KEY, tokenResponse.accessToken);
           if (tokenResponse.refreshToken) {
-            await storage.setItem(REFRESH_TOKEN_KEY, tokenResponse.refreshToken);
+            await tokenStorage.setItem(REFRESH_TOKEN_KEY, tokenResponse.refreshToken);
           }
           try {
             const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -424,7 +463,7 @@ export function useGoogleCalendar() {
             if (userRes.ok) {
               const userData = await userRes.json();
               if (userData.email) {
-                await storage.setItem(USER_EMAIL_KEY, userData.email);
+                await tokenStorage.setItem(USER_EMAIL_KEY, userData.email);
                 setUserEmail(userData.email);
                 if (tokenResponse.refreshToken) {
                   fetch('/api/save-token', {
@@ -447,17 +486,17 @@ export function useGoogleCalendar() {
   }, [promptAsync, redirectUri, request]);
 
   const signOut = useCallback(async () => {
-    await storage.removeItem(TOKEN_KEY);
-    await storage.removeItem(REFRESH_TOKEN_KEY);
-    await storage.removeItem(USER_EMAIL_KEY);
+    await tokenStorage.removeItem(TOKEN_KEY);
+    await tokenStorage.removeItem(REFRESH_TOKEN_KEY);
+    await tokenStorage.removeItem(USER_EMAIL_KEY);
     setIsAuthenticated(false);
     setUserEmail(null);
     setEvents([]);
   }, []);
 
   const checkAuthStatus = useCallback(async () => {
-    const token = await storage.getItem(TOKEN_KEY);
-    const email = await storage.getItem(USER_EMAIL_KEY);
+    const token = await tokenStorage.getItem(TOKEN_KEY);
+    const email = await tokenStorage.getItem(USER_EMAIL_KEY);
     setIsAuthenticated(!!token);
     setUserEmail(email);
     return !!token;
@@ -489,7 +528,7 @@ export function useGoogleCalendar() {
             { headers: { Authorization: `Bearer ${token}` } },
           );
           if (!res.ok) {
-            if (res.status === 401) { setIsAuthenticated(false); await storage.removeItem(TOKEN_KEY); }
+            if (res.status === 401) { setIsAuthenticated(false); await tokenStorage.removeItem(TOKEN_KEY); }
             return [];
           }
           const data = await res.json();
@@ -546,7 +585,7 @@ export function useGoogleCalendar() {
       });
 
       if (!res.ok) {
-        if (res.status === 401) { setIsAuthenticated(false); await storage.removeItem(TOKEN_KEY); }
+        if (res.status === 401) { setIsAuthenticated(false); await tokenStorage.removeItem(TOKEN_KEY); }
         return null;
       }
 
@@ -576,7 +615,7 @@ export function useGoogleCalendar() {
       });
 
       if (!res.ok) {
-        if (res.status === 401) { setIsAuthenticated(false); await storage.removeItem(TOKEN_KEY); }
+        if (res.status === 401) { setIsAuthenticated(false); await tokenStorage.removeItem(TOKEN_KEY); }
         return false;
       }
       return true;
@@ -598,7 +637,7 @@ export function useGoogleCalendar() {
       });
 
       if (!res.ok && res.status !== 410) {
-        if (res.status === 401) { setIsAuthenticated(false); await storage.removeItem(TOKEN_KEY); }
+        if (res.status === 401) { setIsAuthenticated(false); await tokenStorage.removeItem(TOKEN_KEY); }
         return false;
       }
       return true;
