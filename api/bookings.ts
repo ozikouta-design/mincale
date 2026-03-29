@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { checkRateLimit, getClientIp } from '../lib/rate-limit';
+
 export default async function handler(req: any, res: any) {
+  const { allowed, retryAfter } = checkRateLimit(getClientIp(req));
+  if (!allowed) {
+    res.setHeader('Retry-After', String(retryAfter));
+    return res.status(429).json({ error: 'Too Many Requests' });
+  }
+
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 

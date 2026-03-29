@@ -62,6 +62,8 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
         onChangeText={setName}
         placeholder="山田 太郎"
         placeholderTextColor="#ccc"
+        accessibilityLabel="お名前（必須）"
+        accessibilityHint="予約者のお名前をフルネームで入力してください"
       />
 
       {/* Phone */}
@@ -73,6 +75,8 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
         placeholder="090-0000-0000"
         placeholderTextColor="#ccc"
         keyboardType="phone-pad"
+        accessibilityLabel="電話番号（必須）"
+        accessibilityHint="折り返し連絡先の電話番号を入力してください"
       />
 
       {/* Meeting Type */}
@@ -83,6 +87,9 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
             key={key}
             style={[styles.typeButton, meetingType === key && styles.typeButtonActive]}
             onPress={() => setMeetingType(key)}
+            accessibilityRole="radio"
+            accessibilityLabel={`ミーティング形式: ${label}`}
+            accessibilityState={{ checked: meetingType === key }}
           >
             <Text style={[styles.typeText, meetingType === key && styles.typeTextActive]}>
               {label}
@@ -101,6 +108,8 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
         placeholderTextColor="#ccc"
         multiline
         numberOfLines={3}
+        accessibilityLabel="メモ（任意）"
+        accessibilityHint="ご用件や質問事項があれば入力してください"
       />
 
       {/* Submit */}
@@ -108,6 +117,10 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
         style={[styles.submitButton, isSubmitting && styles.disabled]}
         onPress={handleSubmit}
         disabled={isSubmitting}
+        accessibilityRole="button"
+        accessibilityLabel="予約を確定する"
+        accessibilityState={{ disabled: isSubmitting }}
+        accessibilityHint="入力内容を確認してタップすると予約が完了します"
       >
         {isSubmitting ? (
           <ActivityIndicator color="#fff" />
@@ -117,7 +130,13 @@ export default function BookingForm({ slot, isSubmitting, onSubmit, onBack }: Pr
       </TouchableOpacity>
 
       {/* Back */}
-      <TouchableOpacity style={styles.backButton} onPress={onBack}>
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="時間選択に戻る"
+        accessibilityHint="別の時間帯を選択する画面に戻ります"
+      >
         <Text style={styles.backText}>時間を選び直す</Text>
       </TouchableOpacity>
     </View>
@@ -159,6 +178,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   typeButtonActive: {
     backgroundColor: '#4285F4',

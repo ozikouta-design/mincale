@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, ScrollView, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, Image, ScrollView, StyleSheet, ActivityIndicator, Alert, Platform, Animated } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useBookingPage } from '@/hooks/useBookingPage';
 import AvailabilityGrid from '@/components/booking/AvailabilityGrid';
@@ -8,6 +8,54 @@ import { CalendarCheck, Clock, User, Calendar } from 'lucide-react-native';
 import { SlotCell } from '@/lib/booking-slots';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+
+/** ローディング中に表示するスケルトン UI */
+function BookingSkeleton() {
+  const shimmer = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [shimmer]);
+  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.9] });
+
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* タイムゾーンバー */}
+      <Animated.View style={[skeletonStyles.bar, { opacity }]} />
+      {/* ホストカード */}
+      <View style={skeletonStyles.card}>
+        <View style={skeletonStyles.row}>
+          <Animated.View style={[skeletonStyles.avatar, { opacity }]} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Animated.View style={[skeletonStyles.line, { width: '60%', opacity }]} />
+            <Animated.View style={[skeletonStyles.line, { width: '40%', opacity }]} />
+          </View>
+        </View>
+        <Animated.View style={[skeletonStyles.guideBox, { opacity }]} />
+      </View>
+      {/* グリッドスケルトン */}
+      <Animated.View style={[skeletonStyles.gridTitle, { opacity }]} />
+      {[0, 1, 2, 3].map(i => (
+        <Animated.View key={i} style={[skeletonStyles.gridRow, { opacity }]} />
+      ))}
+    </ScrollView>
+  );
+}
+
+const skeletonStyles = StyleSheet.create({
+  bar: { height: 36, backgroundColor: '#e8ecf4', marginBottom: 2 },
+  card: { margin: 16, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#d0e3ff', backgroundColor: '#f8fbff' },
+  row: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#dce8fe' },
+  line: { height: 14, borderRadius: 7, backgroundColor: '#dce8fe' },
+  guideBox: { height: 80, borderRadius: 10, backgroundColor: '#dce8fe' },
+  gridTitle: { height: 14, width: 120, borderRadius: 7, backgroundColor: '#e8ecf4', marginHorizontal: 16, marginBottom: 12 },
+  gridRow: { height: 44, borderRadius: 8, backgroundColor: '#e8ecf4', marginHorizontal: 16, marginBottom: 8 },
+});
 
 export default function BookingScreen() {
   const params = useLocalSearchParams<{ slug: string }>();
@@ -30,11 +78,7 @@ export default function BookingScreen() {
   }, [selectedSlot]);
 
   if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#4285F4" />
-      </View>
-    );
+    return <BookingSkeleton />;
   }
 
   if (error || !profile) {

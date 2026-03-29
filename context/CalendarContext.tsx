@@ -5,6 +5,9 @@ import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { supabase } from '@/lib/supabase';
+import { CalendarAuthContext, AuthContextType } from './CalendarAuthContext';
+import { CalendarEventsContext, EventsContextType } from './CalendarEventsContext';
+import { CalendarUIContext, UIContextType } from './CalendarUIContext';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addWeeks, subWeeks, addMonths, subMonths, addDays, subDays,
@@ -34,41 +37,8 @@ async function saveSyncRange(days: number): Promise<void> {
   } catch {}
 }
 
-interface CalendarContextType {
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-  currentDate: Date;
-  setCurrentDate: (date: Date) => void;
-  events: CalendarEvent[];
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  userEmail: string | null;
-  profile: UserProfile | null;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
-  goNext: () => void;
-  goPrev: () => void;
-  goToday: () => void;
-  refreshEvents: () => Promise<void>;
-  saveProfile: (updates: Partial<UserProfile>) => Promise<void>;
-  createEvent: (data: EventFormData) => Promise<CalendarEvent | null>;
-  updateEvent: (eventId: string, data: EventFormData, calendarId?: string) => Promise<boolean>;
-  deleteEvent: (eventId: string, calendarId?: string) => Promise<boolean>;
-  deleteRecurringEvent: (eventId: string, calendarId: string | undefined, recurringEventId: string, originalStartTime: Date, mode: 'single' | 'following' | 'all') => Promise<boolean>;
-  calendarList: GoogleCalendarInfo[];
-  calendarGroups: CalendarGroup[];
-  fetchCalendarList: () => Promise<GoogleCalendarInfo[]>;
-  toggleCalendarVisibility: (calendarId: string) => Promise<void>;
-  createCalendarGroup: (name: string, calendarIds?: string[]) => Promise<CalendarGroup>;
-  updateCalendarGroup: (id: string, name: string, calendarIds: string[]) => Promise<void>;
-  deleteCalendarGroup: (id: string) => Promise<void>;
-  moveCalendarToGroup: (calendarId: string, groupId: string | null) => Promise<void>;
-  setGroupVisibility: (calendarIds: string[], selected: boolean) => Promise<void>;
-  activeGroupId: string | null;
-  setActiveGroupId: (id: string | null) => void;
-  syncRangeDays: number;
-  setSyncRangeDays: (days: number) => Promise<void>;
-}
+/** 後方互換用: Auth + Events + UI を統合した型 */
+type CalendarContextType = AuthContextType & EventsContextType & UIContextType;
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
 
@@ -175,23 +145,20 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     if (hasNew) refreshEvents();
   }, [google.calendarList]);
 
-  // 選択されているカレンダーのイベントのみ表示する（クライアント側フィルタ）
-  // アクティブグループがある場合はそのグループメンバーのみ
+  // 表示対象カレンダーIDのSetをメモ化（calendarListやactiveGroupId変更時のみ再計算）
+  const visibleIds = useMemo(() => {
+    if (!google.calendarList.length) return new Set<string>();
+    const filtered = activeGroupId
+      ? google.calendarList.filter(c => (c.groupIds ?? []).includes(activeGroupId))
+      : google.calendarList.filter(c => c.selected);
+    return new Set(filtered.map(c => c.id));
+  }, [google.calendarList, activeGroupId]);
+
+  // 表示イベントのフィルタ（visibleIds が変わらなければ再計算しない）
   const visibleEvents = useMemo(() => {
-    // カレンダーリスト未取得中はイベントを全て非表示（フィルタ不能のため）
-    if (!google.calendarList.length) return [];
-    let filtered = google.calendarList;
-    if (activeGroupId) {
-      // グループフィルタ中は selected に関わらずグループメンバーを表示
-      filtered = filtered.filter(c => (c.groupIds ?? []).includes(activeGroupId));
-    } else {
-      // 通常モード: selected=true のカレンダーのみ
-      filtered = filtered.filter(c => c.selected);
-    }
-    const visibleIds = new Set(filtered.map(c => c.id));
-    // calendarId が未設定のイベントは表示しない（フィルタバグ防止）
+    if (!visibleIds.size) return [];
     return google.events.filter(e => e.calendarId && visibleIds.has(e.calendarId));
-  }, [google.events, google.calendarList, activeGroupId]);
+  }, [google.events, visibleIds]);
 
   // Load profile when authenticated and email is available
   useEffect(() => {
@@ -266,46 +233,61 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
     setCurrentDate(new Date());
   }, []);
 
+  const authValue: AuthContextType = {
+    isAuthenticated: google.isAuthenticated,
+    userEmail: google.userEmail,
+    profile: userProfileHook.profile,
+    signIn: google.signIn,
+    signOut: google.signOut,
+    saveProfile: userProfileHook.saveProfile,
+  };
+
+  const eventsValue: EventsContextType = {
+    events: visibleEvents,
+    isLoading: google.isLoading,
+    refreshEvents,
+    createEvent: google.createEvent,
+    updateEvent: google.updateEvent,
+    deleteEvent: google.deleteEvent,
+    deleteRecurringEvent: google.deleteRecurringEvent,
+    calendarList: google.calendarList,
+    calendarGroups: google.calendarGroups,
+    fetchCalendarList: google.fetchCalendarList,
+    toggleCalendarVisibility: google.toggleCalendarVisibility,
+    createCalendarGroup: google.createCalendarGroup,
+    updateCalendarGroup: google.updateCalendarGroup,
+    deleteCalendarGroup: google.deleteCalendarGroup,
+    moveCalendarToGroup: google.moveCalendarToGroup,
+    setGroupVisibility: google.setGroupVisibility,
+  };
+
+  const uiValue: UIContextType = {
+    viewMode,
+    setViewMode,
+    currentDate,
+    setCurrentDate,
+    goNext,
+    goPrev,
+    goToday,
+    activeGroupId,
+    setActiveGroupId,
+    syncRangeDays,
+    setSyncRangeDays,
+  };
+
+  // 後方互換用: 全フィールドをマージして提供
+  const combinedValue: CalendarContextType = { ...authValue, ...eventsValue, ...uiValue };
+
   return (
-    <CalendarContext.Provider
-      value={{
-        viewMode,
-        setViewMode,
-        currentDate,
-        setCurrentDate,
-        events: visibleEvents,
-        isLoading: google.isLoading,
-        isAuthenticated: google.isAuthenticated,
-        userEmail: google.userEmail,
-        profile: userProfileHook.profile,
-        signIn: google.signIn,
-        signOut: google.signOut,
-        goNext,
-        goPrev,
-        goToday,
-        refreshEvents,
-        saveProfile: userProfileHook.saveProfile,
-        createEvent: google.createEvent,
-        updateEvent: google.updateEvent,
-        deleteEvent: google.deleteEvent,
-        deleteRecurringEvent: google.deleteRecurringEvent,
-        calendarList: google.calendarList,
-        calendarGroups: google.calendarGroups,
-        fetchCalendarList: google.fetchCalendarList,
-        toggleCalendarVisibility: google.toggleCalendarVisibility,
-        createCalendarGroup: google.createCalendarGroup,
-        updateCalendarGroup: google.updateCalendarGroup,
-        deleteCalendarGroup: google.deleteCalendarGroup,
-        moveCalendarToGroup: google.moveCalendarToGroup,
-        setGroupVisibility: google.setGroupVisibility,
-        activeGroupId,
-        setActiveGroupId,
-        syncRangeDays,
-        setSyncRangeDays,
-      }}
-    >
-      {children}
-    </CalendarContext.Provider>
+    <CalendarAuthContext.Provider value={authValue}>
+      <CalendarEventsContext.Provider value={eventsValue}>
+        <CalendarUIContext.Provider value={uiValue}>
+          <CalendarContext.Provider value={combinedValue}>
+            {children}
+          </CalendarContext.Provider>
+        </CalendarUIContext.Provider>
+      </CalendarEventsContext.Provider>
+    </CalendarAuthContext.Provider>
   );
 }
 

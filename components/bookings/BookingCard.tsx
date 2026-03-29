@@ -58,7 +58,13 @@ export default function BookingCard({ booking, onConfirm, onDecline, onDelete }:
             <Text style={[styles.typeText, { color: meetingInfo.color }]}>{meetingInfo.label}</Text>
           </View>
           {onDelete && (
-            <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={styles.deleteBtn}
+              accessibilityRole="button"
+              accessibilityLabel="予約を削除する"
+              accessibilityHint="この予約をリストから削除します"
+            >
               <Trash2 size={14} color="#bbb" />
             </TouchableOpacity>
           )}
@@ -95,6 +101,9 @@ export default function BookingCard({ booking, onConfirm, onDecline, onDelete }:
             <TouchableOpacity
               style={[styles.actionBtn, styles.confirmBtn]}
               onPress={() => onConfirm?.(booking.id)}
+              accessibilityRole="button"
+              accessibilityLabel="予約を確定する"
+              accessibilityHint="この予約への参加を確定します"
             >
               <Check size={14} color="#fff" />
               <Text style={styles.actionBtnText}>参加</Text>
@@ -102,6 +111,9 @@ export default function BookingCard({ booking, onConfirm, onDecline, onDelete }:
             <TouchableOpacity
               style={[styles.actionBtn, styles.declineBtn]}
               onPress={() => onDecline?.(booking.id)}
+              accessibilityRole="button"
+              accessibilityLabel="予約を断る"
+              accessibilityHint="この予約をキャンセルして不参加にします"
             >
               <X size={14} color="#fff" />
               <Text style={styles.actionBtnText}>不参加</Text>
@@ -140,7 +152,7 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   typeBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
   typeText: { fontSize: 11, fontWeight: '600' },
-  deleteBtn: { padding: 4 },
+  deleteBtn: { padding: 4, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   timeRow: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4,
   },
@@ -163,6 +175,7 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
+    minHeight: 44, minWidth: 44,
   },
   confirmBtn: { backgroundColor: '#34A853' },
   declineBtn: { backgroundColor: '#EA4335' },

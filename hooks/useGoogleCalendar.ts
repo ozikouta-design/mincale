@@ -13,6 +13,8 @@ const REFRESH_TOKEN_KEY = 'google_refresh_token';
 const USER_EMAIL_KEY = 'google_user_email';
 const CALENDAR_LIST_KEY = 'google_calendar_list';
 const CALENDAR_GROUPS_KEY = 'google_calendar_groups';
+const SYNC_TOKEN_KEY = 'gcal_sync_token'; // カレンダーIDごとの差分同期トークン
+const SYNC_TOKEN_CALS_KEY = 'gcal_sync_token_cals'; // トークン保存済みカレンダーIDリスト
 
 /**
  * 認証トークン用ストレージ（セキュリティ重視）
@@ -119,9 +121,12 @@ export function useGoogleCalendar() {
   const calendarListRef = useRef<GoogleCalendarInfo[]>([]);
   const calendarGroupsRef = useRef<CalendarGroup[]>([]);
   const userEmailRef = useRef<string | null>(null);
+  const eventsRef = useRef<CalendarEvent[]>([]);
+  const lastFetchRangeRef = useRef<{ timeMin: string; timeMax: string; calIds: string } | null>(null);
   useEffect(() => { calendarListRef.current = calendarList; }, [calendarList]);
   useEffect(() => { calendarGroupsRef.current = calendarGroups; }, [calendarGroups]);
   useEffect(() => { userEmailRef.current = userEmail; }, [userEmail]);
+  useEffect(() => { eventsRef.current = events; }, [events]);
 
   // Expo Go では auth.expo.io プロキシを直接指定（useProxy は SDK54で削除済み）
   const isExpoGo = Constants.appOwnership === 'expo';
@@ -489,6 +494,11 @@ export function useGoogleCalendar() {
     await tokenStorage.removeItem(TOKEN_KEY);
     await tokenStorage.removeItem(REFRESH_TOKEN_KEY);
     await tokenStorage.removeItem(USER_EMAIL_KEY);
+    // カレンダーごとの syncToken をすべて削除
+    const cals = (await storage.getItem(SYNC_TOKEN_CALS_KEY) || '').split(',').filter(Boolean);
+    await Promise.all(cals.map(calId => storage.removeItem(`${SYNC_TOKEN_KEY}_${calId}`)));
+    await storage.removeItem(SYNC_TOKEN_CALS_KEY);
+    lastFetchRangeRef.current = null;
     setIsAuthenticated(false);
     setUserEmail(null);
     setEvents([]);
@@ -515,47 +525,104 @@ export function useGoogleCalendar() {
       const currentList = calendarListRef.current;
       const calIds = currentList.filter(c => c.selected).map(c => c.id);
       if (calIds.length === 0) {
-        // すべてのカレンダーが非表示 → イベントなし
         setEvents([]);
         setIsLoading(false);
         return [];
       }
 
-      const results = await Promise.all(
-        calIds.map(async calId => {
-          const res = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
-            { headers: { Authorization: `Bearer ${token}` } },
-          );
-          if (!res.ok) {
-            if (res.status === 401) { setIsAuthenticated(false); await tokenStorage.removeItem(TOKEN_KEY); }
-            return [];
-          }
-          const data = await res.json();
-          return (data.items || []).map((item: any) => ({ ...item, _calendarId: calId })) as any[];
-        }),
-      );
+      // 同一レンジ・同一カレンダー構成のとき差分フェッチを試みる
+      const calIdsKey = [...calIds].sort().join(',');
+      const isSameRange = lastFetchRangeRef.current?.timeMin === timeMin
+        && lastFetchRangeRef.current?.timeMax === timeMax
+        && lastFetchRangeRef.current?.calIds === calIdsKey;
+      lastFetchRangeRef.current = { timeMin, timeMax, calIds: calIdsKey };
 
       const calColorMap: Record<string, string> = {};
       currentList.forEach(c => { calColorMap[c.id] = c.backgroundColor; });
 
-      const mapped: CalendarEvent[] = results.flat()
-        .filter((item: any) => item.status !== 'cancelled')
-        .map((item: any) => {
-          const isAllDay = !!item.start?.date;
+      // カレンダーアイテムを CalendarEvent に変換するヘルパー
+      const parseItem = (item: any): CalendarEvent => {
+        const isAllDay = !!item.start?.date;
+        return {
+          id: item.id,
+          title: item.summary || '(タイトルなし)',
+          startTime: isAllDay ? startOfDay(parseISO(item.start.date)) : parseISO(item.start.dateTime),
+          endTime: isAllDay ? endOfDay(subDays(parseISO(item.end.date), 1)) : parseISO(item.end.dateTime),
+          isAllDay,
+          colorHex: item.colorId ? getColorById(item.colorId) : (calColorMap[item._calendarId] || '#4285F4'),
+          location: item.location,
+          description: item.description,
+          calendarId: item._calendarId,
+          recurringEventId: item.recurringEventId,
+        };
+      };
+
+      const results = await Promise.all(
+        calIds.map(async calId => {
+          const savedToken = isSameRange
+            ? await storage.getItem(`${SYNC_TOKEN_KEY}_${calId}`)
+            : null;
+
+          const fullUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`;
+          const deltaUrl = savedToken
+            ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?syncToken=${encodeURIComponent(savedToken)}&singleEvents=true`
+            : null;
+
+          let res = await fetch(deltaUrl ?? fullUrl, { headers: { Authorization: `Bearer ${token}` } });
+
+          // 410: syncToken 期限切れ → フルフェッチで再試行
+          if (res.status === 410 && savedToken) {
+            await storage.removeItem(`${SYNC_TOKEN_KEY}_${calId}`);
+            res = await fetch(fullUrl, { headers: { Authorization: `Bearer ${token}` } });
+          }
+
+          if (!res.ok) {
+            if (res.status === 401) { setIsAuthenticated(false); await tokenStorage.removeItem(TOKEN_KEY); }
+            return { items: [] as any[], isDelta: false };
+          }
+
+          const data = await res.json();
+
+          // nextSyncToken を保存 + 管理リストに追加
+          if (data.nextSyncToken) {
+            await storage.setItem(`${SYNC_TOKEN_KEY}_${calId}`, data.nextSyncToken);
+            const cals = (await storage.getItem(SYNC_TOKEN_CALS_KEY) || '').split(',').filter(Boolean);
+            if (!cals.includes(calId)) {
+              await storage.setItem(SYNC_TOKEN_CALS_KEY, [...cals, calId].join(','));
+            }
+          }
+
           return {
-            id: item.id,
-            title: item.summary || '(タイトルなし)',
-            startTime: isAllDay ? startOfDay(parseISO(item.start.date)) : parseISO(item.start.dateTime),
-            endTime: isAllDay ? endOfDay(subDays(parseISO(item.end.date), 1)) : parseISO(item.end.dateTime),
-            isAllDay,
-            colorHex: item.colorId ? getColorById(item.colorId) : (calColorMap[item._calendarId] || '#4285F4'),
-            location: item.location,
-            description: item.description,
-            calendarId: item._calendarId,
-            recurringEventId: item.recurringEventId,
+            items: (data.items || []).map((item: any) => ({ ...item, _calendarId: calId })) as any[],
+            isDelta: !!savedToken,
           };
-        });
+        }),
+      );
+
+      let mapped: CalendarEvent[];
+      const hasDelta = results.some(r => r.isDelta);
+
+      if (hasDelta) {
+        // 差分マージ: キャンセル → 削除、更新/新規 → upsert
+        let current = [...eventsRef.current];
+        for (const { items } of results) {
+          for (const item of items) {
+            if (item.status === 'cancelled') {
+              current = current.filter(e => e.id !== item.id);
+            } else {
+              const parsed = parseItem(item);
+              const idx = current.findIndex(e => e.id === parsed.id);
+              if (idx >= 0) { current[idx] = parsed; } else { current.push(parsed); }
+            }
+          }
+        }
+        mapped = current;
+      } else {
+        // フルフェッチ: 全置換
+        mapped = results.flatMap(r => r.items)
+          .filter((item: any) => item.status !== 'cancelled')
+          .map(parseItem);
+      }
 
       setEvents(mapped);
       setIsLoading(false);

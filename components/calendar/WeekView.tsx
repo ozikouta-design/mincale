@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, Dimensions, Animated } from 'react-native';
 import {
   startOfWeek, addDays, isSameDay, format, differenceInMinutes,
@@ -108,11 +108,20 @@ export default function WeekView() {
     setTimeout(() => scrollRef.current?.scrollTo({ y: scrollTo, animated: false }), 100);
   }, [settings.calendarStartHour]);
 
-  const getEventsForDay = (day: Date): CalendarEvent[] =>
-    events.filter(e => !e.isAllDay && isSameDay(e.startTime, day));
+  const getEventsForDay = useCallback((day: Date): CalendarEvent[] =>
+    events.filter(e => !e.isAllDay && isSameDay(e.startTime, day)),
+  [events]);
 
-  const getAllDayEvents = (day: Date): CalendarEvent[] =>
-    events.filter(e => e.isAllDay && isSameDay(e.startTime, day));
+  const getAllDayEvents = useCallback((day: Date): CalendarEvent[] =>
+    events.filter(e => e.isAllDay && isSameDay(e.startTime, day)),
+  [events]);
+
+  // 週単位でイベント列割り当てをメモ化（events or weekStart が変わった時のみ再計算）
+  const eventColumnsByDay = useMemo(
+    () => days.map(day => computeEventColumns(getEventsForDay(day), day)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [events, weekStart],
+  );
 
   // ロングプレス時にタッチ位置のイベントを検索
   const findEventAt = (y: number, day: Date) => {
@@ -366,7 +375,7 @@ export default function WeekView() {
               ))}
 
               {/* Events */}
-              {computeEventColumns(getEventsForDay(day), day).map(({ event, top, height, colIndex, colCount }) => {
+              {eventColumnsByDay[dayIdx].map(({ event, top, height, colIndex, colCount }) => {
                 const colWidth = (DAY_WIDTH - 2) / colCount;
                 const left = 1 + colIndex * colWidth;
                 const width = colWidth - 1;
