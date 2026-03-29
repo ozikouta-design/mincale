@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { CalendarEvent, EventFormData, GoogleCalendarInfo, CalendarGroup } from '@/types';
 import { startOfDay, endOfDay, subDays, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabase';
+import { handleApiError } from '@/lib/error';
 
 // Platform-aware key-value storage
 const storage = {
@@ -134,7 +135,7 @@ export function useGoogleCalendar() {
 
         if (!response.ok) {
           const err = await response.json();
-          console.error('Token exchange failed:', err);
+          handleApiError(err, 'ログインに失敗しました。もう一度お試しください。');
           return;
         }
 
@@ -172,7 +173,7 @@ export function useGoogleCalendar() {
 
         setIsAuthenticated(true);
       } catch (error) {
-        console.error('OAuth callback error:', error);
+        handleApiError(error, '認証処理でエラーが発生しました。再度ログインしてください。');
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -392,7 +393,7 @@ export function useGoogleCalendar() {
 
         window.location.href = authUrl.toString();
       } catch (error) {
-        console.error('Google sign-in error:', error);
+        handleApiError(error, 'ログインに失敗しました。もう一度お試しください。');
       }
       return;
     }
@@ -441,7 +442,7 @@ export function useGoogleCalendar() {
         }
       }
     } catch (error) {
-      console.error('Google sign-in error:', error);
+      handleApiError(error, 'ログインに失敗しました。もう一度お試しください。');
     }
   }, [promptAsync, redirectUri, request]);
 
@@ -552,7 +553,7 @@ export function useGoogleCalendar() {
       const item = await res.json();
       return { id: item.id, title: item.summary || data.title, startTime: data.startTime, endTime: data.endTime, isAllDay: data.isAllDay, colorHex: '#4285F4', location: data.location, description: data.description };
     } catch (error) {
-      console.error('Failed to create event:', error);
+      handleApiError(error, '予定の作成に失敗しました');
       return null;
     }
   }, [getAccessToken]);
@@ -580,7 +581,7 @@ export function useGoogleCalendar() {
       }
       return true;
     } catch (error) {
-      console.error('Failed to update event:', error);
+      handleApiError(error, '予定の更新に失敗しました');
       return false;
     }
   }, [getAccessToken]);
@@ -602,7 +603,7 @@ export function useGoogleCalendar() {
       }
       return true;
     } catch (error) {
-      console.error('Failed to delete event:', error);
+      handleApiError(error, '予定の削除に失敗しました');
       return false;
     }
   }, [getAccessToken]);

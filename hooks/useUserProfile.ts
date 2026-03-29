@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { UserProfile } from '@/types';
+import { handleApiError } from '@/lib/error';
 
 export function useUserProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -31,7 +32,7 @@ export function useUserProfile() {
         setProfile(data as UserProfile);
       }
     } catch (error) {
-      console.error('Failed to load profile:', error);
+      handleApiError(error, 'プロフィールの読み込みに失敗しました');
     } finally {
       setIsLoading(false);
     }
@@ -50,7 +51,7 @@ export function useUserProfile() {
       if (error) throw error;
       setProfile(data as UserProfile);
     } catch (error) {
-      console.error('Failed to save profile:', error);
+      handleApiError(error, '設定の保存に失敗しました');
       throw error;
     }
   }, [profile]);

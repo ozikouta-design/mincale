@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Booking } from '@/types';
+import { handleApiError } from '@/lib/error';
 
 export function useBookings(hostEmail?: string) {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -26,7 +27,7 @@ export function useBookings(hostEmail?: string) {
       if (error) throw error;
       setBookings(data || []);
     } catch (error) {
-      console.error('Failed to fetch bookings:', error);
+      handleApiError(error, '予約一覧の取得に失敗しました');
     } finally {
       setIsLoading(false);
     }
@@ -77,7 +78,7 @@ export function useBookings(hostEmail?: string) {
       setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'confirmed' } : b));
       return true;
     } catch (e) {
-      console.error('confirmBooking error:', e);
+      handleApiError(e, '予約の確定に失敗しました');
       return false;
     }
   }, []);
@@ -100,7 +101,7 @@ export function useBookings(hostEmail?: string) {
       setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b));
       return true;
     } catch (e) {
-      console.error('declineBooking error:', e);
+      handleApiError(e, '予約のキャンセルに失敗しました');
       return false;
     }
   }, []);
@@ -123,7 +124,7 @@ export function useBookings(hostEmail?: string) {
       setBookings(prev => prev.filter(b => b.id !== bookingId));
       return true;
     } catch (e) {
-      console.error('deleteBooking error:', e);
+      handleApiError(e, '予約の削除に失敗しました');
       return false;
     }
   }, []);
